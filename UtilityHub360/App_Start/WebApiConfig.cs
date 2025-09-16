@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Web.Http;
-// using Swashbuckle.Application; // Temporarily commented out until Swashbuckle package is restored
+using Swashbuckle.Application;
 
 namespace UtilityHub360
 {
@@ -21,8 +21,7 @@ namespace UtilityHub360
                 defaults: new { id = RouteParameter.Optional }
             );
 
-            // Configure Swagger (temporarily commented out until Swashbuckle package is restored)
-            /*
+            // Configure Swagger
             config.EnableSwagger(c =>
             {
                 c.SingleApiVersion("v1", "UtilityHub360 API")
@@ -30,13 +29,20 @@ namespace UtilityHub360
                     .Contact(cc => cc
                         .Name("UtilityHub360 Team")
                         .Email("support@utilityhub360.com"));
+                
+                // Include XML comments
+                c.IncludeXmlComments(GetXmlCommentsPath());
             })
             .EnableSwaggerUi(c =>
             {
                 c.DocumentTitle("UtilityHub360 API Documentation");
                 c.DocExpansion(DocExpansion.List);
             });
-            */
+        }
+
+        private static string GetXmlCommentsPath()
+        {
+            return System.String.Format(@"{0}\bin\UtilityHub360.XML", System.AppDomain.CurrentDomain.BaseDirectory);
         }
     }
 }
