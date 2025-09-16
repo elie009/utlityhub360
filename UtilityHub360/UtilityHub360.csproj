@@ -197,9 +197,32 @@
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
     <Compile Include="Mapping\AutoMapperProfile.cs" />
+    <Compile Include="Models\Borrower.cs" />
+    <Compile Include="Models\Loan.cs" />
+    <Compile Include="Models\LoanNotification.cs" />
+    <Compile Include="Models\LoanPayment.cs" />
+    <Compile Include="Models\LoanPenalty.cs" />
+    <Compile Include="Models\RepaymentSchedule.cs" />
     <Compile Include="Models\User.cs" />
     <Compile Include="Models\UtilityHubDbContext.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Services\InterestCalculationService.cs" />
+    <Compile Include="DTOs\BorrowerDto.cs" />
+    <Compile Include="DTOs\LoanDto.cs" />
+    <Compile Include="DTOs\PaymentDto.cs" />
+    <Compile Include="DTOs\LoanPortfolioDto.cs" />
+    <Compile Include="CQRS\Commands\CreateBorrowerCommand.cs" />
+    <Compile Include="CQRS\Commands\CreateLoanCommand.cs" />
+    <Compile Include="CQRS\Commands\RecordPaymentCommand.cs" />
+    <Compile Include="CQRS\Commands\CreateBorrowerCommandHandler.cs" />
+    <Compile Include="CQRS\Commands\CreateLoanCommandHandler.cs" />
+    <Compile Include="CQRS\Commands\RecordPaymentCommandHandler.cs" />
+    <Compile Include="CQRS\Queries\GetAllBorrowersQuery.cs" />
+    <Compile Include="CQRS\Queries\GetAllLoansQuery.cs" />
+    <Compile Include="CQRS\Queries\GetLoanPortfolioQuery.cs" />
+    <Compile Include="CQRS\Queries\GetAllBorrowersQueryHandler.cs" />
+    <Compile Include="CQRS\Queries\GetAllLoansQueryHandler.cs" />
+    <Compile Include="CQRS\Queries\GetLoanPortfolioQueryHandler.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Areas\HelpPage\HelpPage.css" />
