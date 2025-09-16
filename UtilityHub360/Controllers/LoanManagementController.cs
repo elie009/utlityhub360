@@ -73,7 +73,16 @@ namespace UtilityHub360.Controllers
                     return BadRequest(ModelState);
                 }
 
-                var command = new CreateBorrowerCommand(createBorrowerDto);
+                var command = new CreateBorrowerCommand
+                {
+                    FirstName = createBorrowerDto.FirstName,
+                    LastName = createBorrowerDto.LastName,
+                    Email = createBorrowerDto.Email,
+                    Phone = createBorrowerDto.Phone,
+                    Address = createBorrowerDto.Address,
+                    GovernmentId = createBorrowerDto.GovernmentId,
+                    Status = createBorrowerDto.Status ?? "Active"
+                };
                 var borrower = await _mediator.Send(command);
 
                 return CreatedAtRoute("DefaultApi", new { id = borrower.BorrowerId }, borrower);
@@ -137,7 +146,18 @@ namespace UtilityHub360.Controllers
                     return BadRequest(ModelState);
                 }
 
-                var command = new CreateLoanCommand(createLoanDto);
+                var command = new CreateLoanCommand
+                {
+                    BorrowerId = createLoanDto.BorrowerId,
+                    LoanType = createLoanDto.LoanType,
+                    PrincipalAmount = createLoanDto.PrincipalAmount,
+                    InterestRate = createLoanDto.InterestRate,
+                    TermMonths = createLoanDto.TermMonths,
+                    RepaymentFrequency = createLoanDto.RepaymentFrequency,
+                    AmortizationType = createLoanDto.AmortizationType,
+                    StartDate = createLoanDto.StartDate,
+                    Status = createLoanDto.Status ?? "Active"
+                };
                 var loan = await _mediator.Send(command);
 
                 return CreatedAtRoute("DefaultApi", new { id = loan.LoanId }, loan);
@@ -169,7 +189,15 @@ namespace UtilityHub360.Controllers
                     return BadRequest(ModelState);
                 }
 
-                var command = new RecordPaymentCommand(createPaymentDto);
+                var command = new RecordPaymentCommand
+                {
+                    LoanId = createPaymentDto.LoanId,
+                    ScheduleId = createPaymentDto.ScheduleId,
+                    PaymentDate = createPaymentDto.PaymentDate,
+                    AmountPaid = createPaymentDto.AmountPaid,
+                    PaymentMethod = createPaymentDto.PaymentMethod,
+                    Notes = createPaymentDto.Notes
+                };
                 var payment = await _mediator.Send(command);
 
                 return Ok(payment);

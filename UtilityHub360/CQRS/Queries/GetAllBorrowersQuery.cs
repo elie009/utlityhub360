@@ -9,5 +9,8 @@ namespace UtilityHub360.CQRS.Queries
     /// </summary>
     public class GetAllBorrowersQuery : IRequest<List<BorrowerDto>>
     {
+        public string Status { get; set; }
+        public int? CreditScoreMin { get; set; }
+        public int? CreditScoreMax { get; set; }
     }
 }

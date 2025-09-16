@@ -173,6 +173,7 @@
     <Compile Include="Areas\HelpPage\SampleGeneration\TextSample.cs" />
     <Compile Include="Areas\HelpPage\XmlDocumentationProvider.cs" />
     <Compile Include="Controllers\HomeController.cs" />
+    <Compile Include="Controllers\LoanManagementController.cs" />
     <Compile Include="Controllers\UsersController.cs" />
     <Compile Include="Controllers\ValuesController.cs" />
     <Compile Include="CQRS\Commands\CreateUserCommand.cs" />
@@ -211,6 +212,9 @@
     <Compile Include="DTOs\LoanDto.cs" />
     <Compile Include="DTOs\PaymentDto.cs" />
     <Compile Include="DTOs\LoanPortfolioDto.cs" />
+    <Compile Include="DTOs\CreateBorrowerDto.cs" />
+    <Compile Include="DTOs\CreateLoanDto.cs" />
+    <Compile Include="DTOs\CreatePaymentDto.cs" />
     <Compile Include="CQRS\Commands\CreateBorrowerCommand.cs" />
     <Compile Include="CQRS\Commands\CreateLoanCommand.cs" />
     <Compile Include="CQRS\Commands\RecordPaymentCommand.cs" />
@@ -292,7 +296,6 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="App_Data\" />
-    <Folder Include="Models\" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Scripts\bootstrap.min.js.map" />

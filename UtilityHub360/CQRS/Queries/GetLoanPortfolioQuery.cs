@@ -8,5 +8,6 @@ namespace UtilityHub360.CQRS.Queries
     /// </summary>
     public class GetLoanPortfolioQuery : IRequest<LoanPortfolioDto>
     {
+        public string Branch { get; set; }
     }
 }
