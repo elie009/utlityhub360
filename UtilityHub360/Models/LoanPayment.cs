@@ -7,7 +7,7 @@ namespace UtilityHub360.Models
     /// <summary>
     /// Represents a payment made against a loan
     /// </summary>
-    [Table("Payments")]
+    [Table("LnPayments")]
     public class LoanPayment
     {
         [Key]

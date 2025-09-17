@@ -7,7 +7,7 @@ namespace UtilityHub360.Models
     /// <summary>
     /// Represents a notification sent to a borrower
     /// </summary>
-    [Table("Notifications")]
+    [Table("LnNotifications")]
     public class LoanNotification
     {
         [Key]

@@ -7,7 +7,7 @@ namespace UtilityHub360.Models
     /// <summary>
     /// Represents a penalty applied to a loan for overdue payments
     /// </summary>
-    [Table("Penalties")]
+    [Table("LnPenalties")]
     public class LoanPenalty
     {
         [Key]

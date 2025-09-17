@@ -8,7 +8,7 @@ namespace UtilityHub360.Models
     /// <summary>
     /// Represents a borrower in the loan management system
     /// </summary>
-    [Table("Borrowers")]
+    [Table("LnBorrowers")]
     public class Borrower
     {
         [Key]

@@ -1,6 +1,6 @@
 @echo off
-echo Checking Current Tables in Database
-echo ===================================
+echo Quick Table Check
+echo =================
 echo.
 
 REM Check if SQL Server is running
@@ -14,12 +14,12 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo Running table check script...
+echo Running quick table check...
 echo.
 
 REM Run the check
-sqlcmd -S 174.138.185.18 -U sa01 -P "iSTc0#T3tw~noz2r" -d DBUTILS -i check_current_tables.sql
+sqlcmd -S 174.138.185.18 -U sa01 -P "iSTc0#T3tw~noz2r" -d DBUTILS -i quick_table_check.sql
 
 echo.
-echo Table check completed!
+echo Quick check completed!
 pause

@@ -8,7 +8,7 @@ namespace UtilityHub360.Models
     /// <summary>
     /// Represents a repayment schedule entry for a loan
     /// </summary>
-    [Table("RepaymentSchedules")]
+    [Table("LnRepaymentSchedules")]
     public class RepaymentSchedule
     {
         [Key]
