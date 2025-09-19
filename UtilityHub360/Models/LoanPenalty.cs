@@ -20,7 +20,6 @@ namespace UtilityHub360.Models
         public int ScheduleId { get; set; }
 
         [Required]
-        [Column(TypeName = "decimal(18,2)")]
         public decimal Amount { get; set; }
 
         public DateTime AppliedDate { get; set; }

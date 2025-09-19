@@ -21,11 +21,9 @@ namespace UtilityHub360.Models
         public string LoanType { get; set; } // Personal, Business, Mortgage, etc.
 
         [Required]
-        [Column(TypeName = "decimal(18,2)")]
         public decimal PrincipalAmount { get; set; }
 
         [Required]
-        [Column(TypeName = "decimal(5,2)")]
         public decimal InterestRate { get; set; } // Percentage
 
         [Required]

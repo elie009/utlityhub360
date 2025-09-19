@@ -5,6 +5,7 @@ using AutoMapper;
 using UtilityHub360.CQRS.Common;
 using UtilityHub360.DTOs;
 using UtilityHub360.Models;
+using UtilityHub360.DependencyInjection;
 
 namespace UtilityHub360.CQRS.Commands
 {
@@ -16,10 +17,11 @@ namespace UtilityHub360.CQRS.Commands
         private readonly UtilityHubDbContext _context;
         private readonly IMapper _mapper;
 
-        public CreateBorrowerCommandHandler(UtilityHubDbContext context, IMapper mapper)
+        public CreateBorrowerCommandHandler()
         {
-            _context = context;
-            _mapper = mapper;
+            var container = ServiceContainer.CreateDefault();
+            _context = container.GetService<UtilityHubDbContext>();
+            _mapper = container.GetService<IMapper>();
         }
 
         public async Task<BorrowerDto> Handle(CreateBorrowerCommand request)

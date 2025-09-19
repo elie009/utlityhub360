@@ -21,13 +21,10 @@ namespace UtilityHub360.Models
         public DateTime DueDate { get; set; }
 
         [Required]
-        [Column(TypeName = "decimal(18,2)")]
         public decimal AmountDue { get; set; }
 
-        [Column(TypeName = "decimal(18,2)")]
         public decimal? PrincipalPortion { get; set; }
 
-        [Column(TypeName = "decimal(18,2)")]
         public decimal? InterestPortion { get; set; }
 
         public bool IsPaid { get; set; }

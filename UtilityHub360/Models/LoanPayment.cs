@@ -27,7 +27,6 @@ namespace UtilityHub360.Models
         }
 
         [Required]
-        [Column(TypeName = "decimal(18,2)")]
         public decimal AmountPaid { get; set; }
 
         [StringLength(50)]
