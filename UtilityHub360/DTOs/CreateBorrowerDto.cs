@@ -30,6 +30,11 @@ namespace UtilityHub360.DTOs
         public string GovernmentId { get; set; }
 
         [StringLength(20)]
-        public string Status { get; set; } = "Active";
+        public string Status { get; set; }
+
+        public CreateBorrowerDto()
+        {
+            Status = "Active";
+        }
     }
 }

@@ -27,7 +27,12 @@ namespace UtilityHub360.Models
 
         public DateTime? SentDate { get; set; }
 
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; }
+
+        public LoanNotification()
+        {
+            CreatedAt = DateTime.UtcNow;
+        }
 
         // Navigation properties
         [ForeignKey("BorrowerId")]

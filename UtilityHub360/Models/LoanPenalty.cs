@@ -23,9 +23,15 @@ namespace UtilityHub360.Models
         [Column(TypeName = "decimal(18,2)")]
         public decimal Amount { get; set; }
 
-        public DateTime AppliedDate { get; set; } = DateTime.UtcNow;
+        public DateTime AppliedDate { get; set; }
 
-        public bool IsPaid { get; set; } = false;
+        public bool IsPaid { get; set; }
+
+        public LoanPenalty()
+        {
+            AppliedDate = DateTime.UtcNow;
+            IsPaid = false;
+        }
 
         // Navigation properties
         [ForeignKey("LoanId")]

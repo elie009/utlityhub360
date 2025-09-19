@@ -43,17 +43,26 @@ namespace UtilityHub360.Models
         public DateTime? EndDate { get; set; }
 
         [StringLength(20)]
-        public string Status { get; set; } = "Active"; // Active, Closed, Defaulted
+        public string Status { get; set; } // Active, Closed, Defaulted
 
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; }
 
         // Navigation properties
         [ForeignKey("BorrowerId")]
         public virtual Borrower Borrower { get; set; }
 
-        public virtual ICollection<RepaymentSchedule> RepaymentSchedules { get; set; } = new List<RepaymentSchedule>();
-        public virtual ICollection<LoanPayment> Payments { get; set; } = new List<LoanPayment>();
-        public virtual ICollection<LoanPenalty> Penalties { get; set; } = new List<LoanPenalty>();
+        public virtual ICollection<RepaymentSchedule> RepaymentSchedules { get; set; }
+        public virtual ICollection<LoanPayment> Payments { get; set; }
+        public virtual ICollection<LoanPenalty> Penalties { get; set; }
+
+        public Loan()
+        {
+            Status = "Active";
+            CreatedAt = DateTime.UtcNow;
+            RepaymentSchedules = new List<RepaymentSchedule>();
+            Payments = new List<LoanPayment>();
+            Penalties = new List<LoanPenalty>();
+        }
 
         // Computed properties
         [NotMapped]

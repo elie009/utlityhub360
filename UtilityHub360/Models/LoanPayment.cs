@@ -19,7 +19,12 @@ namespace UtilityHub360.Models
         public int? ScheduleId { get; set; } // Optional - some payments may not map to schedule
 
         [Required]
-        public DateTime PaymentDate { get; set; } = DateTime.UtcNow;
+        public DateTime PaymentDate { get; set; }
+
+        public LoanPayment()
+        {
+            PaymentDate = DateTime.UtcNow;
+        }
 
         [Required]
         [Column(TypeName = "decimal(18,2)")]

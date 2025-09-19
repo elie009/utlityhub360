@@ -16,7 +16,13 @@ namespace UtilityHub360.DTOs
         public int ActiveLoans { get; set; }
         public int ClosedLoans { get; set; }
         public int OverdueLoans { get; set; }
-        public List<LoanDto> RecentLoans { get; set; } = new List<LoanDto>();
-        public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
+        public List<LoanDto> RecentLoans { get; set; }
+        public DateTime GeneratedAt { get; set; }
+
+        public LoanPortfolioDto()
+        {
+            RecentLoans = new List<LoanDto>();
+            GeneratedAt = DateTime.UtcNow;
+        }
     }
 }

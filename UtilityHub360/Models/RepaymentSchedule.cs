@@ -30,7 +30,7 @@ namespace UtilityHub360.Models
         [Column(TypeName = "decimal(18,2)")]
         public decimal? InterestPortion { get; set; }
 
-        public bool IsPaid { get; set; } = false;
+        public bool IsPaid { get; set; }
 
         public DateTime? PaidDate { get; set; }
 
@@ -38,14 +38,21 @@ namespace UtilityHub360.Models
         [ForeignKey("LoanId")]
         public virtual Loan Loan { get; set; }
 
-        public virtual ICollection<LoanPayment> Payments { get; set; } = new List<LoanPayment>();
-        public virtual ICollection<LoanPenalty> Penalties { get; set; } = new List<LoanPenalty>();
+        public virtual ICollection<LoanPayment> Payments { get; set; }
+        public virtual ICollection<LoanPenalty> Penalties { get; set; }
 
         // Computed properties
         [NotMapped]
-        public bool IsOverdue => !IsPaid && DueDate < DateTime.UtcNow.Date;
+        public bool IsOverdue { get { return !IsPaid && DueDate < DateTime.UtcNow.Date; } }
 
         [NotMapped]
-        public int DaysOverdue => IsOverdue ? (DateTime.UtcNow.Date - DueDate).Days : 0;
+        public int DaysOverdue { get { return IsOverdue ? (DateTime.UtcNow.Date - DueDate).Days : 0; } }
+
+        public RepaymentSchedule()
+        {
+            IsPaid = false;
+            Payments = new List<LoanPayment>();
+            Penalties = new List<LoanPenalty>();
+        }
     }
 }

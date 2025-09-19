@@ -36,6 +36,11 @@ namespace UtilityHub360.DTOs
         public DateTime StartDate { get; set; }
 
         [StringLength(20)]
-        public string Status { get; set; } = "Active";
+        public string Status { get; set; }
+
+        public CreateLoanDto()
+        {
+            Status = "Active";
+        }
     }
 }

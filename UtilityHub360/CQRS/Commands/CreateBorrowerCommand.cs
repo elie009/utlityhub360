@@ -15,6 +15,11 @@ namespace UtilityHub360.CQRS.Commands
         public string Phone { get; set; }
         public string Address { get; set; }
         public string GovernmentId { get; set; }
-        public string Status { get; set; } = "Active";
+        public string Status { get; set; }
+
+        public CreateBorrowerCommand()
+        {
+            Status = "Active";
+        }
     }
 }

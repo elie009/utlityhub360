@@ -37,16 +37,24 @@ namespace UtilityHub360.Models
         public int? CreditScore { get; set; }
 
         [StringLength(20)]
-        public string Status { get; set; } = "Active"; // Active, Inactive, Blacklisted
+        public string Status { get; set; } // Active, Inactive, Blacklisted
 
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; }
 
         // Navigation properties
-        public virtual ICollection<Loan> Loans { get; set; } = new List<Loan>();
-        public virtual ICollection<LoanNotification> Notifications { get; set; } = new List<LoanNotification>();
+        public virtual ICollection<Loan> Loans { get; set; }
+        public virtual ICollection<LoanNotification> Notifications { get; set; }
 
         // Computed properties
         [NotMapped]
-        public string FullName => $"{FirstName} {LastName}";
+        public string FullName { get { return FirstName + " " + LastName; } }
+
+        public Borrower()
+        {
+            Status = "Active";
+            CreatedAt = DateTime.UtcNow;
+            Loans = new List<Loan>();
+            Notifications = new List<LoanNotification>();
+        }
     }
 }
