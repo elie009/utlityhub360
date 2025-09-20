@@ -35,10 +35,11 @@ namespace UtilityHub360.CQRS.Queries
 
             if (request.IsOverdue.HasValue)
             {
+                var today = DateTime.UtcNow.Date;
                 if (request.IsOverdue.Value)
-                    query = query.Where(l => l.RepaymentSchedules.Any(rs => rs.IsOverdue));
+                    query = query.Where(l => l.RepaymentSchedules.Any(rs => !rs.IsPaid && rs.DueDate < today));
                 else
-                    query = query.Where(l => !l.RepaymentSchedules.Any(rs => rs.IsOverdue));
+                    query = query.Where(l => !l.RepaymentSchedules.Any(rs => !rs.IsPaid && rs.DueDate < today));
             }
 
             var loans = await query.ToListAsync(cancellationToken);

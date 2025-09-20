@@ -95,6 +95,10 @@ namespace UtilityHub360.Data
                     .HasMaxLength(20);
                 entity.Property(l => l.Status)
                     .HasMaxLength(20);
+                entity.Property(l => l.OutstandingBalance)
+                    .HasPrecision(18, 2);
+                entity.Property(l => l.TotalPaid)
+                    .HasPrecision(18, 2);
             });
         }
 
@@ -143,10 +147,12 @@ namespace UtilityHub360.Data
                 entity.HasKey(p => p.PenaltyId);
                 entity.HasOne(p => p.Loan)
                     .WithMany(l => l.Penalties)
-                    .HasForeignKey(p => p.LoanId);
+                    .HasForeignKey(p => p.LoanId)
+                    .OnDelete(DeleteBehavior.NoAction);
                 entity.HasOne(p => p.RepaymentSchedule)
                     .WithMany(rs => rs.Penalties)
-                    .HasForeignKey(p => p.ScheduleId);
+                    .HasForeignKey(p => p.ScheduleId)
+                    .OnDelete(DeleteBehavior.NoAction);
                 entity.Property(p => p.Amount)
                     .HasPrecision(18, 2);
             });
