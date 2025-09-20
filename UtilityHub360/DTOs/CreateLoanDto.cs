@@ -12,7 +12,7 @@ namespace UtilityHub360.DTOs
         public int BorrowerId { get; set; }
 
         [StringLength(50)]
-        public string LoanType { get; set; }
+        public string LoanType { get; set; } = string.Empty;
 
         [Required]
         [Range(0.01, double.MaxValue, ErrorMessage = "Principal amount must be greater than 0")]
@@ -27,16 +27,16 @@ namespace UtilityHub360.DTOs
         public int TermMonths { get; set; }
 
         [StringLength(20)]
-        public string RepaymentFrequency { get; set; }
+        public string RepaymentFrequency { get; set; } = string.Empty;
 
         [StringLength(20)]
-        public string AmortizationType { get; set; }
+        public string AmortizationType { get; set; } = string.Empty;
 
         [Required]
         public DateTime StartDate { get; set; }
 
         [StringLength(20)]
-        public string Status { get; set; }
+        public string Status { get; set; } = string.Empty;
 
         public CreateLoanDto()
         {

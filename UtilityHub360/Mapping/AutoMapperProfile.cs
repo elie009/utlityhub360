@@ -18,18 +18,21 @@ namespace UtilityHub360.Mapping
 
             // Borrower mappings
             CreateMap<Borrower, BorrowerDto>()
-                .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FirstName + " " + src.LastName));
+                .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FullName));
+            CreateMap<CreateBorrowerDto, Borrower>();
 
             // Loan mappings
             CreateMap<Loan, LoanDto>()
-                .ForMember(dest => dest.BorrowerName, opt => opt.MapFrom(src => src.Borrower != null ? src.Borrower.FirstName + " " + src.Borrower.LastName : ""));
+                .ForMember(dest => dest.BorrowerName, opt => opt.MapFrom(src => src.Borrower != null ? src.Borrower.FullName : ""));
+            CreateMap<CreateLoanDto, Loan>();
 
             // Payment mappings
             CreateMap<LoanPayment, PaymentDto>();
+            CreateMap<CreatePaymentDto, LoanPayment>();
 
             // Loan Portfolio mapping
             CreateMap<Loan, LoanDto>()
-                .ForMember(dest => dest.BorrowerName, opt => opt.MapFrom(src => src.Borrower != null ? src.Borrower.FirstName + " " + src.Borrower.LastName : ""));
+                .ForMember(dest => dest.BorrowerName, opt => opt.MapFrom(src => src.Borrower != null ? src.Borrower.FullName : ""));
         }
     }
 }

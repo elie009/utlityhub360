@@ -21,9 +21,9 @@ namespace UtilityHub360.DTOs
         public decimal AmountPaid { get; set; }
 
         [StringLength(50)]
-        public string PaymentMethod { get; set; }
+        public string PaymentMethod { get; set; } = string.Empty;
 
         [StringLength(255)]
-        public string Notes { get; set; }
+        public string Notes { get; set; } = string.Empty;
     }
 }

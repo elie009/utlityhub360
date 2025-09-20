@@ -1,27 +1,23 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using System.Web.Http;
-using System.Web.Http.Description;
+using Microsoft.AspNetCore.Mvc;
+using MediatR;
 using UtilityHub360.CQRS.Commands;
-using UtilityHub360.CQRS.MediatR;
 using UtilityHub360.CQRS.Queries;
 using UtilityHub360.DTOs;
-using UtilityHub360.DependencyInjection;
 
 namespace UtilityHub360.Controllers
 {
     /// <summary>
     /// API Controller for managing users using CQRS pattern
     /// </summary>
-    [RoutePrefix("api/users")]
-    public class UsersController : ApiController
+    [ApiController]
+    [Route("api/[controller]")]
+    public class UsersController : ControllerBase
     {
         private readonly IMediator _mediator;
 
-        public UsersController()
+        public UsersController(IMediator mediator)
         {
-            _mediator = ServiceContainer.CreateDefault().GetService<IMediator>();
+            _mediator = mediator;
         }
 
         /// <summary>
@@ -29,9 +25,8 @@ namespace UtilityHub360.Controllers
         /// </summary>
         /// <returns>List of all users</returns>
         [HttpGet]
-        [Route("")]
-        [ResponseType(typeof(IEnumerable<UserDto>))]
-        public async Task<IHttpActionResult> GetUsers()
+        [ProducesResponseType(typeof(IEnumerable<UserDto>), 200)]
+        public async Task<ActionResult<IEnumerable<UserDto>>> GetUsers()
         {
             try
             {
@@ -41,7 +36,7 @@ namespace UtilityHub360.Controllers
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -50,10 +45,10 @@ namespace UtilityHub360.Controllers
         /// </summary>
         /// <param name="id">User ID</param>
         /// <returns>User details</returns>
-        [HttpGet]
-        [Route("{id}")]
-        [ResponseType(typeof(UserDto))]
-        public async Task<IHttpActionResult> GetUser(int id)
+        [HttpGet("{id}")]
+        [ProducesResponseType(typeof(UserDto), 200)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<UserDto>> GetUser(int id)
         {
             try
             {
@@ -69,7 +64,7 @@ namespace UtilityHub360.Controllers
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -79,9 +74,9 @@ namespace UtilityHub360.Controllers
         /// <param name="createUserDto">User details</param>
         /// <returns>Created user</returns>
         [HttpPost]
-        [Route("")]
-        [ResponseType(typeof(UserDto))]
-        public async Task<IHttpActionResult> CreateUser([FromBody] CreateUserDto createUserDto)
+        [ProducesResponseType(typeof(UserDto), 201)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult<UserDto>> CreateUser([FromBody] CreateUserDto createUserDto)
         {
             try
             {
@@ -93,11 +88,11 @@ namespace UtilityHub360.Controllers
                 var command = new CreateUserCommand(createUserDto);
                 var user = await _mediator.Send(command);
 
-                return CreatedAtRoute("DefaultApi", new { id = user.Id }, user);
+                return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -107,10 +102,11 @@ namespace UtilityHub360.Controllers
         /// <param name="id">User ID</param>
         /// <param name="updateUserDto">Updated user details</param>
         /// <returns>Updated user</returns>
-        [HttpPut]
-        [Route("{id}")]
-        [ResponseType(typeof(UserDto))]
-        public async Task<IHttpActionResult> UpdateUser(int id, [FromBody] UpdateUserDto updateUserDto)
+        [HttpPut("{id}")]
+        [ProducesResponseType(typeof(UserDto), 200)]
+        [ProducesResponseType(400)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<UserDto>> UpdateUser(int id, [FromBody] UpdateUserDto updateUserDto)
         {
             try
             {
@@ -136,7 +132,7 @@ namespace UtilityHub360.Controllers
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -145,21 +141,20 @@ namespace UtilityHub360.Controllers
         /// </summary>
         /// <param name="id">User ID</param>
         /// <returns>No content</returns>
-        [HttpDelete]
-        [Route("{id}")]
-        [ResponseType(typeof(void))]
-        public async Task<IHttpActionResult> DeleteUser(int id)
+        [HttpDelete("{id}")]
+        [ProducesResponseType(204)]
+        public async Task<IActionResult> DeleteUser(int id)
         {
             try
             {
                 var command = new DeleteUserCommand(id);
                 await _mediator.Send(command);
 
-                return Ok();
+                return NoContent();
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                return StatusCode(500, ex.Message);
             }
         }
     }

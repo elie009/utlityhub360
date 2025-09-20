@@ -10,16 +10,16 @@ namespace UtilityHub360.DTOs
     {
         public int LoanId { get; set; }
         public int BorrowerId { get; set; }
-        public string BorrowerName { get; set; }
-        public string LoanType { get; set; }
+        public string BorrowerName { get; set; } = string.Empty;
+        public string LoanType { get; set; } = string.Empty;
         public decimal PrincipalAmount { get; set; }
         public decimal InterestRate { get; set; }
         public int TermMonths { get; set; }
-        public string RepaymentFrequency { get; set; }
-        public string AmortizationType { get; set; }
+        public string RepaymentFrequency { get; set; } = string.Empty;
+        public string AmortizationType { get; set; } = string.Empty;
         public DateTime StartDate { get; set; }
         public DateTime? EndDate { get; set; }
-        public string Status { get; set; }
+        public string Status { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
         public decimal OutstandingBalance { get; set; }
         public decimal TotalPaid { get; set; }

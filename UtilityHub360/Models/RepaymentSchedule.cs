@@ -1,26 +1,18 @@
-using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 
 namespace UtilityHub360.Models
 {
     /// <summary>
     /// Represents a repayment schedule entry for a loan
     /// </summary>
-    [Table("LnRepaymentSchedules")]
     public class RepaymentSchedule
     {
-        [Key]
         public int ScheduleId { get; set; }
 
-        [Required]
         public int LoanId { get; set; }
 
-        [Required]
         public DateTime DueDate { get; set; }
 
-        [Required]
         public decimal AmountDue { get; set; }
 
         public decimal? PrincipalPortion { get; set; }
@@ -32,24 +24,12 @@ namespace UtilityHub360.Models
         public DateTime? PaidDate { get; set; }
 
         // Navigation properties
-        [ForeignKey("LoanId")]
-        public virtual Loan Loan { get; set; }
-
-        public virtual ICollection<LoanPayment> Payments { get; set; }
-        public virtual ICollection<LoanPenalty> Penalties { get; set; }
+        public Loan Loan { get; set; } = null!;
+        public ICollection<LoanPayment> Payments { get; set; } = new List<LoanPayment>();
+        public ICollection<LoanPenalty> Penalties { get; set; } = new List<LoanPenalty>();
 
         // Computed properties
-        [NotMapped]
-        public bool IsOverdue { get { return !IsPaid && DueDate < DateTime.UtcNow.Date; } }
-
-        [NotMapped]
-        public int DaysOverdue { get { return IsOverdue ? (DateTime.UtcNow.Date - DueDate).Days : 0; } }
-
-        public RepaymentSchedule()
-        {
-            IsPaid = false;
-            Payments = new List<LoanPayment>();
-            Penalties = new List<LoanPenalty>();
-        }
+        public bool IsOverdue => !IsPaid && DueDate < DateTime.UtcNow.Date;
+        public int DaysOverdue => IsOverdue ? (DateTime.UtcNow.Date - DueDate).Days : 0;
     }
 }

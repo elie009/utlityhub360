@@ -12,7 +12,7 @@ namespace UtilityHub360.DTOs
         public int? ScheduleId { get; set; }
         public DateTime PaymentDate { get; set; }
         public decimal AmountPaid { get; set; }
-        public string PaymentMethod { get; set; }
-        public string Notes { get; set; }
+        public string PaymentMethod { get; set; } = string.Empty;
+        public string Notes { get; set; } = string.Empty;
     }
 }

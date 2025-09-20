@@ -1,27 +1,23 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using System.Web.Http;
-using System.Web.Http.Description;
+using Microsoft.AspNetCore.Mvc;
+using MediatR;
 using UtilityHub360.CQRS.Commands;
-using UtilityHub360.CQRS.MediatR;
 using UtilityHub360.CQRS.Queries;
 using UtilityHub360.DTOs;
-using UtilityHub360.DependencyInjection;
 
 namespace UtilityHub360.Controllers
 {
     /// <summary>
     /// API Controller for Loan Management System
     /// </summary>
-    [RoutePrefix("api/loan-management")]
-    public class LoanManagementController : ApiController
+    [ApiController]
+    [Route("api/[controller]")]
+    public class LoanManagementController : ControllerBase
     {
         private readonly IMediator _mediator;
 
-        public LoanManagementController()
+        public LoanManagementController(IMediator mediator)
         {
-            _mediator = ServiceContainer.CreateDefault().GetService<IMediator>();
+            _mediator = mediator;
         }
 
         #region Borrower Management
@@ -33,10 +29,9 @@ namespace UtilityHub360.Controllers
         /// <param name="creditScoreMin">Minimum credit score filter</param>
         /// <param name="creditScoreMax">Maximum credit score filter</param>
         /// <returns>List of borrowers</returns>
-        [HttpGet]
-        [Route("borrowers")]
-        [ResponseType(typeof(IEnumerable<BorrowerDto>))]
-        public async Task<IHttpActionResult> GetBorrowers(string status = null, int? creditScoreMin = null, int? creditScoreMax = null)
+        [HttpGet("borrowers")]
+        [ProducesResponseType(typeof(IEnumerable<BorrowerDto>), 200)]
+        public async Task<ActionResult<IEnumerable<BorrowerDto>>> GetBorrowers(string? status = null, int? creditScoreMin = null, int? creditScoreMax = null)
         {
             try
             {
@@ -52,7 +47,7 @@ namespace UtilityHub360.Controllers
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -61,10 +56,10 @@ namespace UtilityHub360.Controllers
         /// </summary>
         /// <param name="createBorrowerDto">Borrower details</param>
         /// <returns>Created borrower</returns>
-        [HttpPost]
-        [Route("borrowers")]
-        [ResponseType(typeof(BorrowerDto))]
-        public async Task<IHttpActionResult> CreateBorrower([FromBody] CreateBorrowerDto createBorrowerDto)
+        [HttpPost("borrowers")]
+        [ProducesResponseType(typeof(BorrowerDto), 201)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult<BorrowerDto>> CreateBorrower([FromBody] CreateBorrowerDto createBorrowerDto)
         {
             try
             {
@@ -85,11 +80,11 @@ namespace UtilityHub360.Controllers
                 };
                 var borrower = await _mediator.Send(command);
 
-                return CreatedAtRoute("DefaultApi", new { id = borrower.BorrowerId }, borrower);
+                return CreatedAtAction(nameof(GetBorrowers), new { id = borrower.BorrowerId }, borrower);
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -105,10 +100,9 @@ namespace UtilityHub360.Controllers
         /// <param name="borrowerId">Filter by borrower ID</param>
         /// <param name="isOverdue">Filter for overdue loans</param>
         /// <returns>List of loans</returns>
-        [HttpGet]
-        [Route("loans")]
-        [ResponseType(typeof(IEnumerable<LoanDto>))]
-        public async Task<IHttpActionResult> GetLoans(string status = null, string loanType = null, int? borrowerId = null, bool? isOverdue = null)
+        [HttpGet("loans")]
+        [ProducesResponseType(typeof(IEnumerable<LoanDto>), 200)]
+        public async Task<ActionResult<IEnumerable<LoanDto>>> GetLoans(string? status = null, string? loanType = null, int? borrowerId = null, bool? isOverdue = null)
         {
             try
             {
@@ -125,7 +119,7 @@ namespace UtilityHub360.Controllers
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -134,10 +128,10 @@ namespace UtilityHub360.Controllers
         /// </summary>
         /// <param name="createLoanDto">Loan details</param>
         /// <returns>Created loan with repayment schedule</returns>
-        [HttpPost]
-        [Route("loans")]
-        [ResponseType(typeof(LoanDto))]
-        public async Task<IHttpActionResult> CreateLoan([FromBody] CreateLoanDto createLoanDto)
+        [HttpPost("loans")]
+        [ProducesResponseType(typeof(LoanDto), 201)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult<LoanDto>> CreateLoan([FromBody] CreateLoanDto createLoanDto)
         {
             try
             {
@@ -160,11 +154,11 @@ namespace UtilityHub360.Controllers
                 };
                 var loan = await _mediator.Send(command);
 
-                return CreatedAtRoute("DefaultApi", new { id = loan.LoanId }, loan);
+                return CreatedAtAction(nameof(GetLoans), new { id = loan.LoanId }, loan);
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -177,10 +171,10 @@ namespace UtilityHub360.Controllers
         /// </summary>
         /// <param name="createPaymentDto">Payment details</param>
         /// <returns>Recorded payment</returns>
-        [HttpPost]
-        [Route("payments")]
-        [ResponseType(typeof(PaymentDto))]
-        public async Task<IHttpActionResult> RecordPayment([FromBody] CreatePaymentDto createPaymentDto)
+        [HttpPost("payments")]
+        [ProducesResponseType(typeof(PaymentDto), 200)]
+        [ProducesResponseType(400)]
+        public async Task<ActionResult<PaymentDto>> RecordPayment([FromBody] CreatePaymentDto createPaymentDto)
         {
             try
             {
@@ -204,7 +198,7 @@ namespace UtilityHub360.Controllers
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -217,10 +211,9 @@ namespace UtilityHub360.Controllers
         /// </summary>
         /// <param name="branch">Filter by branch (optional)</param>
         /// <returns>Loan portfolio summary</returns>
-        [HttpGet]
-        [Route("portfolio")]
-        [ResponseType(typeof(LoanPortfolioDto))]
-        public async Task<IHttpActionResult> GetLoanPortfolio(string branch = null)
+        [HttpGet("portfolio")]
+        [ProducesResponseType(typeof(LoanPortfolioDto), 200)]
+        public async Task<ActionResult<LoanPortfolioDto>> GetLoanPortfolio(string? branch = null)
         {
             try
             {
@@ -234,7 +227,7 @@ namespace UtilityHub360.Controllers
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                return StatusCode(500, ex.Message);
             }
         }
 
