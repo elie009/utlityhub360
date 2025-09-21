@@ -137,3 +137,4 @@ If you want to restore Swagger documentation:
 - `bin/` - Added Entity Framework DLLs
 
 The Entity Framework functionality is now **fully restored and operational**! 🎉
+

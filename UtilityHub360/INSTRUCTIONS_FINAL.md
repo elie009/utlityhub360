@@ -87,3 +87,4 @@ If you encounter any issues:
 4. Ensure all Entity Framework code is uncommented after package restoration
 
 The project is now in a working state and ready for you to restore the packages and enable the full Entity Framework functionality!
+

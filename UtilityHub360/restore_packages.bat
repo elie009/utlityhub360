@@ -15,3 +15,4 @@ if exist "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE
 
 echo Package restore completed.
 pause
+

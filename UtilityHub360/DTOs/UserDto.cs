@@ -16,3 +16,4 @@ namespace UtilityHub360.DTOs
         public bool IsActive { get; set; }
     }
 }
+

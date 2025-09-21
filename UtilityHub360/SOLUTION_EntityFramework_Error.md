@@ -84,3 +84,4 @@ If you continue to have issues, please provide:
 - The exact error message
 - Screenshot of the Solution Explorer showing the References
 - Contents of the packages.config file
+

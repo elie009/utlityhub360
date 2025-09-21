@@ -26,3 +26,4 @@ namespace UtilityHub360.Models
         public bool IsActive { get; set; }
     }
 }
+

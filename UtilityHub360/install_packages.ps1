@@ -29,3 +29,4 @@ if (!(Test-Path $swaggerPath)) {
 
 Write-Host "Package installation completed!" -ForegroundColor Green
 Write-Host "Please rebuild your project in Visual Studio." -ForegroundColor Cyan
+

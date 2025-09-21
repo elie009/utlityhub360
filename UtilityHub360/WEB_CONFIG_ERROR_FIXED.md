@@ -91,3 +91,4 @@ The Entity Framework configuration section was not properly registered in the We
 4. Check database for created tables
 
 The Entity Framework configuration error should now be completely resolved! 🎉
+

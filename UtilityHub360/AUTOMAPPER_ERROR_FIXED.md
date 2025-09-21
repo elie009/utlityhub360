@@ -123,3 +123,4 @@ CreateMap<UpdateUserDto, User>();
 4. **Consider adding validation** or custom mapping logic
 
 The AutoMapper implementation is now fully functional and ready for use! 🎉
+
