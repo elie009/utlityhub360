@@ -8,5 +8,7 @@ namespace UtilityHub360.CQRS.Queries
     /// </summary>
     public class GetAllUsersQuery : IRequest<List<UserDto>>
     {
+        public string? Role { get; set; }
+        public bool? IsActive { get; set; }
     }
 }

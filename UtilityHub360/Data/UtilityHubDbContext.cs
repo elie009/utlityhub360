@@ -10,68 +10,50 @@ namespace UtilityHub360.Data
         }
 
         public DbSet<User> Users { get; set; }
-        
-        // Loan Management System entities
-        public DbSet<Borrower> Borrowers { get; set; }
         public DbSet<Loan> Loans { get; set; }
         public DbSet<RepaymentSchedule> RepaymentSchedules { get; set; }
-        public DbSet<LoanPayment> Payments { get; set; }
-        public DbSet<LoanPenalty> Penalties { get; set; }
-        public DbSet<LoanNotification> Notifications { get; set; }
+        public DbSet<Payment> Payments { get; set; }
+        public DbSet<Transaction> Transactions { get; set; }
+        public DbSet<Notification> Notifications { get; set; }
+        public DbSet<LoanApplication> LoanApplications { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
             // Configure User entity
+            ConfigureUserEntity(modelBuilder);
+            ConfigureLoanEntity(modelBuilder);
+            ConfigureRepaymentScheduleEntity(modelBuilder);
+            ConfigurePaymentEntity(modelBuilder);
+            ConfigureTransactionEntity(modelBuilder);
+            ConfigureNotificationEntity(modelBuilder);
+            ConfigureLoanApplicationEntity(modelBuilder);
+        }
+
+        private void ConfigureUserEntity(ModelBuilder modelBuilder)
+        {
             modelBuilder.Entity<User>(entity =>
             {
                 entity.HasKey(u => u.Id);
-                entity.Property(u => u.FirstName)
-                    .IsRequired()
-                    .HasMaxLength(100);
-                entity.Property(u => u.LastName)
+                entity.Property(u => u.Name)
                     .IsRequired()
                     .HasMaxLength(100);
                 entity.Property(u => u.Email)
                     .IsRequired()
                     .HasMaxLength(255);
-                entity.Property(u => u.CreatedDate)
-                    .IsRequired();
+                entity.Property(u => u.Phone)
+                    .IsRequired()
+                    .HasMaxLength(20);
+                entity.Property(u => u.Role)
+                    .IsRequired()
+                    .HasConversion<string>();
                 entity.Property(u => u.IsActive)
                     .IsRequired();
-            });
-
-            // Configure Loan Management entities
-            ConfigureBorrowerEntity(modelBuilder);
-            ConfigureLoanEntity(modelBuilder);
-            ConfigureRepaymentScheduleEntity(modelBuilder);
-            ConfigurePaymentEntity(modelBuilder);
-            ConfigurePenaltyEntity(modelBuilder);
-            ConfigureNotificationEntity(modelBuilder);
-        }
-
-        private void ConfigureBorrowerEntity(ModelBuilder modelBuilder)
-        {
-            modelBuilder.Entity<Borrower>(entity =>
-            {
-                entity.HasKey(b => b.BorrowerId);
-                entity.Property(b => b.FirstName)
-                    .IsRequired()
-                    .HasMaxLength(100);
-                entity.Property(b => b.LastName)
-                    .IsRequired()
-                    .HasMaxLength(100);
-                entity.Property(b => b.Email)
-                    .HasMaxLength(200);
-                entity.Property(b => b.Phone)
-                    .HasMaxLength(20);
-                entity.Property(b => b.Address)
-                    .HasMaxLength(255);
-                entity.Property(b => b.GovernmentId)
-                    .HasMaxLength(50);
-                entity.Property(b => b.Status)
-                    .HasMaxLength(20);
+                entity.Property(u => u.CreatedAt)
+                    .IsRequired();
+                entity.Property(u => u.UpdatedAt)
+                    .IsRequired();
             });
         }
 
@@ -79,26 +61,34 @@ namespace UtilityHub360.Data
         {
             modelBuilder.Entity<Loan>(entity =>
             {
-                entity.HasKey(l => l.LoanId);
-                entity.HasOne(l => l.Borrower)
-                    .WithMany(b => b.Loans)
-                    .HasForeignKey(l => l.BorrowerId);
-                entity.Property(l => l.PrincipalAmount)
+                entity.HasKey(l => l.Id);
+                entity.HasOne(l => l.User)
+                    .WithMany(u => u.Loans)
+                    .HasForeignKey(l => l.UserId);
+                entity.Property(l => l.Principal)
+                    .IsRequired()
                     .HasPrecision(18, 2);
                 entity.Property(l => l.InterestRate)
+                    .IsRequired()
                     .HasPrecision(5, 2);
-                entity.Property(l => l.LoanType)
-                    .HasMaxLength(50);
-                entity.Property(l => l.RepaymentFrequency)
-                    .HasMaxLength(20);
-                entity.Property(l => l.AmortizationType)
-                    .HasMaxLength(20);
+                entity.Property(l => l.Term)
+                    .IsRequired();
+                entity.Property(l => l.Purpose)
+                    .IsRequired()
+                    .HasMaxLength(500);
                 entity.Property(l => l.Status)
-                    .HasMaxLength(20);
-                entity.Property(l => l.OutstandingBalance)
+                    .IsRequired()
+                    .HasConversion<string>();
+                entity.Property(l => l.MonthlyPayment)
                     .HasPrecision(18, 2);
-                entity.Property(l => l.TotalPaid)
+                entity.Property(l => l.TotalAmount)
                     .HasPrecision(18, 2);
+                entity.Property(l => l.RemainingBalance)
+                    .HasPrecision(18, 2);
+                entity.Property(l => l.AppliedAt)
+                    .IsRequired();
+                entity.Property(l => l.AdditionalInfo)
+                    .HasMaxLength(1000);
             });
         }
 
@@ -106,75 +96,140 @@ namespace UtilityHub360.Data
         {
             modelBuilder.Entity<RepaymentSchedule>(entity =>
             {
-                entity.HasKey(rs => rs.ScheduleId);
+                entity.HasKey(rs => rs.Id);
                 entity.HasOne(rs => rs.Loan)
                     .WithMany(l => l.RepaymentSchedules)
                     .HasForeignKey(rs => rs.LoanId);
-                entity.Property(rs => rs.AmountDue)
+                entity.Property(rs => rs.InstallmentNumber)
+                    .IsRequired();
+                entity.Property(rs => rs.DueDate)
+                    .IsRequired();
+                entity.Property(rs => rs.PrincipalAmount)
+                    .IsRequired()
                     .HasPrecision(18, 2);
-                entity.Property(rs => rs.PrincipalPortion)
+                entity.Property(rs => rs.InterestAmount)
+                    .IsRequired()
                     .HasPrecision(18, 2);
-                entity.Property(rs => rs.InterestPortion)
+                entity.Property(rs => rs.TotalAmount)
+                    .IsRequired()
                     .HasPrecision(18, 2);
+                entity.Property(rs => rs.Status)
+                    .IsRequired()
+                    .HasConversion<string>();
             });
         }
 
         private void ConfigurePaymentEntity(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<LoanPayment>(entity =>
+            modelBuilder.Entity<Payment>(entity =>
             {
-                entity.HasKey(p => p.PaymentId);
+                entity.HasKey(p => p.Id);
                 entity.HasOne(p => p.Loan)
                     .WithMany(l => l.Payments)
                     .HasForeignKey(p => p.LoanId);
-                entity.HasOne(p => p.RepaymentSchedule)
-                    .WithMany(rs => rs.Payments)
-                    .HasForeignKey(p => p.ScheduleId)
-                    .IsRequired(false);
-                entity.Property(p => p.AmountPaid)
+                entity.HasOne(p => p.User)
+                    .WithMany(u => u.Payments)
+                    .HasForeignKey(p => p.UserId);
+                entity.Property(p => p.Amount)
+                    .IsRequired()
                     .HasPrecision(18, 2);
-                entity.Property(p => p.PaymentMethod)
+                entity.Property(p => p.Method)
+                    .IsRequired()
+                    .HasConversion<string>();
+                entity.Property(p => p.Reference)
+                    .IsRequired()
                     .HasMaxLength(50);
-                entity.Property(p => p.Notes)
-                    .HasMaxLength(255);
+                entity.Property(p => p.Status)
+                    .IsRequired()
+                    .HasConversion<string>();
+                entity.Property(p => p.ProcessedAt)
+                    .IsRequired();
+                entity.Property(p => p.CreatedAt)
+                    .IsRequired();
             });
         }
 
-        private void ConfigurePenaltyEntity(ModelBuilder modelBuilder)
+        private void ConfigureTransactionEntity(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<LoanPenalty>(entity =>
+            modelBuilder.Entity<Transaction>(entity =>
             {
-                entity.HasKey(p => p.PenaltyId);
-                entity.HasOne(p => p.Loan)
-                    .WithMany(l => l.Penalties)
-                    .HasForeignKey(p => p.LoanId)
-                    .OnDelete(DeleteBehavior.NoAction);
-                entity.HasOne(p => p.RepaymentSchedule)
-                    .WithMany(rs => rs.Penalties)
-                    .HasForeignKey(p => p.ScheduleId)
-                    .OnDelete(DeleteBehavior.NoAction);
-                entity.Property(p => p.Amount)
+                entity.HasKey(t => t.Id);
+                entity.HasOne(t => t.Loan)
+                    .WithMany(l => l.Transactions)
+                    .HasForeignKey(t => t.LoanId);
+                entity.Property(t => t.Type)
+                    .IsRequired()
+                    .HasConversion<string>();
+                entity.Property(t => t.Amount)
+                    .IsRequired()
                     .HasPrecision(18, 2);
+                entity.Property(t => t.Description)
+                    .IsRequired()
+                    .HasMaxLength(500);
+                entity.Property(t => t.Reference)
+                    .HasMaxLength(100);
+                entity.Property(t => t.CreatedAt)
+                    .IsRequired();
             });
         }
 
         private void ConfigureNotificationEntity(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<LoanNotification>(entity =>
+            modelBuilder.Entity<Notification>(entity =>
             {
-                entity.HasKey(n => n.NotificationId);
-                entity.HasOne(n => n.Borrower)
-                    .WithMany(b => b.Notifications)
-                    .HasForeignKey(n => n.BorrowerId);
-                entity.HasOne(n => n.Loan)
-                    .WithMany()
-                    .HasForeignKey(n => n.LoanId)
-                    .IsRequired(false);
+                entity.HasKey(n => n.Id);
+                entity.HasOne(n => n.User)
+                    .WithMany(u => u.Notifications)
+                    .HasForeignKey(n => n.UserId);
+                entity.Property(n => n.Type)
+                    .IsRequired()
+                    .HasConversion<string>();
+                entity.Property(n => n.Title)
+                    .IsRequired()
+                    .HasMaxLength(200);
                 entity.Property(n => n.Message)
                     .IsRequired()
-                    .HasMaxLength(255);
-                entity.Property(n => n.NotificationType)
-                    .HasMaxLength(20);
+                    .HasMaxLength(500);
+                entity.Property(n => n.IsRead)
+                    .IsRequired();
+                entity.Property(n => n.CreatedAt)
+                    .IsRequired();
+            });
+        }
+        
+        private void ConfigureLoanApplicationEntity(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<LoanApplication>(entity =>
+            {
+                entity.HasKey(la => la.Id);
+                entity.HasOne(la => la.User)
+                    .WithMany(u => u.LoanApplications)
+                    .HasForeignKey(la => la.UserId);
+                entity.Property(la => la.Principal)
+                    .IsRequired()
+                    .HasPrecision(18, 2);
+                entity.Property(la => la.Purpose)
+                    .IsRequired()
+                    .HasMaxLength(500);
+                entity.Property(la => la.Term)
+                    .IsRequired();
+                entity.Property(la => la.MonthlyIncome)
+                    .IsRequired()
+                    .HasPrecision(18, 2);
+                entity.Property(la => la.EmploymentStatus)
+                    .IsRequired()
+                    .HasConversion<string>();
+                entity.Property(la => la.AdditionalInfo)
+                    .HasMaxLength(1000);
+                entity.Property(la => la.Status)
+                    .IsRequired()
+                    .HasConversion<string>();
+                entity.Property(la => la.AppliedAt)
+                    .IsRequired();
+                entity.Property(la => la.ReviewedBy)
+                    .HasMaxLength(100);
+                entity.Property(la => la.RejectionReason)
+                    .HasMaxLength(500);
             });
         }
     }

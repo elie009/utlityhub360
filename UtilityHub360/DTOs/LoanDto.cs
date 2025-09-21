@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 
 namespace UtilityHub360.DTOs
 {
@@ -8,21 +7,21 @@ namespace UtilityHub360.DTOs
     /// </summary>
     public class LoanDto
     {
-        public int LoanId { get; set; }
-        public int BorrowerId { get; set; }
-        public string BorrowerName { get; set; } = string.Empty;
-        public string LoanType { get; set; } = string.Empty;
-        public decimal PrincipalAmount { get; set; }
+        public int Id { get; set; }
+        public int UserId { get; set; }
+        public string UserName { get; set; } = string.Empty;
+        public decimal Principal { get; set; }
         public decimal InterestRate { get; set; }
-        public int TermMonths { get; set; }
-        public string RepaymentFrequency { get; set; } = string.Empty;
-        public string AmortizationType { get; set; } = string.Empty;
-        public DateTime StartDate { get; set; }
-        public DateTime? EndDate { get; set; }
+        public int Term { get; set; }
+        public string Purpose { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
-        public DateTime CreatedAt { get; set; }
-        public decimal OutstandingBalance { get; set; }
-        public decimal TotalPaid { get; set; }
-        public int DaysOverdue { get; set; }
+        public decimal MonthlyPayment { get; set; }
+        public decimal TotalAmount { get; set; }
+        public decimal RemainingBalance { get; set; }
+        public DateTime AppliedAt { get; set; }
+        public DateTime? ApprovedAt { get; set; }
+        public DateTime? DisbursedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public string? AdditionalInfo { get; set; }
     }
 }

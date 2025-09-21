@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel.DataAnnotations;
 
 namespace UtilityHub360.Models
@@ -5,26 +6,49 @@ namespace UtilityHub360.Models
     /// <summary>
     /// Represents a payment made against a loan
     /// </summary>
-    public class LoanPayment
+    public class Payment
     {
-        public int PaymentId { get; set; }
-
+        public int Id { get; set; }
+        
         public int LoanId { get; set; }
-
-        public int? ScheduleId { get; set; } // Optional - some payments may not map to schedule
-
-        public DateTime PaymentDate { get; set; }
-
-        public decimal AmountPaid { get; set; }
-
-        [StringLength(50)]
-        public string? PaymentMethod { get; set; } // Cash, Bank Transfer, Online
-
-        [StringLength(255)]
-        public string? Notes { get; set; }
-
+        
+        public int UserId { get; set; }
+        
+        [Required]
+        [Range(0.01, double.MaxValue)]
+        public decimal Amount { get; set; }
+        
+        [Required]
+        public PaymentMethod Method { get; set; }
+        
+        [Required]
+        [StringLength(50, MinimumLength = 3)]
+        public string Reference { get; set; } = string.Empty;
+        
+        [Required]
+        public PaymentStatus Status { get; set; } = PaymentStatus.PENDING;
+        
+        public DateTime ProcessedAt { get; set; }
+        
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        
         // Navigation properties
         public Loan Loan { get; set; } = null!;
-        public RepaymentSchedule? RepaymentSchedule { get; set; }
+        public User User { get; set; } = null!;
+    }
+    
+    public enum PaymentMethod
+    {
+        BANK_TRANSFER,
+        CARD,
+        WALLET,
+        CASH
+    }
+    
+    public enum PaymentStatus
+    {
+        PENDING,
+        COMPLETED,
+        FAILED
     }
 }

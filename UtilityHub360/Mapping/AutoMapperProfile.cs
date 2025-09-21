@@ -13,26 +13,33 @@ namespace UtilityHub360.Mapping
         {
             // User mappings
             CreateMap<User, UserDto>();
-            CreateMap<CreateUserDto, User>();
+            CreateMap<RegisterDataDto, User>();
             CreateMap<UpdateUserDto, User>();
-
-            // Borrower mappings
-            CreateMap<Borrower, BorrowerDto>()
-                .ForMember(dest => dest.FullName, opt => opt.MapFrom(src => src.FullName));
-            CreateMap<CreateBorrowerDto, Borrower>();
 
             // Loan mappings
             CreateMap<Loan, LoanDto>()
-                .ForMember(dest => dest.BorrowerName, opt => opt.MapFrom(src => src.Borrower != null ? src.Borrower.FullName : ""));
-            CreateMap<CreateLoanDto, Loan>();
+                .ForMember(dest => dest.UserName, opt => opt.MapFrom(src => src.User != null ? src.User.Name : ""));
+            CreateMap<LoanApplicationDto, Loan>();
 
             // Payment mappings
-            CreateMap<LoanPayment, PaymentDto>();
-            CreateMap<CreatePaymentDto, LoanPayment>();
+            CreateMap<Payment, PaymentDto>();
+            CreateMap<PaymentDto, Payment>();
 
-            // Loan Portfolio mapping
-            CreateMap<Loan, LoanDto>()
-                .ForMember(dest => dest.BorrowerName, opt => opt.MapFrom(src => src.Borrower != null ? src.Borrower.FullName : ""));
+            // Loan Application mappings
+            CreateMap<LoanApplication, LoanApplicationDto>();
+            CreateMap<LoanApplicationDto, LoanApplication>();
+
+            // Notification mappings
+            CreateMap<Notification, NotificationDto>();
+            CreateMap<NotificationDto, Notification>();
+
+            // Transaction mappings
+            CreateMap<Transaction, TransactionDto>();
+            CreateMap<TransactionDto, Transaction>();
+
+            // Repayment Schedule mappings
+            CreateMap<RepaymentSchedule, RepaymentScheduleDto>();
+            CreateMap<RepaymentScheduleDto, RepaymentSchedule>();
         }
     }
 }

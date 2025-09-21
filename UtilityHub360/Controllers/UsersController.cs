@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using MediatR;
-using UtilityHub360.CQRS.Commands;
+using UtilityHub360.CQRS.Commands.RegisterUser;
 using UtilityHub360.CQRS.Queries;
+using UtilityHub360.CQRS.Queries.GetUserById;
 using UtilityHub360.DTOs;
 
 namespace UtilityHub360.Controllers
@@ -52,7 +53,7 @@ namespace UtilityHub360.Controllers
         {
             try
             {
-                var query = new GetUserByIdQuery(id);
+                var query = new GetUserByIdQuery { Id = id };
                 var user = await _mediator.Send(query);
                 
                 if (user == null)
@@ -76,7 +77,7 @@ namespace UtilityHub360.Controllers
         [HttpPost]
         [ProducesResponseType(typeof(UserDto), 201)]
         [ProducesResponseType(400)]
-        public async Task<ActionResult<UserDto>> CreateUser([FromBody] CreateUserDto createUserDto)
+        public async Task<ActionResult<UserDto>> CreateUser([FromBody] RegisterDataDto createUserDto)
         {
             try
             {
@@ -85,7 +86,14 @@ namespace UtilityHub360.Controllers
                     return BadRequest(ModelState);
                 }
 
-                var command = new CreateUserCommand(createUserDto);
+                var command = new RegisterUserCommand
+                {
+                    Name = createUserDto.Name,
+                    Email = createUserDto.Email,
+                    Phone = createUserDto.Phone,
+                    Password = createUserDto.Password,
+                    Role = "USER"
+                };
                 var user = await _mediator.Send(command);
 
                 return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
@@ -96,66 +104,5 @@ namespace UtilityHub360.Controllers
             }
         }
 
-        /// <summary>
-        /// Update an existing user
-        /// </summary>
-        /// <param name="id">User ID</param>
-        /// <param name="updateUserDto">Updated user details</param>
-        /// <returns>Updated user</returns>
-        [HttpPut("{id}")]
-        [ProducesResponseType(typeof(UserDto), 200)]
-        [ProducesResponseType(400)]
-        [ProducesResponseType(404)]
-        public async Task<ActionResult<UserDto>> UpdateUser(int id, [FromBody] UpdateUserDto updateUserDto)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                if (id != updateUserDto.Id)
-                {
-                    return BadRequest();
-                }
-
-                var command = new UpdateUserCommand(updateUserDto);
-                var user = await _mediator.Send(command);
-
-                if (user == null)
-                {
-                    return NotFound();
-                }
-
-                return Ok(user);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, ex.Message);
-            }
-        }
-
-        /// <summary>
-        /// Delete a user (soft delete)
-        /// </summary>
-        /// <param name="id">User ID</param>
-        /// <returns>No content</returns>
-        [HttpDelete("{id}")]
-        [ProducesResponseType(204)]
-        public async Task<IActionResult> DeleteUser(int id)
-        {
-            try
-            {
-                var command = new DeleteUserCommand(id);
-                await _mediator.Send(command);
-
-                return NoContent();
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, ex.Message);
-            }
-        }
     }
 }

@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace UtilityHub360.Models
@@ -7,29 +9,33 @@ namespace UtilityHub360.Models
     /// </summary>
     public class RepaymentSchedule
     {
-        public int ScheduleId { get; set; }
-
+        public int Id { get; set; }
+        
         public int LoanId { get; set; }
-
+        
+        public int InstallmentNumber { get; set; }
+        
         public DateTime DueDate { get; set; }
-
-        public decimal AmountDue { get; set; }
-
-        public decimal? PrincipalPortion { get; set; }
-
-        public decimal? InterestPortion { get; set; }
-
-        public bool IsPaid { get; set; }
-
-        public DateTime? PaidDate { get; set; }
-
+        
+        public decimal PrincipalAmount { get; set; }
+        
+        public decimal InterestAmount { get; set; }
+        
+        public decimal TotalAmount { get; set; }
+        
+        public RepaymentStatus Status { get; set; } = RepaymentStatus.PENDING;
+        
+        public DateTime? PaidAt { get; set; }
+        
         // Navigation properties
         public Loan Loan { get; set; } = null!;
-        public ICollection<LoanPayment> Payments { get; set; } = new List<LoanPayment>();
-        public ICollection<LoanPenalty> Penalties { get; set; } = new List<LoanPenalty>();
-
-        // Computed properties
-        public bool IsOverdue => !IsPaid && DueDate < DateTime.UtcNow.Date;
-        public int DaysOverdue => IsOverdue ? (DateTime.UtcNow.Date - DueDate).Days : 0;
+        public ICollection<Payment> Payments { get; set; } = new List<Payment>();
+    }
+    
+    public enum RepaymentStatus
+    {
+        PENDING,
+        PAID,
+        OVERDUE
     }
 }

@@ -1,18 +1,21 @@
-using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace UtilityHub360.DTOs
 {
-    /// <summary>
-    /// Data Transfer Object for Payment
-    /// </summary>
     public class PaymentDto
     {
-        public int PaymentId { get; set; }
+        [Required]
         public int LoanId { get; set; }
-        public int? ScheduleId { get; set; }
-        public DateTime PaymentDate { get; set; }
-        public decimal AmountPaid { get; set; }
-        public string PaymentMethod { get; set; } = string.Empty;
-        public string Notes { get; set; } = string.Empty;
+        
+        [Required]
+        [Range(0.01, double.MaxValue)]
+        public decimal Amount { get; set; }
+        
+        [Required]
+        public string Method { get; set; } = string.Empty;
+        
+        [Required]
+        [StringLength(50, MinimumLength = 3)]
+        public string Reference { get; set; } = string.Empty;
     }
 }

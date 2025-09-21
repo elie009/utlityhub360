@@ -38,7 +38,6 @@ namespace UtilityHub360.Models
 
         // Navigation properties
         public ICollection<Loan> Loans { get; set; } = new List<Loan>();
-        public ICollection<LoanNotification> Notifications { get; set; } = new List<LoanNotification>();
 
         // Computed properties
         public string FullName => FirstName + " " + LastName;

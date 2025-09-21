@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using MediatR;
-using UtilityHub360.CQRS.Commands;
+using UtilityHub360.CQRS.Commands.MakePayment;
 using UtilityHub360.CQRS.Queries;
+using UtilityHub360.CQRS.Queries.GetAllLoans;
+using UtilityHub360.CQRS.Queries.GetLoanById;
+using UtilityHub360.CQRS.Queries.GetLoanPayments;
 using UtilityHub360.DTOs;
 
 namespace UtilityHub360.Controllers
@@ -20,67 +23,28 @@ namespace UtilityHub360.Controllers
             _mediator = mediator;
         }
 
-        #region Borrower Management
+        #region User Management
 
         /// <summary>
-        /// Get all borrowers
+        /// Get all users
         /// </summary>
-        /// <param name="status">Filter by borrower status</param>
-        /// <param name="creditScoreMin">Minimum credit score filter</param>
-        /// <param name="creditScoreMax">Maximum credit score filter</param>
-        /// <returns>List of borrowers</returns>
-        [HttpGet("borrowers")]
-        [ProducesResponseType(typeof(IEnumerable<BorrowerDto>), 200)]
-        public async Task<ActionResult<IEnumerable<BorrowerDto>>> GetBorrowers(string? status = null, int? creditScoreMin = null, int? creditScoreMax = null)
+        /// <param name="role">Filter by user role</param>
+        /// <param name="isActive">Filter by active status</param>
+        /// <returns>List of users</returns>
+        [HttpGet("users")]
+        [ProducesResponseType(typeof(IEnumerable<UserDto>), 200)]
+        public async Task<ActionResult<IEnumerable<UserDto>>> GetUsers(string? role = null, bool? isActive = null)
         {
             try
             {
-                var query = new GetAllBorrowersQuery
+                var query = new GetAllUsersQuery
                 {
-                    Status = status,
-                    CreditScoreMin = creditScoreMin,
-                    CreditScoreMax = creditScoreMax
+                    Role = role,
+                    IsActive = isActive
                 };
 
-                var borrowers = await _mediator.Send(query);
-                return Ok(borrowers);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, ex.Message);
-            }
-        }
-
-        /// <summary>
-        /// Create a new borrower
-        /// </summary>
-        /// <param name="createBorrowerDto">Borrower details</param>
-        /// <returns>Created borrower</returns>
-        [HttpPost("borrowers")]
-        [ProducesResponseType(typeof(BorrowerDto), 201)]
-        [ProducesResponseType(400)]
-        public async Task<ActionResult<BorrowerDto>> CreateBorrower([FromBody] CreateBorrowerDto createBorrowerDto)
-        {
-            try
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var command = new CreateBorrowerCommand
-                {
-                    FirstName = createBorrowerDto.FirstName,
-                    LastName = createBorrowerDto.LastName,
-                    Email = createBorrowerDto.Email,
-                    Phone = createBorrowerDto.Phone,
-                    Address = createBorrowerDto.Address,
-                    GovernmentId = createBorrowerDto.GovernmentId,
-                    Status = createBorrowerDto.Status ?? "Active"
-                };
-                var borrower = await _mediator.Send(command);
-
-                return CreatedAtAction(nameof(GetBorrowers), new { id = borrower.BorrowerId }, borrower);
+                var users = await _mediator.Send(query);
+                return Ok(users);
             }
             catch (Exception ex)
             {
@@ -96,21 +60,19 @@ namespace UtilityHub360.Controllers
         /// Get all loans
         /// </summary>
         /// <param name="status">Filter by loan status</param>
-        /// <param name="loanType">Filter by loan type</param>
-        /// <param name="borrowerId">Filter by borrower ID</param>
+        /// <param name="userId">Filter by user ID</param>
         /// <param name="isOverdue">Filter for overdue loans</param>
         /// <returns>List of loans</returns>
         [HttpGet("loans")]
         [ProducesResponseType(typeof(IEnumerable<LoanDto>), 200)]
-        public async Task<ActionResult<IEnumerable<LoanDto>>> GetLoans(string? status = null, string? loanType = null, int? borrowerId = null, bool? isOverdue = null)
+        public async Task<ActionResult<IEnumerable<LoanDto>>> GetLoans(string? status = null, int? userId = null, bool? isOverdue = null)
         {
             try
             {
                 var query = new GetAllLoansQuery
                 {
                     Status = status,
-                    LoanType = loanType,
-                    BorrowerId = borrowerId,
+                    UserId = userId,
                     IsOverdue = isOverdue
                 };
 
@@ -124,37 +86,20 @@ namespace UtilityHub360.Controllers
         }
 
         /// <summary>
-        /// Create a new loan
+        /// Get loan by ID
         /// </summary>
-        /// <param name="createLoanDto">Loan details</param>
-        /// <returns>Created loan with repayment schedule</returns>
-        [HttpPost("loans")]
-        [ProducesResponseType(typeof(LoanDto), 201)]
-        [ProducesResponseType(400)]
-        public async Task<ActionResult<LoanDto>> CreateLoan([FromBody] CreateLoanDto createLoanDto)
+        /// <param name="id">Loan ID</param>
+        /// <returns>Loan details</returns>
+        [HttpGet("loans/{id}")]
+        [ProducesResponseType(typeof(LoanDto), 200)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<LoanDto>> GetLoanById(int id)
         {
             try
             {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-
-                var command = new CreateLoanCommand
-                {
-                    BorrowerId = createLoanDto.BorrowerId,
-                    LoanType = createLoanDto.LoanType,
-                    PrincipalAmount = createLoanDto.PrincipalAmount,
-                    InterestRate = createLoanDto.InterestRate,
-                    TermMonths = createLoanDto.TermMonths,
-                    RepaymentFrequency = createLoanDto.RepaymentFrequency,
-                    AmortizationType = createLoanDto.AmortizationType,
-                    StartDate = createLoanDto.StartDate,
-                    Status = createLoanDto.Status ?? "Active"
-                };
-                var loan = await _mediator.Send(command);
-
-                return CreatedAtAction(nameof(GetLoans), new { id = loan.LoanId }, loan);
+                var query = new GetLoanByIdQuery { Id = id };
+                var loan = await _mediator.Send(query);
+                return Ok(loan);
             }
             catch (Exception ex)
             {
@@ -167,14 +112,14 @@ namespace UtilityHub360.Controllers
         #region Payment Management
 
         /// <summary>
-        /// Record a payment against a loan
+        /// Make a payment against a loan
         /// </summary>
-        /// <param name="createPaymentDto">Payment details</param>
+        /// <param name="paymentDto">Payment details</param>
         /// <returns>Recorded payment</returns>
         [HttpPost("payments")]
         [ProducesResponseType(typeof(PaymentDto), 200)]
         [ProducesResponseType(400)]
-        public async Task<ActionResult<PaymentDto>> RecordPayment([FromBody] CreatePaymentDto createPaymentDto)
+        public async Task<ActionResult<PaymentDto>> MakePayment([FromBody] PaymentDto paymentDto)
         {
             try
             {
@@ -183,14 +128,13 @@ namespace UtilityHub360.Controllers
                     return BadRequest(ModelState);
                 }
 
-                var command = new RecordPaymentCommand
+                var command = new MakePaymentCommand
                 {
-                    LoanId = createPaymentDto.LoanId,
-                    ScheduleId = createPaymentDto.ScheduleId,
-                    PaymentDate = createPaymentDto.PaymentDate,
-                    AmountPaid = createPaymentDto.AmountPaid,
-                    PaymentMethod = createPaymentDto.PaymentMethod,
-                    Notes = createPaymentDto.Notes
+                    LoanId = paymentDto.LoanId,
+                    UserId = 1, // TODO: Get from authenticated user
+                    Amount = paymentDto.Amount,
+                    Method = paymentDto.Method,
+                    Reference = paymentDto.Reference
                 };
                 var payment = await _mediator.Send(command);
 
@@ -202,34 +146,31 @@ namespace UtilityHub360.Controllers
             }
         }
 
-        #endregion
-
-        #region Reports & Analytics
-
         /// <summary>
-        /// Get loan portfolio summary
+        /// Get all payments for a loan
         /// </summary>
-        /// <param name="branch">Filter by branch (optional)</param>
-        /// <returns>Loan portfolio summary</returns>
-        [HttpGet("portfolio")]
-        [ProducesResponseType(typeof(LoanPortfolioDto), 200)]
-        public async Task<ActionResult<LoanPortfolioDto>> GetLoanPortfolio(string? branch = null)
+        /// <param name="loanId">Loan ID</param>
+        /// <returns>List of payments</returns>
+        [HttpGet("loans/{loanId}/payments")]
+        [ProducesResponseType(typeof(IEnumerable<PaymentDto>), 200)]
+        public async Task<ActionResult<IEnumerable<PaymentDto>>> GetLoanPayments(int loanId)
         {
             try
             {
-                var query = new GetLoanPortfolioQuery
-                {
-                    Branch = branch
-                };
-
-                var portfolio = await _mediator.Send(query);
-                return Ok(portfolio);
+                var query = new GetLoanPaymentsQuery { LoanId = loanId };
+                var payments = await _mediator.Send(query);
+                return Ok(payments);
             }
             catch (Exception ex)
             {
                 return StatusCode(500, ex.Message);
             }
         }
+
+        #endregion
+
+        #region Reports & Analytics
+
 
         #endregion
     }
