@@ -292,7 +292,6 @@ namespace UtilityHub360.Services
 
                 loan.Status = "APPROVED";
                 loan.ApprovedAt = DateTime.UtcNow;
-                loan.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
 
@@ -334,7 +333,6 @@ namespace UtilityHub360.Services
                 }
 
                 loan.Status = "REJECTED";
-                loan.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
 
@@ -382,7 +380,6 @@ namespace UtilityHub360.Services
 
                 loan.Status = "ACTIVE";
                 loan.DisbursedAt = DateTime.UtcNow;
-                loan.UpdatedAt = DateTime.UtcNow;
 
                 // Create disbursement transaction
                 var transaction = new Entities.Transaction
@@ -427,7 +424,6 @@ namespace UtilityHub360.Services
 
                 loan.Status = "COMPLETED";
                 loan.CompletedAt = DateTime.UtcNow;
-                loan.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
 

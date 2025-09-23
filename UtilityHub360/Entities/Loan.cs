@@ -55,7 +55,6 @@ namespace UtilityHub360.Entities
         [StringLength(1000)]
         public string? AdditionalInfo { get; set; }
 
-        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
         // Navigation properties
         [ForeignKey("UserId")]
