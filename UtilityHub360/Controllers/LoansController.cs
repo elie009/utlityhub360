@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using UtilityHub360.Data;
 using UtilityHub360.DTOs;
 using UtilityHub360.Models;
 using UtilityHub360.Services;
@@ -13,10 +15,12 @@ namespace UtilityHub360.Controllers
     public class LoansController : ControllerBase
     {
         private readonly ILoanService _loanService;
+        private readonly ApplicationDbContext _context;
 
-        public LoansController(ILoanService loanService)
+        public LoansController(ILoanService loanService, ApplicationDbContext context)
         {
             _loanService = loanService;
+            _context = context;
         }
 
         [HttpPost("apply")]
@@ -77,6 +81,64 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<LoanDto>.ErrorResult($"Failed to get loan: {ex.Message}"));
+            }
+        }
+
+        [HttpGet]
+        [Authorize(Roles = "ADMIN")]
+        public async Task<ActionResult<ApiResponse<PaginatedResponse<LoanDto>>>> GetAllLoans(
+            [FromQuery] string? status = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int limit = 10)
+        {
+            try
+            {
+                var query = _context.Loans.AsQueryable();
+
+                if (!string.IsNullOrEmpty(status))
+                {
+                    query = query.Where(l => l.Status == status);
+                }
+
+                var totalCount = await query.CountAsync();
+                var loans = await query
+                    .OrderByDescending(l => l.AppliedAt)
+                    .Skip((page - 1) * limit)
+                    .Take(limit)
+                    .ToListAsync();
+
+                var loanDtos = loans.Select(loan => new LoanDto
+                {
+                    Id = loan.Id,
+                    UserId = loan.UserId,
+                    Principal = loan.Principal,
+                    InterestRate = loan.InterestRate,
+                    Term = loan.Term,
+                    Purpose = loan.Purpose,
+                    Status = loan.Status,
+                    MonthlyPayment = loan.MonthlyPayment,
+                    TotalAmount = loan.TotalAmount,
+                    RemainingBalance = loan.RemainingBalance,
+                    AppliedAt = loan.AppliedAt,
+                    ApprovedAt = loan.ApprovedAt,
+                    DisbursedAt = loan.DisbursedAt,
+                    CompletedAt = loan.CompletedAt,
+                    AdditionalInfo = loan.AdditionalInfo
+                }).ToList();
+
+                var paginatedResponse = new PaginatedResponse<LoanDto>
+                {
+                    Data = loanDtos,
+                    Page = page,
+                    Limit = limit,
+                    TotalCount = totalCount
+                };
+
+                return Ok(ApiResponse<PaginatedResponse<LoanDto>>.SuccessResult(paginatedResponse));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<PaginatedResponse<LoanDto>>.ErrorResult($"Failed to get loans: {ex.Message}"));
             }
         }
 
