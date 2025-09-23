@@ -1,12 +1,85 @@
 {
   "Version": 1,
   "WorkspaceRootPath": "D:\\PROJECT\\REPOSITORY\\WEBMVC\\UtilityHub360\\",
-  "Documents": [],
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\PROJECT\\REPOSITORY\\WEBMVC\\DevSyncAPI\\Web.config||{FA3CD31E-987B-443A-9B81-186104E8DAC1}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\PROJECT\\REPOSITORY\\WEBMVC\\UserSyncAPI\\web.config||{FA3CD31E-987B-443A-9B81-186104E8DAC1}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\PROJECT\\REPOSITORY\\WEBMVC\\UTILS\\App.config||{FA3CD31E-987B-443A-9B81-186104E8DAC1}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{4A81C7AA-1CAA-41A0-A8D2-C62A1D1C09A2}|UtilityHub360\\UtilityHub360.csproj|d:\\project\\repository\\webmvc\\utilityhub360\\utilityhub360\\migrations\\20250923091412_initialcreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{4A81C7AA-1CAA-41A0-A8D2-C62A1D1C09A2}|UtilityHub360\\UtilityHub360.csproj|solutionrelative:utilityhub360\\migrations\\20250923091412_initialcreate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
   "DocumentGroupContainers": [
     {
       "Orientation": 0,
       "VerticalTabListWidth": 256,
-      "DocumentGroups": []
+      "DocumentGroups": [
+        {
+          "DockedWidth": 298,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Web.config",
+              "DocumentMoniker": "D:\\PROJECT\\REPOSITORY\\WEBMVC\\DevSyncAPI\\Web.config",
+              "RelativeDocumentMoniker": "..\\DevSyncAPI\\Web.config",
+              "ToolTip": "D:\\PROJECT\\REPOSITORY\\WEBMVC\\DevSyncAPI\\Web.config",
+              "RelativeToolTip": "..\\DevSyncAPI\\Web.config",
+              "ViewState": "AQIAADkAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000601|",
+              "WhenOpened": "2025-09-23T10:00:31.334Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "web.config",
+              "DocumentMoniker": "D:\\PROJECT\\REPOSITORY\\WEBMVC\\UserSyncAPI\\web.config",
+              "RelativeDocumentMoniker": "..\\UserSyncAPI\\web.config",
+              "ToolTip": "D:\\PROJECT\\REPOSITORY\\WEBMVC\\UserSyncAPI\\web.config",
+              "RelativeToolTip": "..\\UserSyncAPI\\web.config",
+              "ViewState": "AQIAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000601|",
+              "WhenOpened": "2025-09-23T10:00:13.323Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "App.config",
+              "DocumentMoniker": "D:\\PROJECT\\REPOSITORY\\WEBMVC\\UTILS\\App.config",
+              "RelativeDocumentMoniker": "..\\UTILS\\App.config",
+              "ToolTip": "D:\\PROJECT\\REPOSITORY\\WEBMVC\\UTILS\\App.config",
+              "RelativeToolTip": "..\\UTILS\\App.config",
+              "ViewState": "AQIAAAAAAAAAAAAAAAAAAAgAAACmAAAA",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000601|",
+              "WhenOpened": "2025-09-23T09:57:38.773Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "20250923091412_InitialCreate.cs",
+              "DocumentMoniker": "D:\\PROJECT\\REPOSITORY\\WEBMVC\\UtilityHub360\\UtilityHub360\\Migrations\\20250923091412_InitialCreate.cs",
+              "RelativeDocumentMoniker": "UtilityHub360\\Migrations\\20250923091412_InitialCreate.cs",
+              "ToolTip": "D:\\PROJECT\\REPOSITORY\\WEBMVC\\UtilityHub360\\UtilityHub360\\Migrations\\20250923091412_InitialCreate.cs",
+              "RelativeToolTip": "UtilityHub360\\Migrations\\20250923091412_InitialCreate.cs",
+              "ViewState": "AQIAABkAAAAAAAAAAAAgwDgAAAAuAAAA",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-09-23T09:23:54.349Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
     }
   ]
 }
