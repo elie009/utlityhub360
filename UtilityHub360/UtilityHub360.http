@@ -1,0 +1,6 @@
+@UtilityHub360_HostAddress = http://localhost:5026
+
+GET {{UtilityHub360_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
