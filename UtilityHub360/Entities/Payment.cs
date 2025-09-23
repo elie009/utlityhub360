@@ -46,3 +46,4 @@ namespace UtilityHub360.Entities
         public virtual User User { get; set; } = null!;
     }
 }
+

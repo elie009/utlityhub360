@@ -39,3 +39,4 @@ namespace UtilityHub360.Models
         public bool HasPreviousPage => Page > 1;
     }
 }
+

@@ -15,3 +15,4 @@ namespace UtilityHub360.DTOs
         public string? WalletProvider { get; set; }
     }
 }
+

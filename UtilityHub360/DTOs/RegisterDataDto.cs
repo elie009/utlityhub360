@@ -25,3 +25,4 @@ namespace UtilityHub360.DTOs
         public string ConfirmPassword { get; set; } = string.Empty;
     }
 }
+

@@ -38,3 +38,4 @@ namespace UtilityHub360.Entities
         public virtual ICollection<LoanApplication> LoanApplications { get; set; } = new List<LoanApplication>();
     }
 }
+

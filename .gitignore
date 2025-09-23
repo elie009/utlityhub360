@@ -7,4 +7,7 @@
 
 # Build results
 bin/
-obj/
+**/obj/  # Recursively ignore all obj folders
+
+# Or if you only want to ignore one:
+# UtilityHub360/obj/

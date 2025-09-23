@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("UtilityHub360")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+91d0a1b3c7d85adda36918edb54a0a379aa14b15")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bb4307151de8820bf7bdc1b61d9132e22dd0f086")]
 [assembly: System.Reflection.AssemblyProductAttribute("UtilityHub360")]
 [assembly: System.Reflection.AssemblyTitleAttribute("UtilityHub360")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -25,3 +25,4 @@ namespace UtilityHub360.DTOs
         public bool IsRead { get; set; } = true;
     }
 }
+

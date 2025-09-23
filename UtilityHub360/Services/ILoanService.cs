@@ -17,3 +17,4 @@ namespace UtilityHub360.Services
         Task<ApiResponse<LoanDto>> CloseLoanAsync(string loanId, string adminId, string? notes);
     }
 }
+

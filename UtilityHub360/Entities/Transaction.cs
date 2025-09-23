@@ -35,3 +35,4 @@ namespace UtilityHub360.Entities
         public virtual Loan Loan { get; set; } = null!;
     }
 }
+

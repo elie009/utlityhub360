@@ -8,3 +8,4 @@ namespace UtilityHub360.Models
         public int ExpirationMinutes { get; set; } = 60;
     }
 }
+

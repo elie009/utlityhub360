@@ -142,3 +142,4 @@ The database includes the following tables:
 - LoanApplications
 
 All tables are properly indexed and have appropriate foreign key relationships configured.
+
