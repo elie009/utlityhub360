@@ -5,9 +5,7 @@
 *.userosscache
 *.sln.docstates
 
-# Build results
-bin/
-**/obj/  # Recursively ignore all obj folders
-
-# Or if you only want to ignore one:
-# UtilityHub360/obj/
+# Build results (ignore in all subfolders)
+**/bin/
+**/obj/
+**/Debug/

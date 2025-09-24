@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
+using UtilityHub360.Entities;
 using UtilityHub360.Models;
 
 namespace UtilityHub360.Services
@@ -12,6 +13,25 @@ namespace UtilityHub360.Services
         public LoanService(ApplicationDbContext context)
         {
             _context = context;
+        }
+
+        public async Task<Loan?> GetLoanWithAccessCheckAsync(string loanId, string userId)
+        {
+            // First, check if the user is admin
+            var user = await _context.Users.FindAsync(userId);
+            var isAdmin = user?.Role == "ADMIN";
+
+            if (isAdmin)
+            {
+                // Admin can access any loan
+                return await _context.Loans.FindAsync(loanId);
+            }
+            else
+            {
+                // Regular users can only access their own loans
+                return await _context.Loans
+                    .FirstOrDefaultAsync(l => l.Id == loanId && l.UserId == userId);
+            }
         }
 
         public async Task<ApiResponse<LoanDto>> ApplyForLoanAsync(CreateLoanApplicationDto application, string userId)
@@ -92,8 +112,7 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var loan = await _context.Loans
-                    .FirstOrDefaultAsync(l => l.Id == loanId && l.UserId == userId);
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
 
                 if (loan == null)
                 {
@@ -184,8 +203,7 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var loan = await _context.Loans
-                    .FirstOrDefaultAsync(l => l.Id == loanId && l.UserId == userId);
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
 
                 if (loan == null)
                 {
@@ -210,8 +228,7 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var loan = await _context.Loans
-                    .FirstOrDefaultAsync(l => l.Id == loanId && l.UserId == userId);
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
 
                 if (loan == null)
                 {
@@ -248,8 +265,7 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var loan = await _context.Loans
-                    .FirstOrDefaultAsync(l => l.Id == loanId && l.UserId == userId);
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
 
                 if (loan == null)
                 {
@@ -292,7 +308,6 @@ namespace UtilityHub360.Services
 
                 loan.Status = "APPROVED";
                 loan.ApprovedAt = DateTime.UtcNow;
-                loan.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
 
@@ -334,7 +349,6 @@ namespace UtilityHub360.Services
                 }
 
                 loan.Status = "REJECTED";
-                loan.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
 
@@ -382,7 +396,6 @@ namespace UtilityHub360.Services
 
                 loan.Status = "ACTIVE";
                 loan.DisbursedAt = DateTime.UtcNow;
-                loan.UpdatedAt = DateTime.UtcNow;
 
                 // Create disbursement transaction
                 var transaction = new Entities.Transaction
@@ -427,7 +440,6 @@ namespace UtilityHub360.Services
 
                 loan.Status = "COMPLETED";
                 loan.CompletedAt = DateTime.UtcNow;
-                loan.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
 

@@ -71,7 +71,6 @@ namespace UtilityHub360.Services
 
                 // Update loan remaining balance
                 loan.RemainingBalance -= payment.Amount;
-                loan.UpdatedAt = DateTime.UtcNow;
 
                 // Check if loan is fully paid
                 if (loan.RemainingBalance <= 0)

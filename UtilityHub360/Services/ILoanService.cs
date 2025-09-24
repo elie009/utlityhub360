@@ -1,4 +1,5 @@
 using UtilityHub360.DTOs;
+using UtilityHub360.Entities;
 using UtilityHub360.Models;
 
 namespace UtilityHub360.Services
@@ -15,6 +16,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<LoanDto>> RejectLoanAsync(string loanId, string adminId, string reason, string? notes);
         Task<ApiResponse<object>> DisburseLoanAsync(string loanId, string adminId, string disbursementMethod, string? reference);
         Task<ApiResponse<LoanDto>> CloseLoanAsync(string loanId, string adminId, string? notes);
+        Task<Loan?> GetLoanWithAccessCheckAsync(string loanId, string userId);
     }
 }
 
