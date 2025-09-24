@@ -252,6 +252,105 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<List<TransactionDto>>.ErrorResult($"Failed to get loan transactions: {ex.Message}"));
             }
         }
+
+        [HttpPut("{loanId}")]
+        public async Task<ActionResult<ApiResponse<LoanDto>>> UpdateLoan(string loanId, [FromBody] UpdateLoanDto updateLoanDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+                
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<LoanDto>.ErrorResult("User not authenticated"));
+                }
+
+                // Debug: Check if user role is being detected correctly
+                // For now, let's also check if the user exists in database and get their role
+                var user = await _context.Users.FindAsync(userId);
+                var dbUserRole = user?.Role;
+
+                // Get the loan with access check
+                var loan = await _loanService.GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return NotFound(ApiResponse<LoanDto>.ErrorResult("Loan not found"));
+                }
+
+                // Use database role as fallback if JWT role is not available
+                var effectiveRole = !string.IsNullOrEmpty(userRole) ? userRole : dbUserRole;
+
+                // Check if user can update this loan
+                if (effectiveRole != "ADMIN" && loan.UserId != userId)
+                {
+                    return Forbid("You can only update your own loans");
+                }
+
+                // Update loan properties
+                if (!string.IsNullOrEmpty(updateLoanDto.Purpose))
+                {
+                    loan.Purpose = updateLoanDto.Purpose;
+                }
+
+                if (!string.IsNullOrEmpty(updateLoanDto.AdditionalInfo))
+                {
+                    loan.AdditionalInfo = updateLoanDto.AdditionalInfo;
+                }
+
+                // All users can update status
+                if (!string.IsNullOrEmpty(updateLoanDto.Status))
+                {
+                    loan.Status = updateLoanDto.Status;
+                }
+
+                // Only admin can update financial details
+                if (effectiveRole == "ADMIN")
+                {
+                    if (updateLoanDto.InterestRate.HasValue)
+                    {
+                        loan.InterestRate = updateLoanDto.InterestRate.Value;
+                    }
+
+                    if (updateLoanDto.MonthlyPayment.HasValue)
+                    {
+                        loan.MonthlyPayment = updateLoanDto.MonthlyPayment.Value;
+                    }
+
+                    if (updateLoanDto.RemainingBalance.HasValue)
+                    {
+                        loan.RemainingBalance = updateLoanDto.RemainingBalance.Value;
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+
+                var loanDto = new LoanDto
+                {
+                    Id = loan.Id,
+                    UserId = loan.UserId,
+                    Principal = loan.Principal,
+                    InterestRate = loan.InterestRate,
+                    Term = loan.Term,
+                    Purpose = loan.Purpose,
+                    Status = loan.Status,
+                    MonthlyPayment = loan.MonthlyPayment,
+                    TotalAmount = loan.TotalAmount,
+                    RemainingBalance = loan.RemainingBalance,
+                    AppliedAt = loan.AppliedAt,
+                    ApprovedAt = loan.ApprovedAt,
+                    DisbursedAt = loan.DisbursedAt,
+                    CompletedAt = loan.CompletedAt,
+                    AdditionalInfo = loan.AdditionalInfo
+                };
+
+                return Ok(ApiResponse<LoanDto>.SuccessResult(loanDto, "Loan updated successfully"));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<LoanDto>.ErrorResult($"Failed to update loan: {ex.Message}"));
+            }
+        }
     }
 }
 

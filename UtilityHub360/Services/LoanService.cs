@@ -15,7 +15,7 @@ namespace UtilityHub360.Services
             _context = context;
         }
 
-        private async Task<Loan?> GetLoanWithAccessCheckAsync(string loanId, string userId)
+        public async Task<Loan?> GetLoanWithAccessCheckAsync(string loanId, string userId)
         {
             // First, check if the user is admin
             var user = await _context.Users.FindAsync(userId);
