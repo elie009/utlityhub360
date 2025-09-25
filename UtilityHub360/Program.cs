@@ -92,6 +92,7 @@ builder.Services.AddScoped<ILoanService, LoanService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IBillService, BillService>();
+builder.Services.AddScoped<IBankAccountService, BankAccountService>();
 
 var app = builder.Build();
 

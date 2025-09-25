@@ -17,6 +17,8 @@ namespace UtilityHub360.Data
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<LoanApplication> LoanApplications { get; set; }
         public DbSet<Bill> Bills { get; set; }
+        public DbSet<BankAccount> BankAccounts { get; set; }
+        public DbSet<BankTransaction> BankTransactions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -88,6 +90,44 @@ namespace UtilityHub360.Data
                     .WithMany(p => p.LoanApplications)
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // Bill configuration
+            modelBuilder.Entity<Bill>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // BankAccount configuration
+            modelBuilder.Entity<BankAccount>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => new { e.UserId, e.AccountName }).IsUnique();
+                entity.HasIndex(e => new { e.UserId, e.AccountNumber }).IsUnique();
+            });
+
+            // BankTransaction configuration
+            modelBuilder.Entity<BankTransaction>(entity =>
+            {
+                entity.HasOne(d => d.BankAccount)
+                    .WithMany(p => p.Transactions)
+                    .HasForeignKey(d => d.BankAccountId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(e => e.ExternalTransactionId);
+                entity.HasIndex(e => e.TransactionDate);
             });
 
             // Seed data
