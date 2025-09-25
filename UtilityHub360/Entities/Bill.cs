@@ -1,0 +1,57 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace UtilityHub360.Entities
+{
+    public class Bill
+    {
+        [Key]
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+
+        [Required]
+        [StringLength(450)]
+        public string UserId { get; set; } = string.Empty;
+
+        [Required]
+        [StringLength(255)]
+        public string BillName { get; set; } = string.Empty;
+
+        [Required]
+        [StringLength(50)]
+        public string BillType { get; set; } = string.Empty; // utility, subscription, loan, others
+
+        [Required]
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal Amount { get; set; }
+
+        [Required]
+        public DateTime DueDate { get; set; }
+
+        [Required]
+        [StringLength(20)]
+        public string Frequency { get; set; } = string.Empty; // monthly, quarterly, yearly
+
+        [Required]
+        [StringLength(20)]
+        public string Status { get; set; } = "PENDING"; // pending, paid, overdue
+
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+        public DateTime? PaidAt { get; set; }
+
+        [StringLength(500)]
+        public string? Notes { get; set; }
+
+        [StringLength(100)]
+        public string? Provider { get; set; } // Company/Service provider name
+
+        [StringLength(100)]
+        public string? ReferenceNumber { get; set; } // Account number, subscription ID, etc.
+
+        // Navigation property
+        [ForeignKey("UserId")]
+        public virtual User User { get; set; } = null!;
+    }
+}
