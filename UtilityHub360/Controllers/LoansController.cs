@@ -380,6 +380,44 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete loan: {ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// Make a payment for a specific loan
+        /// </summary>
+        [HttpPost("{loanId}/payment")]
+        public async Task<ActionResult<ApiResponse<PaymentDto>>> MakeLoanPayment(string loanId, [FromBody] CreatePaymentDto payment)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<PaymentDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<PaymentDto>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _loanService.MakeLoanPaymentAsync(loanId, payment, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<PaymentDto>.ErrorResult($"Failed to process payment: {ex.Message}"));
+            }
+        }
     }
 }
 

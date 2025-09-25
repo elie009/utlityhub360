@@ -516,6 +516,107 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<PaymentDto>> MakeLoanPaymentAsync(string loanId, CreatePaymentDto payment, string userId)
+        {
+            try
+            {
+                // Verify loan exists and belongs to user
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Loan not found");
+                }
+
+                if (loan.Status != "ACTIVE")
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Loan is not active");
+                }
+
+                // Check if payment reference already exists for this loan
+                var existingPayment = await _context.Payments
+                    .FirstOrDefaultAsync(p => p.LoanId == loanId && p.Reference == payment.Reference);
+
+                if (existingPayment != null)
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Payment reference already exists for this loan");
+                }
+
+                // Validate payment amount
+                if (payment.Amount <= 0)
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Payment amount must be greater than 0");
+                }
+
+                if (payment.Amount > loan.RemainingBalance)
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Payment amount cannot exceed remaining loan balance");
+                }
+
+                // Create payment
+                var newPayment = new Entities.Payment
+                {
+                    LoanId = loanId,
+                    UserId = userId,
+                    Amount = payment.Amount,
+                    Method = payment.Method,
+                    Reference = payment.Reference,
+                    Status = "PENDING",
+                    ProcessedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.Payments.Add(newPayment);
+
+                // Create transaction record
+                var transaction = new Entities.Transaction
+                {
+                    LoanId = loanId,
+                    Type = "PAYMENT",
+                    Amount = payment.Amount,
+                    Description = $"Payment via {payment.Method}",
+                    Reference = payment.Reference,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.Transactions.Add(transaction);
+
+                // Update loan remaining balance
+                loan.RemainingBalance -= payment.Amount;
+
+                // Check if loan is fully paid
+                if (loan.RemainingBalance <= 0)
+                {
+                    loan.Status = "COMPLETED";
+                    loan.CompletedAt = DateTime.UtcNow;
+                }
+
+                await _context.SaveChangesAsync();
+
+                // Update payment status to completed
+                newPayment.Status = "COMPLETED";
+                await _context.SaveChangesAsync();
+
+                var paymentDto = new PaymentDto
+                {
+                    Id = newPayment.Id,
+                    LoanId = newPayment.LoanId,
+                    UserId = newPayment.UserId,
+                    Amount = newPayment.Amount,
+                    Method = newPayment.Method,
+                    Reference = newPayment.Reference,
+                    Status = newPayment.Status,
+                    ProcessedAt = newPayment.ProcessedAt,
+                    CreatedAt = newPayment.CreatedAt
+                };
+
+                return ApiResponse<PaymentDto>.SuccessResult(paymentDto, "Payment processed successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<PaymentDto>.ErrorResult($"Failed to process payment: {ex.Message}");
+            }
+        }
+
         private decimal CalculateInterestRate(decimal principal, int term, decimal monthlyIncome)
         {
             // Simple interest rate calculation based on principal amount and income
