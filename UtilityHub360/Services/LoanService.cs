@@ -617,6 +617,26 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<decimal>> GetTotalOutstandingLoanAmountAsync(string userId)
+        {
+            try
+            {
+                // Get all active loans for the user
+                var activeLoans = await _context.Loans
+                    .Where(l => l.UserId == userId && l.Status == "ACTIVE")
+                    .ToListAsync();
+
+                // Calculate total outstanding amount from remaining balances
+                var totalOutstanding = activeLoans.Sum(l => l.RemainingBalance);
+
+                return ApiResponse<decimal>.SuccessResult(totalOutstanding);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<decimal>.ErrorResult($"Failed to get total outstanding loan amount: {ex.Message}");
+            }
+        }
+
         private decimal CalculateInterestRate(decimal principal, int term, decimal monthlyIncome)
         {
             // Simple interest rate calculation based on principal amount and income

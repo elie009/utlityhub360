@@ -418,6 +418,35 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<PaymentDto>.ErrorResult($"Failed to process payment: {ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// Get total outstanding loan amount for the authenticated user
+        /// </summary>
+        [HttpGet("outstanding-amount")]
+        public async Task<ActionResult<ApiResponse<decimal>>> GetTotalOutstandingLoanAmount()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<decimal>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _loanService.GetTotalOutstandingLoanAmountAsync(userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<decimal>.ErrorResult($"Failed to get total outstanding loan amount: {ex.Message}"));
+            }
+        }
     }
 }
 
