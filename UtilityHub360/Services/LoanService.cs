@@ -470,6 +470,52 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<bool>> DeleteLoanAsync(string loanId, string userId)
+        {
+            try
+            {
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return ApiResponse<bool>.ErrorResult("Loan not found");
+                }
+
+                // Check if loan can be deleted based on status
+                if (loan.Status == "ACTIVE" || loan.Status == "COMPLETED")
+                {
+                    return ApiResponse<bool>.ErrorResult("Cannot delete active or completed loans");
+                }
+
+                // Check if there are any payments made
+                var hasPayments = await _context.Payments.AnyAsync(p => p.LoanId == loanId);
+                if (hasPayments)
+                {
+                    return ApiResponse<bool>.ErrorResult("Cannot delete loan with existing payments");
+                }
+
+                // Delete related data first (due to foreign key constraints)
+                var repaymentSchedules = await _context.RepaymentSchedules
+                    .Where(rs => rs.LoanId == loanId)
+                    .ToListAsync();
+                _context.RepaymentSchedules.RemoveRange(repaymentSchedules);
+
+                var transactions = await _context.Transactions
+                    .Where(t => t.LoanId == loanId)
+                    .ToListAsync();
+                _context.Transactions.RemoveRange(transactions);
+
+                // Delete the loan
+                _context.Loans.Remove(loan);
+                await _context.SaveChangesAsync();
+
+                return ApiResponse<bool>.SuccessResult(true, "Loan deleted successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Failed to delete loan: {ex.Message}");
+            }
+        }
+
         private decimal CalculateInterestRate(decimal principal, int term, decimal monthlyIncome)
         {
             // Simple interest rate calculation based on principal amount and income

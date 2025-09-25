@@ -351,6 +351,35 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<LoanDto>.ErrorResult($"Failed to update loan: {ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// Delete a loan
+        /// </summary>
+        [HttpDelete("{loanId}")]
+        public async Task<ActionResult<ApiResponse<bool>>> DeleteLoan(string loanId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _loanService.DeleteLoanAsync(loanId, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete loan: {ex.Message}"));
+            }
+        }
     }
 }
 
