@@ -24,37 +24,75 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpPost("apply")]
-        public async Task<ActionResult<ApiResponse<LoanDto>>> ApplyForLoan([FromBody] CreateLoanApplicationDto application)
+        public async Task<ActionResult<object>> ApplyForLoan([FromBody] CreateLoanApplicationDto application)
         {
             try
             {
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(userId))
                 {
-                    return Unauthorized(ApiResponse<LoanDto>.ErrorResult("User not authenticated"));
+                    return Ok(new
+                    {
+                        type = "https://tools.ietf.org/html/rfc9110#section-15.5.2",
+                        title = "Unauthorized",
+                        status = 401,
+                        detail = "User not authenticated",
+                        traceId = HttpContext.TraceIdentifier
+                    });
                 }
 
                 if (!ModelState.IsValid)
                 {
-                    var errors = ModelState.Values
-                        .SelectMany(v => v.Errors)
-                        .Select(e => e.ErrorMessage)
-                        .ToList();
-                    return BadRequest(ApiResponse<LoanDto>.ErrorResult("Validation failed", errors));
+                    var errors = ModelState
+                        .Where(x => x.Value.Errors.Count > 0)
+                        .ToDictionary(
+                            kvp => kvp.Key,
+                            kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+                        );
+
+                    return Ok(new
+                    {
+                        type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+                        title = "One or more validation errors occurred.",
+                        status = 400,
+                        errors = errors,
+                        traceId = HttpContext.TraceIdentifier
+                    });
                 }
 
                 var result = await _loanService.ApplyForLoanAsync(application, userId);
                 
                 if (result.Success)
                 {
-                    return Ok(result);
+                    return Ok(new
+                    {
+                        success = true,
+                        data = result.Data,
+                        message = result.Message,
+                        status = 200
+                    });
                 }
                 
-                return BadRequest(result);
+                return Ok(new
+                {
+                    type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+                    title = "Loan application failed",
+                    status = 400,
+                    detail = result.Message,
+                    errors = result.Errors,
+                    traceId = HttpContext.TraceIdentifier
+                });
             }
             catch (Exception ex)
             {
-                return BadRequest(ApiResponse<LoanDto>.ErrorResult($"Failed to apply for loan: {ex.Message}"));
+                return Ok(new
+                {
+                    type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+                    title = "Internal server error",
+                    status = 500,
+                    detail = $"Failed to apply for loan: {ex.Message}",
+                    traceId = HttpContext.TraceIdentifier
+                });
             }
         }
 
