@@ -602,6 +602,35 @@ namespace UtilityHub360.Controllers
         }
 
         /// <summary>
+        /// Delete a bank transaction
+        /// </summary>
+        [HttpDelete("transactions/{transactionId}")]
+        public async Task<ActionResult<ApiResponse<bool>>> DeleteTransaction(string transactionId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _bankAccountService.DeleteTransactionAsync(transactionId, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete transaction: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
         /// Get transaction analytics
         /// </summary>
         [HttpGet("transactions/analytics")]

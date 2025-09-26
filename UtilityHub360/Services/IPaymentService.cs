@@ -9,6 +9,8 @@ namespace UtilityHub360.Services
         Task<ApiResponse<PaymentDto>> GetPaymentAsync(string paymentId, string userId);
         Task<ApiResponse<PaginatedResponse<PaymentDto>>> GetLoanPaymentsAsync(string loanId, string userId, int page, int limit);
         Task<ApiResponse<PaymentDto>> UpdatePaymentStatusAsync(string paymentId, string status);
+        Task<ApiResponse<bool>> DeletePaymentAsync(string paymentId, string userId);
+        Task<ApiResponse<object>> DebugPaymentAsync(string paymentId, string userId);
     }
 }
 

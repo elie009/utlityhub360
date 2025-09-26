@@ -30,6 +30,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<List<BankTransactionDto>>> GetAccountTransactionsAsync(string bankAccountId, string userId, int page = 1, int limit = 50);
         Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? accountType = null, int page = 1, int limit = 50);
         Task<ApiResponse<BankTransactionDto>> GetTransactionAsync(string transactionId, string userId);
+        Task<ApiResponse<bool>> DeleteTransactionAsync(string transactionId, string userId);
 
         // Transaction Analytics
         Task<ApiResponse<BankAccountAnalyticsDto>> GetTransactionAnalyticsAsync(string userId, string period = "month");

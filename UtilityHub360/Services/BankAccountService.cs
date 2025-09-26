@@ -981,6 +981,61 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<bool>> DeleteTransactionAsync(string transactionId, string userId)
+        {
+            try
+            {
+                // Find the transaction and verify it belongs to the user
+                var transaction = await _context.BankTransactions
+                    .Include(t => t.BankAccount)
+                    .FirstOrDefaultAsync(t => t.Id == transactionId && t.UserId == userId);
+
+                if (transaction == null)
+                {
+                    return ApiResponse<bool>.ErrorResult("Transaction not found or you don't have permission to delete it");
+                }
+
+                // Check if transaction can be deleted based on business rules
+                var hoursSinceCreation = (DateTime.UtcNow - transaction.CreatedAt).TotalHours;
+                if (hoursSinceCreation > 24)
+                {
+                    return ApiResponse<bool>.ErrorResult("Cannot delete transactions older than 24 hours");
+                }
+
+                // Check if the bank account is still active
+                if (!transaction.BankAccount.IsActive)
+                {
+                    return ApiResponse<bool>.ErrorResult("Cannot delete transactions for inactive bank accounts");
+                }
+
+                // Reverse the transaction effect on the bank account balance
+                if (transaction.TransactionType == "CREDIT")
+                {
+                    // If it was a credit (money in), subtract it from balance
+                    transaction.BankAccount.CurrentBalance -= transaction.Amount;
+                }
+                else if (transaction.TransactionType == "DEBIT")
+                {
+                    // If it was a debit (money out), add it back to balance
+                    transaction.BankAccount.CurrentBalance += transaction.Amount;
+                }
+
+                // Update the bank account's updated timestamp
+                transaction.BankAccount.UpdatedAt = DateTime.UtcNow;
+
+                // Remove the transaction
+                _context.BankTransactions.Remove(transaction);
+
+                await _context.SaveChangesAsync();
+
+                return ApiResponse<bool>.SuccessResult(true, "Transaction deleted successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Failed to delete transaction: {ex.Message}");
+            }
+        }
+
         // Helper Methods
         private async Task<BankAccountDto> MapToBankAccountDtoAsync(BankAccount bankAccount)
         {
