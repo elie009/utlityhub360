@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using UtilityHub360.Data;
 
@@ -11,9 +12,11 @@ using UtilityHub360.Data;
 namespace UtilityHub360.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250926122822_AddUserProfileSystem")]
+    partial class AddUserProfileSystem
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -263,77 +266,6 @@ namespace UtilityHub360.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Bills");
-                });
-
-            modelBuilder.Entity("UtilityHub360.Entities.IncomeSource", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("Company")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("nvarchar(10)");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("Frequency")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("UserProfileId")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Category");
-
-                    b.HasIndex("Frequency");
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("UserProfileId");
-
-                    b.HasIndex("UserId", "Name")
-                        .IsUnique();
-
-                    b.ToTable("IncomeSources");
                 });
 
             modelBuilder.Entity("UtilityHub360.Entities.Loan", b =>
@@ -795,84 +727,14 @@ namespace UtilityHub360.Migrations
                         new
                         {
                             Id = "admin-001",
-                            CreatedAt = new DateTime(2025, 9, 26, 14, 51, 58, 587, DateTimeKind.Utc).AddTicks(370),
+                            CreatedAt = new DateTime(2025, 9, 26, 12, 28, 21, 767, DateTimeKind.Utc).AddTicks(7956),
                             Email = "admin@utilityhub360.com",
                             IsActive = true,
                             Name = "System Administrator",
                             Phone = "+1234567890",
                             Role = "ADMIN",
-                            UpdatedAt = new DateTime(2025, 9, 26, 14, 51, 58, 587, DateTimeKind.Utc).AddTicks(370)
+                            UpdatedAt = new DateTime(2025, 9, 26, 12, 28, 21, 767, DateTimeKind.Utc).AddTicks(7956)
                         });
-                });
-
-            modelBuilder.Entity("UtilityHub360.Entities.UserProfile", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("Company")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("EmploymentType")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("Industry")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("JobTitle")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("Location")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<decimal?>("MonthlyEmergencyFundGoal")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("MonthlyInvestmentGoal")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("MonthlySavingsGoal")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("MonthlyTaxDeductions")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<decimal?>("TaxRate")
-                        .HasColumnType("decimal(5,2)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EmploymentType");
-
-                    b.HasIndex("Industry");
-
-                    b.HasIndex("UserId")
-                        .IsUnique();
-
-                    b.ToTable("UserProfiles");
                 });
 
             modelBuilder.Entity("UtilityHub360.Entities.BankAccount", b =>
@@ -912,21 +774,6 @@ namespace UtilityHub360.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("UtilityHub360.Entities.IncomeSource", b =>
-                {
-                    b.HasOne("UtilityHub360.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("UtilityHub360.Entities.UserProfile", null)
-                        .WithMany("IncomeSources")
-                        .HasForeignKey("UserProfileId");
 
                     b.Navigation("User");
                 });
@@ -1035,17 +882,6 @@ namespace UtilityHub360.Migrations
                     b.Navigation("Loan");
                 });
 
-            modelBuilder.Entity("UtilityHub360.Entities.UserProfile", b =>
-                {
-                    b.HasOne("UtilityHub360.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("UtilityHub360.Entities.BankAccount", b =>
                 {
                     b.Navigation("Transactions");
@@ -1074,11 +910,6 @@ namespace UtilityHub360.Migrations
                     b.Navigation("Notifications");
 
                     b.Navigation("Payments");
-                });
-
-            modelBuilder.Entity("UtilityHub360.Entities.UserProfile", b =>
-                {
-                    b.Navigation("IncomeSources");
                 });
 #pragma warning restore 612, 618
         }

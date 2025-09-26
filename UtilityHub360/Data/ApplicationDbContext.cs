@@ -21,6 +21,8 @@ namespace UtilityHub360.Data
         public DbSet<BankTransaction> BankTransactions { get; set; }
         public DbSet<SavingsAccount> SavingsAccounts { get; set; }
         public DbSet<SavingsTransaction> SavingsTransactions { get; set; }
+        public DbSet<UserProfile> UserProfiles { get; set; }
+        public DbSet<IncomeSource> IncomeSources { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -157,6 +159,34 @@ namespace UtilityHub360.Data
                     .OnDelete(DeleteBehavior.NoAction);
 
                 entity.HasIndex(e => e.TransactionDate);
+            });
+
+            // UserProfile configuration
+            modelBuilder.Entity<UserProfile>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId).IsUnique();
+                entity.HasIndex(e => e.Industry);
+                entity.HasIndex(e => e.EmploymentType);
+            });
+
+            // IncomeSource configuration
+            modelBuilder.Entity<IncomeSource>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.Category);
+                entity.HasIndex(e => e.Frequency);
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => new { e.UserId, e.Name }).IsUnique();
             });
 
             // Seed data

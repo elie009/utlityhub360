@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using UtilityHub360.Data;
 
@@ -11,9 +12,11 @@ using UtilityHub360.Data;
 namespace UtilityHub360.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250926134441_CreateGeneralizedIncomeSourceSystem")]
+    partial class CreateGeneralizedIncomeSourceSystem
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -263,77 +266,6 @@ namespace UtilityHub360.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Bills");
-                });
-
-            modelBuilder.Entity("UtilityHub360.Entities.IncomeSource", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("Company")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("nvarchar(10)");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("Frequency")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("UserProfileId")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Category");
-
-                    b.HasIndex("Frequency");
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("UserProfileId");
-
-                    b.HasIndex("UserId", "Name")
-                        .IsUnique();
-
-                    b.ToTable("IncomeSources");
                 });
 
             modelBuilder.Entity("UtilityHub360.Entities.Loan", b =>
@@ -795,13 +727,13 @@ namespace UtilityHub360.Migrations
                         new
                         {
                             Id = "admin-001",
-                            CreatedAt = new DateTime(2025, 9, 26, 14, 51, 58, 587, DateTimeKind.Utc).AddTicks(370),
+                            CreatedAt = new DateTime(2025, 9, 26, 13, 44, 40, 608, DateTimeKind.Utc).AddTicks(8951),
                             Email = "admin@utilityhub360.com",
                             IsActive = true,
                             Name = "System Administrator",
                             Phone = "+1234567890",
                             Role = "ADMIN",
-                            UpdatedAt = new DateTime(2025, 9, 26, 14, 51, 58, 587, DateTimeKind.Utc).AddTicks(370)
+                            UpdatedAt = new DateTime(2025, 9, 26, 13, 44, 40, 608, DateTimeKind.Utc).AddTicks(8951)
                         });
                 });
 
@@ -810,12 +742,26 @@ namespace UtilityHub360.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<decimal?>("BusinessIncomeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("BusinessIncomeFrequency")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<string>("Company")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("DividendIncomeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("DividendIncomeFrequency")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("EmploymentType")
                         .HasMaxLength(50)
@@ -824,6 +770,20 @@ namespace UtilityHub360.Migrations
                     b.Property<string>("Industry")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal?>("InterestIncomeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("InterestIncomeFrequency")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal?>("InvestmentIncomeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("InvestmentIncomeFrequency")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -851,6 +811,45 @@ namespace UtilityHub360.Migrations
                     b.Property<string>("Notes")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal?>("OtherIncomeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("OtherIncomeFrequency")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal?>("PassiveIncomeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("PassiveIncomeFrequency")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal?>("RentalIncomeAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("RentalIncomeFrequency")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal?>("SalaryAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("SalaryCurrency")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("SalaryFrequency")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal?>("SideHustleAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("SideHustleFrequency")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<decimal?>("TaxRate")
                         .HasColumnType("decimal(5,2)");
@@ -912,21 +911,6 @@ namespace UtilityHub360.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("UtilityHub360.Entities.IncomeSource", b =>
-                {
-                    b.HasOne("UtilityHub360.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("UtilityHub360.Entities.UserProfile", null)
-                        .WithMany("IncomeSources")
-                        .HasForeignKey("UserProfileId");
 
                     b.Navigation("User");
                 });
@@ -1074,11 +1058,6 @@ namespace UtilityHub360.Migrations
                     b.Navigation("Notifications");
 
                     b.Navigation("Payments");
-                });
-
-            modelBuilder.Entity("UtilityHub360.Entities.UserProfile", b =>
-                {
-                    b.Navigation("IncomeSources");
                 });
 #pragma warning restore 612, 618
         }
