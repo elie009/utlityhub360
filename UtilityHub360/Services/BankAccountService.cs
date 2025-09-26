@@ -785,6 +785,202 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<BankTransactionDto>> CreateExpenseAsync(CreateExpenseDto expenseDto, string userId)
+        {
+            try
+            {
+                var bankAccount = await _context.BankAccounts
+                    .FirstOrDefaultAsync(ba => ba.Id == expenseDto.BankAccountId && ba.UserId == userId);
+
+                if (bankAccount == null)
+                {
+                    return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found");
+                }
+
+                var transaction = new BankTransaction
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    BankAccountId = expenseDto.BankAccountId,
+                    UserId = userId,
+                    Amount = expenseDto.Amount,
+                    TransactionType = "DEBIT",
+                    Description = expenseDto.Description,
+                    Category = expenseDto.Category,
+                    TransactionDate = expenseDto.TransactionDate,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    Notes = expenseDto.Notes,
+                    Merchant = expenseDto.Merchant,
+                    Location = expenseDto.Location,
+                    IsRecurring = expenseDto.IsRecurring,
+                    RecurringFrequency = expenseDto.RecurringFrequency,
+                    Currency = expenseDto.Currency.ToUpper()
+                };
+
+                // Update account balance
+                bankAccount.CurrentBalance -= transaction.Amount;
+                transaction.BalanceAfterTransaction = bankAccount.CurrentBalance;
+                bankAccount.UpdatedAt = DateTime.UtcNow;
+
+                _context.BankTransactions.Add(transaction);
+                await _context.SaveChangesAsync();
+
+                var transactionDto = MapToBankTransactionDto(transaction);
+                return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Expense recorded successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<BankTransactionDto>.ErrorResult($"Failed to create expense: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<ExpenseAnalyticsDto>> GetExpenseAnalyticsAsync(string userId, string period = "month")
+        {
+            try
+            {
+                var (startDate, endDate) = GetPeriodDates(period);
+
+                var expenses = await _context.BankTransactions
+                    .Where(t => t.UserId == userId && 
+                               t.TransactionType == "DEBIT" && 
+                               t.TransactionDate >= startDate && 
+                               t.TransactionDate <= endDate)
+                    .ToListAsync();
+
+                var analytics = new ExpenseAnalyticsDto
+                {
+                    TotalExpenses = expenses.Sum(t => t.Amount),
+                    TotalTransactions = expenses.Count,
+                    PeriodStart = startDate,
+                    PeriodEnd = endDate,
+                    SpendingByCategory = expenses
+                        .Where(t => !string.IsNullOrEmpty(t.Category))
+                        .GroupBy(t => t.Category!)
+                        .ToDictionary(g => g.Key, g => g.Sum(t => t.Amount)),
+                    SpendingByMerchant = expenses
+                        .Where(t => !string.IsNullOrEmpty(t.Merchant))
+                        .GroupBy(t => t.Merchant!)
+                        .ToDictionary(g => g.Key, g => g.Sum(t => t.Amount)),
+                    RecentExpenses = expenses
+                        .OrderByDescending(t => t.TransactionDate)
+                        .Take(10)
+                        .Select(MapToBankTransactionDto)
+                        .ToList(),
+                    AverageDailySpending = expenses.Count > 0 ? expenses.Sum(t => t.Amount) / (decimal)(endDate - startDate).TotalDays : 0,
+                    AverageTransactionAmount = expenses.Count > 0 ? expenses.Average(t => t.Amount) : 0
+                };
+
+                return ApiResponse<ExpenseAnalyticsDto>.SuccessResult(analytics);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<ExpenseAnalyticsDto>.ErrorResult($"Failed to get expense analytics: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<ExpenseSummaryDto>> GetExpenseSummaryAsync(string userId)
+        {
+            try
+            {
+                var today = DateTime.UtcNow.Date;
+                var thisWeekStart = today.AddDays(-(int)today.DayOfWeek);
+                var thisMonthStart = new DateTime(today.Year, today.Month, 1);
+                var lastMonthStart = thisMonthStart.AddMonths(-1);
+                var lastMonthEnd = thisMonthStart.AddDays(-1);
+
+                var todayExpenses = await _context.BankTransactions
+                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT" && t.TransactionDate.Date == today)
+                    .SumAsync(t => t.Amount);
+
+                var thisWeekExpenses = await _context.BankTransactions
+                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT" && t.TransactionDate >= thisWeekStart)
+                    .SumAsync(t => t.Amount);
+
+                var thisMonthExpenses = await _context.BankTransactions
+                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT" && t.TransactionDate >= thisMonthStart)
+                    .SumAsync(t => t.Amount);
+
+                var lastMonthExpenses = await _context.BankTransactions
+                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT" && 
+                               t.TransactionDate >= lastMonthStart && t.TransactionDate <= lastMonthEnd)
+                    .SumAsync(t => t.Amount);
+
+                var topCategories = await _context.BankTransactions
+                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT" && t.TransactionDate >= thisMonthStart)
+                    .GroupBy(t => t.Category!)
+                    .Where(g => !string.IsNullOrEmpty(g.Key))
+                    .Select(g => new { Category = g.Key, Amount = g.Sum(t => t.Amount) })
+                    .OrderByDescending(x => x.Amount)
+                    .Take(5)
+                    .ToDictionaryAsync(x => x.Category, x => x.Amount);
+
+                var recentExpenses = await _context.BankTransactions
+                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT")
+                    .OrderByDescending(t => t.TransactionDate)
+                    .Take(5)
+                    .Select(t => MapToBankTransactionDto(t))
+                    .ToListAsync();
+
+                var summary = new ExpenseSummaryDto
+                {
+                    TodayExpenses = todayExpenses,
+                    ThisWeekExpenses = thisWeekExpenses,
+                    ThisMonthExpenses = thisMonthExpenses,
+                    LastMonthExpenses = lastMonthExpenses,
+                    TopCategories = topCategories,
+                    RecentExpenses = recentExpenses
+                };
+
+                return ApiResponse<ExpenseSummaryDto>.SuccessResult(summary);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<ExpenseSummaryDto>.ErrorResult($"Failed to get expense summary: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<List<BankTransactionDto>>> GetExpensesByCategoryAsync(string userId, string category, int page = 1, int limit = 50)
+        {
+            try
+            {
+                var expenses = await _context.BankTransactions
+                    .Where(t => t.UserId == userId && 
+                               t.TransactionType == "DEBIT" && 
+                               t.Category == category)
+                    .OrderByDescending(t => t.TransactionDate)
+                    .Skip((page - 1) * limit)
+                    .Take(limit)
+                    .ToListAsync();
+
+                var expenseDtos = expenses.Select(MapToBankTransactionDto).ToList();
+                return ApiResponse<List<BankTransactionDto>>.SuccessResult(expenseDtos);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<List<BankTransactionDto>>.ErrorResult($"Failed to get expenses by category: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<Dictionary<string, decimal>>> GetExpenseCategoriesAsync(string userId)
+        {
+            try
+            {
+                var categories = await _context.BankTransactions
+                    .Where(t => t.UserId == userId && 
+                               t.TransactionType == "DEBIT" && 
+                               !string.IsNullOrEmpty(t.Category))
+                    .GroupBy(t => t.Category!)
+                    .Select(g => new { Category = g.Key, Amount = g.Sum(t => t.Amount) })
+                    .ToDictionaryAsync(x => x.Category, x => x.Amount);
+
+                return ApiResponse<Dictionary<string, decimal>>.SuccessResult(categories);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<Dictionary<string, decimal>>.ErrorResult($"Failed to get expense categories: {ex.Message}");
+            }
+        }
+
         // Helper Methods
         private async Task<BankAccountDto> MapToBankAccountDtoAsync(BankAccount bankAccount)
         {

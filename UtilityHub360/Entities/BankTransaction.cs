@@ -29,7 +29,7 @@ namespace UtilityHub360.Entities
         public string Description { get; set; } = string.Empty;
 
         [StringLength(100)]
-        public string? Category { get; set; } // Income, Expense, Transfer, etc.
+        public string? Category { get; set; } // FOOD, TRANSPORTATION, ENTERTAINMENT, etc.
 
         [StringLength(100)]
         public string? ReferenceNumber { get; set; }

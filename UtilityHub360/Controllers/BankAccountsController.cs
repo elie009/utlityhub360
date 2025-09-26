@@ -737,5 +737,161 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<List<BankTransactionDto>>.ErrorResult($"Failed to get all transactions: {ex.Message}"));
             }
         }
+
+        // Expense Management Endpoints
+
+        /// <summary>
+        /// Create a new expense transaction
+        /// </summary>
+        [HttpPost("expenses")]
+        public async Task<ActionResult<ApiResponse<BankTransactionDto>>> CreateExpense([FromBody] CreateExpenseDto expenseDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<BankTransactionDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<BankTransactionDto>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _bankAccountService.CreateExpenseAsync(expenseDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BankTransactionDto>.ErrorResult($"Failed to create expense: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get expense analytics
+        /// </summary>
+        [HttpGet("expenses/analytics")]
+        public async Task<ActionResult<ApiResponse<ExpenseAnalyticsDto>>> GetExpenseAnalytics([FromQuery] string period = "month")
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<ExpenseAnalyticsDto>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _bankAccountService.GetExpenseAnalyticsAsync(userId, period);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<ExpenseAnalyticsDto>.ErrorResult($"Failed to get expense analytics: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get expense summary
+        /// </summary>
+        [HttpGet("expenses/summary")]
+        public async Task<ActionResult<ApiResponse<ExpenseSummaryDto>>> GetExpenseSummary()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<ExpenseSummaryDto>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _bankAccountService.GetExpenseSummaryAsync(userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<ExpenseSummaryDto>.ErrorResult($"Failed to get expense summary: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get expenses by category
+        /// </summary>
+        [HttpGet("expenses/category/{category}")]
+        public async Task<ActionResult<ApiResponse<List<BankTransactionDto>>>> GetExpensesByCategory(string category, [FromQuery] int page = 1, [FromQuery] int limit = 50)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<List<BankTransactionDto>>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _bankAccountService.GetExpensesByCategoryAsync(userId, category, page, limit);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<BankTransactionDto>>.ErrorResult($"Failed to get expenses by category: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get all expense categories with amounts
+        /// </summary>
+        [HttpGet("expenses/categories")]
+        public async Task<ActionResult<ApiResponse<Dictionary<string, decimal>>>> GetExpenseCategories()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<Dictionary<string, decimal>>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _bankAccountService.GetExpenseCategoriesAsync(userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<Dictionary<string, decimal>>.ErrorResult($"Failed to get expense categories: {ex.Message}"));
+            }
+        }
     }
 }

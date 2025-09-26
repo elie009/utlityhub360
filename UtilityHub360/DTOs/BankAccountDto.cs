@@ -223,4 +223,65 @@ namespace UtilityHub360.DTOs
         public List<BankAccountDto> TopAccounts { get; set; } = new List<BankAccountDto>();
         public Dictionary<string, decimal> SpendingByCategory { get; set; } = new Dictionary<string, decimal>();
     }
+
+    public class CreateExpenseDto
+    {
+        [Required]
+        [StringLength(450)]
+        public string BankAccountId { get; set; } = string.Empty;
+
+        [Required]
+        [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than 0")]
+        public decimal Amount { get; set; }
+
+        [Required]
+        [StringLength(100)]
+        public string Category { get; set; } = string.Empty; // FOOD, TRANSPORTATION, etc.
+
+        [Required]
+        [StringLength(255, ErrorMessage = "Description cannot exceed 255 characters")]
+        public string Description { get; set; } = string.Empty;
+
+        [StringLength(100)]
+        public string? Merchant { get; set; }
+
+        [StringLength(100)]
+        public string? Location { get; set; }
+
+        public DateTime TransactionDate { get; set; } = DateTime.UtcNow;
+
+        [StringLength(500, ErrorMessage = "Notes cannot exceed 500 characters")]
+        public string? Notes { get; set; }
+
+        [StringLength(10)]
+        public string Currency { get; set; } = "USD";
+
+        public bool IsRecurring { get; set; } = false;
+
+        [StringLength(50)]
+        public string? RecurringFrequency { get; set; }
+    }
+
+    public class ExpenseAnalyticsDto
+    {
+        public decimal TotalExpenses { get; set; }
+        public int TotalTransactions { get; set; }
+        public DateTime PeriodStart { get; set; }
+        public DateTime PeriodEnd { get; set; }
+        public Dictionary<string, decimal> SpendingByCategory { get; set; } = new Dictionary<string, decimal>();
+        public Dictionary<string, decimal> SpendingByMerchant { get; set; } = new Dictionary<string, decimal>();
+        public List<BankTransactionDto> RecentExpenses { get; set; } = new List<BankTransactionDto>();
+        public decimal AverageDailySpending { get; set; }
+        public decimal AverageTransactionAmount { get; set; }
+    }
+
+    public class ExpenseSummaryDto
+    {
+        public decimal TodayExpenses { get; set; }
+        public decimal ThisWeekExpenses { get; set; }
+        public decimal ThisMonthExpenses { get; set; }
+        public decimal LastMonthExpenses { get; set; }
+        public Dictionary<string, decimal> TopCategories { get; set; } = new Dictionary<string, decimal>();
+        public List<BankTransactionDto> RecentExpenses { get; set; } = new List<BankTransactionDto>();
+    }
 }

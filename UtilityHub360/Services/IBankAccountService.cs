@@ -41,6 +41,13 @@ namespace UtilityHub360.Services
         Task<ApiResponse<BankAccountDto>> ArchiveBankAccountAsync(string bankAccountId, string userId);
         Task<ApiResponse<BankAccountDto>> ActivateBankAccountAsync(string bankAccountId, string userId);
 
+        // Expense Management
+        Task<ApiResponse<BankTransactionDto>> CreateExpenseAsync(CreateExpenseDto expenseDto, string userId);
+        Task<ApiResponse<ExpenseAnalyticsDto>> GetExpenseAnalyticsAsync(string userId, string period = "month");
+        Task<ApiResponse<ExpenseSummaryDto>> GetExpenseSummaryAsync(string userId);
+        Task<ApiResponse<List<BankTransactionDto>>> GetExpensesByCategoryAsync(string userId, string category, int page = 1, int limit = 50);
+        Task<ApiResponse<Dictionary<string, decimal>>> GetExpenseCategoriesAsync(string userId);
+
         // Admin Operations
         Task<ApiResponse<List<BankAccountDto>>> GetAllBankAccountsAsync(int page = 1, int limit = 50);
         Task<ApiResponse<List<BankTransactionDto>>> GetAllTransactionsAsync(int page = 1, int limit = 50);
