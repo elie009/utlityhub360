@@ -19,6 +19,8 @@ namespace UtilityHub360.Data
         public DbSet<Bill> Bills { get; set; }
         public DbSet<BankAccount> BankAccounts { get; set; }
         public DbSet<BankTransaction> BankTransactions { get; set; }
+        public DbSet<SavingsAccount> SavingsAccounts { get; set; }
+        public DbSet<SavingsTransaction> SavingsTransactions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -127,6 +129,33 @@ namespace UtilityHub360.Data
                     .OnDelete(DeleteBehavior.NoAction);
 
                 entity.HasIndex(e => e.ExternalTransactionId);
+                entity.HasIndex(e => e.TransactionDate);
+            });
+
+            // SavingsAccount configuration
+            modelBuilder.Entity<SavingsAccount>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => new { e.UserId, e.AccountName }).IsUnique();
+            });
+
+            // SavingsTransaction configuration
+            modelBuilder.Entity<SavingsTransaction>(entity =>
+            {
+                entity.HasOne(d => d.SavingsAccount)
+                    .WithMany(p => p.SavingsTransactions)
+                    .HasForeignKey(d => d.SavingsAccountId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.SourceBankAccount)
+                    .WithMany()
+                    .HasForeignKey(d => d.SourceBankAccountId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
                 entity.HasIndex(e => e.TransactionDate);
             });
 

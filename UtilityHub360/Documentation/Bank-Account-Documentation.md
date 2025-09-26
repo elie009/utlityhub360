@@ -124,6 +124,84 @@ All endpoints require JWT authentication via the `Authorization` header:
 Authorization: Bearer <jwt_token>
 ```
 
+## Expense Categories
+
+The system supports comprehensive expense categorization for variable spending tracking:
+
+### Food & Dining
+- `FOOD` - General food expenses
+- `GROCERIES` - Grocery shopping
+- `RESTAURANTS` - Restaurant meals
+- `COFFEE` - Coffee and beverages
+- `FAST_FOOD` - Fast food purchases
+
+### Transportation
+- `TRANSPORTATION` - General transportation
+- `GAS` - Gas/fuel expenses
+- `PUBLIC_TRANSPORT` - Bus, train, subway
+- `TAXI` - Taxi rides
+- `RIDESHARE` - Uber, Lyft, etc.
+- `PARKING` - Parking fees
+- `CAR_MAINTENANCE` - Vehicle maintenance
+
+### Entertainment & Recreation
+- `ENTERTAINMENT` - General entertainment
+- `MOVIES` - Movie tickets, streaming
+- `GAMES` - Video games, gaming
+- `SPORTS` - Sports activities
+- `HOBBIES` - Hobby-related expenses
+
+### Shopping
+- `SHOPPING` - General shopping
+- `CLOTHING` - Clothing and apparel
+- `ELECTRONICS` - Electronic devices
+- `BOOKS` - Books and reading materials
+- `PERSONAL_CARE` - Personal care items
+
+### Health & Medical
+- `HEALTHCARE` - General healthcare
+- `MEDICINE` - Medications
+- `FITNESS` - Gym, fitness classes
+- `DOCTOR` - Medical appointments
+
+### Education
+- `EDUCATION` - General education
+- `COURSES` - Online courses, classes
+- `BOOKS_EDUCATION` - Educational books
+
+### Travel
+- `TRAVEL` - General travel
+- `HOTEL` - Hotel accommodations
+- `FLIGHTS` - Airline tickets
+- `VACATION` - Vacation expenses
+
+### Utilities & Bills
+- `UTILITIES` - General utilities
+- `INTERNET` - Internet service
+- `PHONE` - Phone service
+- `ELECTRICITY` - Electric bills
+- `WATER` - Water bills
+- `GAS_UTILITY` - Gas utility bills
+
+### Housing
+- `HOUSING` - General housing
+- `RENT` - Rent payments
+- `MORTGAGE` - Mortgage payments
+- `HOME_IMPROVEMENT` - Home improvement
+
+### Insurance
+- `INSURANCE` - General insurance
+- `CAR_INSURANCE` - Auto insurance
+- `HEALTH_INSURANCE` - Health insurance
+- `LIFE_INSURANCE` - Life insurance
+
+### Miscellaneous
+- `OTHER` - Other expenses
+- `GIFTS` - Gift purchases
+- `DONATIONS` - Charitable donations
+- `FEES` - Various fees
+- `SUBSCRIPTIONS` - Subscription services
+
 ### Account Management Endpoints
 
 #### 1. Create Bank Account
@@ -338,14 +416,139 @@ GET /api/bankaccounts/transactions/recent?limit=10
 GET /api/bankaccounts/transactions/spending-by-category?period=month
 ```
 
+### Expense Management Endpoints
+
+#### 24. Create Expense
+```http
+POST /api/bankaccounts/expenses
+Content-Type: application/json
+
+{
+  "bankAccountId": "account-123",
+  "amount": 15.75,
+  "category": "FOOD",
+  "description": "Lunch at restaurant",
+  "merchant": "McDonald's",
+  "location": "Downtown Mall",
+  "transactionDate": "2024-01-15T12:30:00Z",
+  "notes": "Quick lunch break",
+  "currency": "USD",
+  "isRecurring": false,
+  "recurringFrequency": null
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Expense recorded successfully",
+  "data": {
+    "id": "transaction-id-1",
+    "bankAccountId": "account-123",
+    "userId": "user-id",
+    "amount": 15.75,
+    "transactionType": "DEBIT",
+    "description": "Lunch at restaurant",
+    "category": "FOOD",
+    "merchant": "McDonald's",
+    "location": "Downtown Mall",
+    "transactionDate": "2024-01-15T12:30:00Z",
+    "notes": "Quick lunch break",
+    "currency": "USD",
+    "balanceAfterTransaction": 1484.25
+  }
+}
+```
+
+#### 25. Get Expense Analytics
+```http
+GET /api/bankaccounts/expenses/analytics?period=month
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "totalExpenses": 1250.50,
+    "totalTransactions": 45,
+    "periodStart": "2024-01-01T00:00:00Z",
+    "periodEnd": "2024-01-31T23:59:59Z",
+    "spendingByCategory": {
+      "FOOD": 450.25,
+      "TRANSPORTATION": 200.00,
+      "ENTERTAINMENT": 300.75,
+      "SHOPPING": 299.50
+    },
+    "spendingByMerchant": {
+      "McDonald's": 85.50,
+      "Uber": 120.00,
+      "Netflix": 15.99
+    },
+    "recentExpenses": [...],
+    "averageDailySpending": 40.34,
+    "averageTransactionAmount": 27.79
+  }
+}
+```
+
+#### 26. Get Expense Summary
+```http
+GET /api/bankaccounts/expenses/summary
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "todayExpenses": 45.50,
+    "thisWeekExpenses": 280.75,
+    "thisMonthExpenses": 1250.50,
+    "lastMonthExpenses": 1100.25,
+    "topCategories": {
+      "FOOD": 450.25,
+      "TRANSPORTATION": 200.00,
+      "ENTERTAINMENT": 300.75
+    },
+    "recentExpenses": [...]
+  }
+}
+```
+
+#### 27. Get Expenses by Category
+```http
+GET /api/bankaccounts/expenses/category/FOOD?page=1&limit=20
+```
+
+#### 28. Get All Expense Categories
+```http
+GET /api/bankaccounts/expenses/categories
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "FOOD": 450.25,
+    "TRANSPORTATION": 200.00,
+    "ENTERTAINMENT": 300.75,
+    "SHOPPING": 299.50,
+    "HEALTHCARE": 150.00
+  }
+}
+```
+
 ### Admin Endpoints
 
-#### 24. Get All Bank Accounts (Admin)
+#### 29. Get All Bank Accounts (Admin)
 ```http
 GET /api/bankaccounts/admin/all?page=1&limit=50
 ```
 
-#### 25. Get All Transactions (Admin)
+#### 30. Get All Transactions (Admin)
 ```http
 GET /api/bankaccounts/admin/transactions?page=1&limit=50
 ```
@@ -574,6 +777,78 @@ public class BankAccountAnalyticsDto
 }
 ```
 
+### Expense Management DTOs
+
+#### CreateExpenseDto
+```csharp
+public class CreateExpenseDto
+{
+    [Required]
+    [StringLength(450)]
+    public string BankAccountId { get; set; }
+
+    [Required]
+    [Range(0.01, double.MaxValue)]
+    public decimal Amount { get; set; }
+
+    [Required]
+    [StringLength(100)]
+    public string Category { get; set; } // FOOD, TRANSPORTATION, etc.
+
+    [Required]
+    [StringLength(255)]
+    public string Description { get; set; }
+
+    [StringLength(100)]
+    public string? Merchant { get; set; }
+
+    [StringLength(100)]
+    public string? Location { get; set; }
+
+    public DateTime TransactionDate { get; set; } = DateTime.UtcNow;
+
+    [StringLength(500)]
+    public string? Notes { get; set; }
+
+    [StringLength(10)]
+    public string Currency { get; set; } = "USD";
+
+    public bool IsRecurring { get; set; } = false;
+
+    [StringLength(50)]
+    public string? RecurringFrequency { get; set; }
+}
+```
+
+#### ExpenseAnalyticsDto
+```csharp
+public class ExpenseAnalyticsDto
+{
+    public decimal TotalExpenses { get; set; }
+    public int TotalTransactions { get; set; }
+    public DateTime PeriodStart { get; set; }
+    public DateTime PeriodEnd { get; set; }
+    public Dictionary<string, decimal> SpendingByCategory { get; set; }
+    public Dictionary<string, decimal> SpendingByMerchant { get; set; }
+    public List<BankTransactionDto> RecentExpenses { get; set; }
+    public decimal AverageDailySpending { get; set; }
+    public decimal AverageTransactionAmount { get; set; }
+}
+```
+
+#### ExpenseSummaryDto
+```csharp
+public class ExpenseSummaryDto
+{
+    public decimal TodayExpenses { get; set; }
+    public decimal ThisWeekExpenses { get; set; }
+    public decimal ThisMonthExpenses { get; set; }
+    public decimal LastMonthExpenses { get; set; }
+    public Dictionary<string, decimal> TopCategories { get; set; }
+    public List<BankTransactionDto> RecentExpenses { get; set; }
+}
+```
+
 ### Integration DTOs
 
 #### BankIntegrationDto
@@ -653,6 +928,13 @@ public interface IBankAccountService
     Task<ApiResponse<BankAccountDto>> ArchiveBankAccountAsync(string bankAccountId, string userId);
     Task<ApiResponse<BankAccountDto>> ActivateBankAccountAsync(string bankAccountId, string userId);
 
+    // Expense Management
+    Task<ApiResponse<BankTransactionDto>> CreateExpenseAsync(CreateExpenseDto expenseDto, string userId);
+    Task<ApiResponse<ExpenseAnalyticsDto>> GetExpenseAnalyticsAsync(string userId, string period = "month");
+    Task<ApiResponse<ExpenseSummaryDto>> GetExpenseSummaryAsync(string userId);
+    Task<ApiResponse<List<BankTransactionDto>>> GetExpensesByCategoryAsync(string userId, string category, int page = 1, int limit = 50);
+    Task<ApiResponse<Dictionary<string, decimal>>> GetExpenseCategoriesAsync(string userId);
+
     // Admin Operations
     Task<ApiResponse<List<BankAccountDto>>> GetAllBankAccountsAsync(int page = 1, int limit = 50);
     Task<ApiResponse<List<BankTransactionDto>>> GetAllTransactionsAsync(int page = 1, int limit = 50);
@@ -705,6 +987,35 @@ The system supports various account types:
 - **month**: Last 30 days
 - **quarter**: Last 90 days
 - **year**: Last 365 days
+
+### Variable Spending Management
+
+The system now supports comprehensive variable spending tracking for daily expenses:
+
+#### Expense Categories
+- **50+ predefined categories** covering all major spending areas
+- **Hierarchical organization** (Food → Restaurants, Coffee, etc.)
+- **Flexible categorization** for custom expense types
+
+#### Expense Tracking Features
+- **Real-time balance updates** when expenses are recorded
+- **Merchant tracking** for detailed spending analysis
+- **Location tracking** for geographic spending patterns
+- **Recurring expense support** for subscription tracking
+- **Notes and descriptions** for detailed expense records
+
+#### Analytics and Reporting
+- **Spending by category** with visual breakdowns
+- **Merchant analysis** to identify top spending locations
+- **Time-based analytics** (daily, weekly, monthly, yearly)
+- **Trend analysis** comparing current vs previous periods
+- **Average spending calculations** for budgeting insights
+
+#### Integration with Bank Accounts
+- **Automatic balance deduction** when expenses are recorded
+- **Transaction history** maintains complete audit trail
+- **Multi-account support** for tracking expenses across accounts
+- **Currency support** for international expense tracking
 
 ## Security Considerations
 
@@ -773,6 +1084,53 @@ var result = await _bankAccountService.CreateTransactionAsync(transactionDto, us
 ```csharp
 var analytics = await _bankAccountService.GetBankAccountAnalyticsAsync(userId, "month");
 var spendingByCategory = await _bankAccountService.GetSpendingByCategoryAsync(userId, "month");
+```
+
+### Recording Variable Expenses
+
+```csharp
+// Record a food expense
+var foodExpense = new CreateExpenseDto
+{
+    BankAccountId = "account-id",
+    Amount = 15.75m,
+    Category = "FOOD",
+    Description = "Lunch at restaurant",
+    Merchant = "McDonald's",
+    Location = "Downtown Mall",
+    Notes = "Quick lunch break"
+};
+
+var result = await _bankAccountService.CreateExpenseAsync(foodExpense, userId);
+
+// Record a transportation expense
+var transportExpense = new CreateExpenseDto
+{
+    BankAccountId = "account-id",
+    Amount = 8.50m,
+    Category = "PUBLIC_TRANSPORT",
+    Description = "Bus fare to work",
+    Merchant = "City Bus",
+    Location = "Bus Stop #42"
+};
+
+var transportResult = await _bankAccountService.CreateExpenseAsync(transportExpense, userId);
+```
+
+### Getting Expense Analytics
+
+```csharp
+// Get comprehensive expense analytics
+var expenseAnalytics = await _bankAccountService.GetExpenseAnalyticsAsync(userId, "month");
+
+// Get quick expense summary
+var expenseSummary = await _bankAccountService.GetExpenseSummaryAsync(userId);
+
+// Get expenses by specific category
+var foodExpenses = await _bankAccountService.GetExpensesByCategoryAsync(userId, "FOOD", 1, 20);
+
+// Get all expense categories with amounts
+var categories = await _bankAccountService.GetExpenseCategoriesAsync(userId);
 ```
 
 ### Connecting to Bank API
@@ -854,6 +1212,55 @@ catch (Exception ex)
 1. **Performance Metrics**: Track response times
 2. **Error Rates**: Monitor error frequencies
 3. **Usage Patterns**: Analyze API usage for optimization
+
+## Bills vs Variable Spending
+
+The system provides two distinct approaches for managing different types of expenses:
+
+### Bills System (Fixed/Recurring Expenses)
+**Use for**: Fixed amounts, recurring payments, predictable timing
+
+**Examples**:
+- Rent: $1,200/month
+- Utilities: ~$150/month  
+- Insurance: $200/month
+- Subscriptions: $15/month
+
+**API Endpoint**: `/api/bills`
+
+**Features**:
+- Due date tracking
+- Payment status management
+- Recurring frequency settings
+- Bill reminders and notifications
+
+### Variable Spending System (Daily/Discretionary Expenses)
+**Use for**: Variable amounts, irregular timing, unpredictable amounts
+
+**Examples**:
+- Food: $15.75 (lunch)
+- Transportation: $8.50 (bus fare)
+- Entertainment: $25.00 (movie ticket)
+- Shopping: $45.99 (clothing)
+
+**API Endpoint**: `/api/bankaccounts/expenses`
+
+**Features**:
+- Real-time balance updates
+- Category-based tracking
+- Merchant and location tracking
+- Comprehensive analytics
+
+### When to Use Which System
+
+| **Use Bills API** | **Use Variable Spending API** |
+|-------------------|-------------------------------|
+| Fixed amounts | Variable amounts |
+| Monthly/quarterly payments | Daily/weekly expenses |
+| Predictable timing | Irregular timing |
+| Utilities, rent, insurance | Food, transport, entertainment |
+| Need due date tracking | Need category analytics |
+| Recurring payments | One-time purchases |
 
 ## Integration Guidelines
 

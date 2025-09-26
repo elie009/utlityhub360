@@ -153,5 +153,45 @@ namespace UtilityHub360.Models
         CREDIT,
         DEBIT
     }
+
+    public enum SavingsType
+    {
+        EMERGENCY,
+        VACATION,
+        INVESTMENT,
+        RETIREMENT,
+        EDUCATION,
+        HOME_DOWN_PAYMENT,
+        CAR_PURCHASE,
+        WEDDING,
+        TRAVEL,
+        BUSINESS,
+        HEALTH,
+        TAX_SAVINGS,
+        GENERAL
+    }
+
+    public enum SavingsTransactionType
+    {
+        DEPOSIT,
+        WITHDRAWAL,
+        TRANSFER,
+        INTEREST,
+        BONUS
+    }
+
+    public enum SavingsCategory
+    {
+        MONTHLY_SAVINGS,
+        BONUS,
+        TAX_REFUND,
+        GIFT,
+        SIDE_INCOME,
+        INVESTMENT_RETURN,
+        EMERGENCY_WITHDRAWAL,
+        PLANNED_EXPENSE,
+        TRANSFER,
+        OTHER
+    }
 }
 
