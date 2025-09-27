@@ -154,6 +154,9 @@ namespace UtilityHub360.DTOs
         [StringLength(100)]
         public string? ReferenceNumber { get; set; }
 
+        [StringLength(100)]
+        public string? ExternalTransactionId { get; set; }
+
         public DateTime TransactionDate { get; set; } = DateTime.UtcNow;
 
         [StringLength(500, ErrorMessage = "Notes cannot exceed 500 characters")]

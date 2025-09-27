@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using UtilityHub360.Data;
 
@@ -11,9 +12,11 @@ using UtilityHub360.Data;
 namespace UtilityHub360.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250927083225_MergeBankTransactionsToPayments")]
+    partial class MergeBankTransactionsToPayments
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -774,6 +777,43 @@ namespace UtilityHub360.Migrations
                     b.ToTable("SavingsTransactions");
                 });
 
+            modelBuilder.Entity("UtilityHub360.Entities.Transaction", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("LoanId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoanId");
+
+                    b.ToTable("Transactions");
+                });
+
             modelBuilder.Entity("UtilityHub360.Entities.User", b =>
                 {
                     b.Property<string>("Id")
@@ -822,13 +862,13 @@ namespace UtilityHub360.Migrations
                         new
                         {
                             Id = "admin-001",
-                            CreatedAt = new DateTime(2025, 9, 27, 9, 21, 16, 795, DateTimeKind.Utc).AddTicks(5212),
+                            CreatedAt = new DateTime(2025, 9, 27, 8, 32, 23, 939, DateTimeKind.Utc).AddTicks(939),
                             Email = "admin@utilityhub360.com",
                             IsActive = true,
                             Name = "System Administrator",
                             Phone = "+1234567890",
                             Role = "ADMIN",
-                            UpdatedAt = new DateTime(2025, 9, 27, 9, 21, 16, 795, DateTimeKind.Utc).AddTicks(5213)
+                            UpdatedAt = new DateTime(2025, 9, 27, 8, 32, 23, 939, DateTimeKind.Utc).AddTicks(939)
                         });
                 });
 
@@ -996,7 +1036,7 @@ namespace UtilityHub360.Migrations
                     b.HasOne("UtilityHub360.Entities.BankAccount", "BankAccount")
                         .WithMany()
                         .HasForeignKey("BankAccountId")
-                        .OnDelete(DeleteBehavior.NoAction);
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("UtilityHub360.Entities.Loan", "Loan")
                         .WithMany("Payments")
@@ -1057,6 +1097,17 @@ namespace UtilityHub360.Migrations
                     b.Navigation("SourceBankAccount");
                 });
 
+            modelBuilder.Entity("UtilityHub360.Entities.Transaction", b =>
+                {
+                    b.HasOne("UtilityHub360.Entities.Loan", "Loan")
+                        .WithMany("Transactions")
+                        .HasForeignKey("LoanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Loan");
+                });
+
             modelBuilder.Entity("UtilityHub360.Entities.UserProfile", b =>
                 {
                     b.HasOne("UtilityHub360.Entities.User", "User")
@@ -1078,6 +1129,8 @@ namespace UtilityHub360.Migrations
                     b.Navigation("Payments");
 
                     b.Navigation("RepaymentSchedules");
+
+                    b.Navigation("Transactions");
                 });
 
             modelBuilder.Entity("UtilityHub360.Entities.SavingsAccount", b =>

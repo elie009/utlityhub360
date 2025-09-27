@@ -13,7 +13,6 @@ namespace UtilityHub360.Data
         public DbSet<Loan> Loans { get; set; }
         public DbSet<RepaymentSchedule> RepaymentSchedules { get; set; }
         public DbSet<Payment> Payments { get; set; }
-        public DbSet<Transaction> Transactions { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<LoanApplication> LoanApplications { get; set; }
         public DbSet<Bill> Bills { get; set; }
@@ -53,7 +52,7 @@ namespace UtilityHub360.Data
                     .OnDelete(DeleteBehavior.Cascade);
             });
 
-            // Payment configuration
+            // Payment configuration (now includes bank transactions)
             modelBuilder.Entity<Payment>(entity =>
             {
                 entity.HasOne(d => d.Loan)
@@ -61,22 +60,27 @@ namespace UtilityHub360.Data
                     .HasForeignKey(d => d.LoanId)
                     .OnDelete(DeleteBehavior.Cascade);
 
+                entity.HasOne(d => d.BankAccount)
+                    .WithMany()
+                    .HasForeignKey(d => d.BankAccountId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
                 entity.HasOne(d => d.User)
                     .WithMany(p => p.Payments)
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.NoAction);
 
-                entity.HasIndex(e => new { e.LoanId, e.Reference }).IsUnique();
+                // Unique constraint only applies when LoanId is not null
+                entity.HasIndex(e => new { e.LoanId, e.Reference })
+                    .HasFilter("[LoanId] IS NOT NULL")
+                    .IsUnique();
+
+                entity.HasIndex(e => e.ExternalTransactionId);
+                entity.HasIndex(e => e.TransactionDate);
+                entity.HasIndex(e => e.IsBankTransaction);
+                entity.HasIndex(e => e.BankAccountId);
             });
 
-            // Transaction configuration
-            modelBuilder.Entity<Transaction>(entity =>
-            {
-                entity.HasOne(d => d.Loan)
-                    .WithMany(p => p.Transactions)
-                    .HasForeignKey(d => d.LoanId)
-                    .OnDelete(DeleteBehavior.Cascade);
-            });
 
             // Notification configuration
             modelBuilder.Entity<Notification>(entity =>

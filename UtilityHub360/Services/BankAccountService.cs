@@ -225,19 +225,19 @@ namespace UtilityHub360.Services
                 // Calculate period dates based on frequency
                 var (periodStart, periodEnd) = GetPeriodDates(frequency);
 
-                // Get all transactions for the period
-                var allTransactions = bankAccounts
-                    .SelectMany(ba => ba.Transactions)
-                    .Where(t => t.TransactionDate >= periodStart && t.TransactionDate <= periodEnd)
-                    .ToList();
+                // Get all transactions for the period (now from Payments table)
+                var allTransactions = await _context.Payments
+                    .Where(p => p.UserId == userId && p.IsBankTransaction && 
+                               p.TransactionDate >= periodStart && p.TransactionDate <= periodEnd)
+                    .ToListAsync();
 
                 // Get current month transactions
                 var currentMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
                 var currentMonthEnd = currentMonthStart.AddMonths(1).AddDays(-1);
-                var currentMonthTransactions = bankAccounts
-                    .SelectMany(ba => ba.Transactions)
-                    .Where(t => t.TransactionDate >= currentMonthStart && t.TransactionDate <= currentMonthEnd)
-                    .ToList();
+                var currentMonthTransactions = await _context.Payments
+                    .Where(p => p.UserId == userId && p.IsBankTransaction && 
+                               p.TransactionDate >= currentMonthStart && p.TransactionDate <= currentMonthEnd)
+                    .ToListAsync();
 
                 var summary = new BankAccountSummaryDto
                 {
@@ -502,7 +502,50 @@ namespace UtilityHub360.Services
                     return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found");
                 }
 
-                var transaction = new BankTransaction
+                // Create transaction as Payment with IsBankTransaction = true
+                var payment = new Entities.Payment
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    BankAccountId = createTransactionDto.BankAccountId,
+                    UserId = userId,
+                    Amount = createTransactionDto.Amount,
+                    Method = "BANK_TRANSFER",
+                    Reference = createTransactionDto.ReferenceNumber ?? $"BANK_TXN_{Guid.NewGuid()}",
+                    Status = "COMPLETED",
+                    IsBankTransaction = true,
+                    TransactionType = createTransactionDto.TransactionType.ToUpper(),
+                    Description = createTransactionDto.Description,
+                    Category = createTransactionDto.Category,
+                    ExternalTransactionId = createTransactionDto.ExternalTransactionId,
+                    Notes = createTransactionDto.Notes,
+                    Merchant = createTransactionDto.Merchant,
+                    Location = createTransactionDto.Location,
+                    IsRecurring = createTransactionDto.IsRecurring,
+                    RecurringFrequency = createTransactionDto.RecurringFrequency,
+                    Currency = createTransactionDto.Currency.ToUpper(),
+                    ProcessedAt = createTransactionDto.TransactionDate,
+                    TransactionDate = createTransactionDto.TransactionDate,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                // Update account balance
+                if (payment.TransactionType == "CREDIT")
+                {
+                    bankAccount.CurrentBalance += payment.Amount;
+                }
+                else if (payment.TransactionType == "DEBIT")
+                {
+                    bankAccount.CurrentBalance -= payment.Amount;
+                }
+
+                payment.BalanceAfterTransaction = bankAccount.CurrentBalance;
+                bankAccount.UpdatedAt = DateTime.UtcNow;
+
+                _context.Payments.Add(payment);
+
+                // Also create BankTransaction record
+                var bankTransaction = new Entities.BankTransaction
                 {
                     Id = Guid.NewGuid().ToString(),
                     BankAccountId = createTransactionDto.BankAccountId,
@@ -511,35 +554,24 @@ namespace UtilityHub360.Services
                     TransactionType = createTransactionDto.TransactionType.ToUpper(),
                     Description = createTransactionDto.Description,
                     Category = createTransactionDto.Category,
-                    ReferenceNumber = createTransactionDto.ReferenceNumber,
-                    TransactionDate = createTransactionDto.TransactionDate,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow,
+                    ReferenceNumber = createTransactionDto.ReferenceNumber ?? $"BANK_TXN_{Guid.NewGuid()}",
+                    ExternalTransactionId = createTransactionDto.ExternalTransactionId,
                     Notes = createTransactionDto.Notes,
                     Merchant = createTransactionDto.Merchant,
                     Location = createTransactionDto.Location,
                     IsRecurring = createTransactionDto.IsRecurring,
                     RecurringFrequency = createTransactionDto.RecurringFrequency,
-                    Currency = createTransactionDto.Currency.ToUpper()
+                    Currency = createTransactionDto.Currency.ToUpper(),
+                    BalanceAfterTransaction = bankAccount.CurrentBalance,
+                    TransactionDate = createTransactionDto.TransactionDate,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
                 };
 
-                // Update account balance
-                if (transaction.TransactionType == "CREDIT")
-                {
-                    bankAccount.CurrentBalance += transaction.Amount;
-                }
-                else if (transaction.TransactionType == "DEBIT")
-                {
-                    bankAccount.CurrentBalance -= transaction.Amount;
-                }
-
-                transaction.BalanceAfterTransaction = bankAccount.CurrentBalance;
-                bankAccount.UpdatedAt = DateTime.UtcNow;
-
-                _context.BankTransactions.Add(transaction);
+                _context.BankTransactions.Add(bankTransaction);
                 await _context.SaveChangesAsync();
 
-                var transactionDto = MapToBankTransactionDto(transaction);
+                var transactionDto = MapPaymentToBankTransactionDto(payment);
                 return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Transaction created successfully");
             }
             catch (Exception ex)
@@ -560,14 +592,14 @@ namespace UtilityHub360.Services
                     return ApiResponse<List<BankTransactionDto>>.ErrorResult("Bank account not found");
                 }
 
-                var transactions = await _context.BankTransactions
-                    .Where(t => t.BankAccountId == bankAccountId && t.UserId == userId)
-                    .OrderByDescending(t => t.TransactionDate)
+                var payments = await _context.Payments
+                    .Where(p => p.BankAccountId == bankAccountId && p.UserId == userId && p.IsBankTransaction)
+                    .OrderByDescending(p => p.TransactionDate ?? p.ProcessedAt)
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToListAsync();
 
-                var transactionDtos = transactions.Select(MapToBankTransactionDto).ToList();
+                var transactionDtos = payments.Select(MapPaymentToBankTransactionDto).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
             }
             catch (Exception ex)
@@ -1150,6 +1182,32 @@ namespace UtilityHub360.Services
                 RecurringFrequency = transaction.RecurringFrequency,
                 Currency = transaction.Currency,
                 BalanceAfterTransaction = transaction.BalanceAfterTransaction
+            };
+        }
+
+        private static BankTransactionDto MapPaymentToBankTransactionDto(Entities.Payment payment)
+        {
+            return new BankTransactionDto
+            {
+                Id = payment.Id,
+                BankAccountId = payment.BankAccountId,
+                UserId = payment.UserId,
+                Amount = payment.Amount,
+                TransactionType = payment.TransactionType ?? "UNKNOWN",
+                Description = payment.Description ?? "",
+                Category = payment.Category,
+                ReferenceNumber = payment.Reference,
+                ExternalTransactionId = payment.ExternalTransactionId,
+                TransactionDate = payment.TransactionDate ?? payment.ProcessedAt,
+                CreatedAt = payment.CreatedAt,
+                UpdatedAt = payment.UpdatedAt,
+                Notes = payment.Notes,
+                Merchant = payment.Merchant,
+                Location = payment.Location,
+                IsRecurring = payment.IsRecurring,
+                RecurringFrequency = payment.RecurringFrequency,
+                Currency = payment.Currency,
+                BalanceAfterTransaction = payment.BalanceAfterTransaction ?? 0
             };
         }
 

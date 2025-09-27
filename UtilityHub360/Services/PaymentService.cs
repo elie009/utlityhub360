@@ -18,6 +18,8 @@ namespace UtilityHub360.Services
         {
             try
             {
+                Console.WriteLine($"DEBUG: Starting MakePaymentAsync. LoanId: {payment.LoanId}, Amount: {payment.Amount}, Method: {payment.Method}, Reference: {payment.Reference}");
+                
                 // Verify loan exists and belongs to user
                 var loan = await _context.Loans
                     .FirstOrDefaultAsync(l => l.Id == payment.LoanId && l.UserId == userId);
@@ -41,61 +43,204 @@ namespace UtilityHub360.Services
                     return ApiResponse<PaymentDto>.ErrorResult("Payment reference already exists for this loan");
                 }
 
-                // Create payment
-                var newPayment = new Entities.Payment
+                // Handle different payment methods
+                var methodLower = payment.Method.ToLower().Trim();
+                if (methodLower == "bank transfer" || methodLower == "bank transaction" || methodLower == "bank_transfer" || methodLower == "banktransfer")
                 {
-                    LoanId = payment.LoanId,
-                    UserId = userId,
-                    Amount = payment.Amount,
-                    Method = payment.Method,
-                    Reference = payment.Reference,
-                    Status = "PENDING",
-                    ProcessedAt = DateTime.UtcNow,
-                    CreatedAt = DateTime.UtcNow
-                };
+                    // Debug: Log that we're processing bank transfer
+                    Console.WriteLine($"DEBUG: Processing bank transfer payment. Method: '{payment.Method}', MethodLower: '{methodLower}', BankAccountId: '{payment.BankAccountId}'");
+                    // Validate bank account for bank transfer
+                    if (string.IsNullOrEmpty(payment.BankAccountId))
+                    {
+                        return ApiResponse<PaymentDto>.ErrorResult("BankAccountId is required for Bank transfer method");
+                    }
 
-                _context.Payments.Add(newPayment);
+                    // Verify bank account exists and belongs to user
+                    var bankAccount = await _context.BankAccounts
+                        .FirstOrDefaultAsync(ba => ba.Id == payment.BankAccountId && ba.UserId == userId);
 
-                // Create transaction record
-                var transaction = new Entities.Transaction
+                    Console.WriteLine($"DEBUG: Bank account lookup. BankAccountId: {payment.BankAccountId}, UserId: {userId}, Found: {bankAccount != null}");
+
+                    if (bankAccount == null)
+                    {
+                        return ApiResponse<PaymentDto>.ErrorResult("Bank account not found or does not belong to user");
+                    }
+
+                    Console.WriteLine($"DEBUG: Bank account found. CurrentBalance: {bankAccount.CurrentBalance}, AccountName: {bankAccount.AccountName}");
+
+                    // Create loan payment record
+                    //var loanPayment = new Entities.Payment
+                    //{
+                    //    LoanId = payment.LoanId,
+                    //    UserId = userId,
+                    //    Amount = payment.Amount,
+                    //    Method = payment.Method,
+                    //    Reference = payment.Reference,
+                    //    Status = "COMPLETED",
+                    //    IsBankTransaction = false, // This is a loan payment
+                    //    TransactionType = "PAYMENT",
+                    //    Description = $"Loan payment via {payment.Method}",
+                    //    ProcessedAt = DateTime.UtcNow,
+                    //    TransactionDate = DateTime.UtcNow,
+                    //    CreatedAt = DateTime.UtcNow,
+                    //    UpdatedAt = DateTime.UtcNow
+                    //};
+
+                    //_context.Payments.Add(loanPayment);
+
+                    // Create single payment record that serves both loan payment and bank transaction
+                    var bankTransaction = new Entities.Payment
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        BankAccountId = payment.BankAccountId,
+                        LoanId = payment.LoanId,
+                        UserId = userId,
+                        Amount = payment.Amount,
+                        Method = "BANK_TRANSFER",
+                        Reference = $"BANK_TXN_{payment.Reference}",
+                        Status = "COMPLETED",
+                        IsBankTransaction = true, // This is a bank transaction
+                        TransactionType = "DEBIT",
+                        Description = $"Loan payment - {payment.Reference}",
+                        Category = "LOAN_PAYMENT",
+                        ExternalTransactionId = $"LOAN_PAY_{payment.Reference}",
+                        ProcessedAt = DateTime.UtcNow,
+                        TransactionDate = DateTime.UtcNow,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    _context.Payments.Add(bankTransaction);
+                    Console.WriteLine($"DEBUG: Added combined loan payment + bank transaction to Payments table. ID: {bankTransaction.Id}, Reference: {bankTransaction.Reference}");
+
+                    // Update bank account balance (debit)
+                    bankAccount.CurrentBalance -= payment.Amount;
+                    var newBalance = bankAccount.CurrentBalance;
+
+                    // Also create BankTransaction record
+                    var bankTxnRecord = new Entities.BankTransaction
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        BankAccountId = payment.BankAccountId,
+                        UserId = userId,
+                        Amount = payment.Amount,
+                        TransactionType = "DEBIT",
+                        Description = $"Loan payment - {payment.Reference}",
+                        Category = "LOAN_PAYMENT",
+                        ReferenceNumber = $"BANK_TXN_{payment.Reference}",
+                        ExternalTransactionId = $"LOAN_PAY_{payment.Reference}",
+                        BalanceAfterTransaction = newBalance, // Set the balance after transaction
+                        TransactionDate = DateTime.UtcNow,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    _context.BankTransactions.Add(bankTxnRecord);
+                    Console.WriteLine($"DEBUG: Added bank transaction to BankTransactions table. ID: {bankTxnRecord.Id}, Reference: {bankTxnRecord.ReferenceNumber}, BalanceAfter: {bankTxnRecord.BalanceAfterTransaction}");
+
+                    // Set balance after transaction for bank transaction Payment record
+                    bankTransaction.BalanceAfterTransaction = newBalance;
+                    bankAccount.UpdatedAt = DateTime.UtcNow;
+                }
+                else
                 {
-                    LoanId = payment.LoanId,
-                    Type = "PAYMENT",
-                    Amount = payment.Amount,
-                    Description = $"Payment via {payment.Method}",
-                    Reference = payment.Reference,
-                    CreatedAt = DateTime.UtcNow
-                };
+                    // Debug: Log that we're processing cash/other payment
+                    Console.WriteLine($"DEBUG: Processing cash/other payment. Method: '{payment.Method}', MethodLower: '{methodLower}'");
+                    // Cash or other payment methods - only create loan payment record
+                    var loanPayment = new Entities.Payment
+                    {
+                        LoanId = payment.LoanId,
+                        UserId = userId,
+                        Amount = payment.Amount,
+                        Method = payment.Method,
+                        Reference = payment.Reference,
+                        Status = "COMPLETED",
+                        IsBankTransaction = false, // This is a loan payment only
+                        TransactionType = "PAYMENT",
+                        Description = $"Loan payment via {payment.Method}",
+                        ProcessedAt = DateTime.UtcNow,
+                        TransactionDate = DateTime.UtcNow,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
 
-                _context.Transactions.Add(transaction);
+                    _context.Payments.Add(loanPayment);
+                }
 
                 // Update loan remaining balance
+                var oldBalance = loan.RemainingBalance;
                 loan.RemainingBalance -= payment.Amount;
+                
+                Console.WriteLine($"DEBUG: Loan balance update - Old: {oldBalance}, Payment: {payment.Amount}, New: {loan.RemainingBalance}");
 
                 // Check if loan is fully paid
                 if (loan.RemainingBalance <= 0)
                 {
+                    loan.RemainingBalance = 0; // Ensure it's not negative
                     loan.Status = "COMPLETED";
                     loan.CompletedAt = DateTime.UtcNow;
+                    Console.WriteLine($"DEBUG: Loan marked as COMPLETED. Final balance: {loan.RemainingBalance}");
                 }
 
-                await _context.SaveChangesAsync();
+                try
+                {
+                    Console.WriteLine($"DEBUG: About to save changes. Entities being tracked:");
+                    foreach (var entry in _context.ChangeTracker.Entries())
+                    {
+                        Console.WriteLine($"  - {entry.Entity.GetType().Name}: {entry.State}");
+                    }
+                    
+                    await _context.SaveChangesAsync();
+                    Console.WriteLine($"DEBUG: Successfully saved changes to database. Total changes: {_context.ChangeTracker.Entries().Count()}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"DEBUG: SaveChanges failed with error: {ex.Message}");
+                    if (ex.InnerException != null)
+                    {
+                        Console.WriteLine($"DEBUG: Inner exception: {ex.InnerException.Message}");
+                    }
+                    throw; // Re-throw to preserve the original error
+                }
 
-                // Update payment status to completed
-                newPayment.Status = "COMPLETED";
-                await _context.SaveChangesAsync();
+                // Get the payment record to return
+                var loanPaymentRecord = await _context.Payments
+                    .FirstOrDefaultAsync(p => p.LoanId == payment.LoanId && 
+                                            p.Reference == (methodLower == "bank transfer" || methodLower == "bank transaction" || methodLower == "bank_transfer" || methodLower == "banktransfer" 
+                                                ? $"BANK_TXN_{payment.Reference}" 
+                                                : payment.Reference));
+
+                if (loanPaymentRecord == null)
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Failed to retrieve payment record");
+                }
 
                 var paymentDto = new PaymentDto
                 {
-                    Id = newPayment.Id,
-                    LoanId = newPayment.LoanId,
-                    UserId = newPayment.UserId,
-                    Amount = newPayment.Amount,
-                    Method = newPayment.Method,
-                    Reference = newPayment.Reference,
-                    Status = newPayment.Status,
-                    ProcessedAt = newPayment.ProcessedAt,
-                    CreatedAt = newPayment.CreatedAt
+                    Id = loanPaymentRecord.Id,
+                    LoanId = loanPaymentRecord.LoanId,
+                    BankAccountId = loanPaymentRecord.BankAccountId,
+                    UserId = loanPaymentRecord.UserId,
+                    Amount = loanPaymentRecord.Amount,
+                    Method = loanPaymentRecord.Method,
+                    Reference = loanPaymentRecord.Reference,
+                    Status = loanPaymentRecord.Status,
+                    IsBankTransaction = loanPaymentRecord.IsBankTransaction,
+                    TransactionType = loanPaymentRecord.TransactionType,
+                    Description = loanPaymentRecord.Description,
+                    Category = loanPaymentRecord.Category,
+                    ExternalTransactionId = loanPaymentRecord.ExternalTransactionId,
+                    Notes = loanPaymentRecord.Notes,
+                    Merchant = loanPaymentRecord.Merchant,
+                    Location = loanPaymentRecord.Location,
+                    IsRecurring = loanPaymentRecord.IsRecurring,
+                    RecurringFrequency = loanPaymentRecord.RecurringFrequency,
+                    Currency = loanPaymentRecord.Currency,
+                    BalanceAfterTransaction = loanPaymentRecord.BalanceAfterTransaction,
+                    ProcessedAt = loanPaymentRecord.ProcessedAt,
+                    TransactionDate = loanPaymentRecord.TransactionDate,
+                    CreatedAt = loanPaymentRecord.CreatedAt,
+                    UpdatedAt = loanPaymentRecord.UpdatedAt
                 };
 
                 return ApiResponse<PaymentDto>.SuccessResult(paymentDto, "Payment processed successfully");
@@ -257,16 +402,8 @@ namespace UtilityHub360.Services
                     return ApiResponse<bool>.ErrorResult("Cannot delete payments older than 24 hours");
                 }
 
-                // Find and remove the associated transaction
-                var transaction = await _context.Transactions
-                    .FirstOrDefaultAsync(t => t.LoanId == payment.LoanId && 
-                                            t.Type == "PAYMENT" && 
-                                            t.Reference == payment.Reference);
-
-                if (transaction != null)
-                {
-                    _context.Transactions.Remove(transaction);
-                }
+                // The payment record itself is the loan activity, so we just need to remove it
+                // No need to find a separate loan activity record
 
                 // Restore the loan balance
                 payment.Loan.RemainingBalance += payment.Amount;
@@ -364,6 +501,219 @@ namespace UtilityHub360.Services
             {
                 return ApiResponse<object>.ErrorResult($"Debug failed: {ex.Message}");
             }
+        }
+
+        // Bank Transaction methods (now using Payment table)
+        public async Task<ApiResponse<PaymentDto>> CreateBankTransactionAsync(CreateBankTransactionDto transaction, string userId)
+        {
+            try
+            {
+                // Verify bank account exists and belongs to user
+                var bankAccount = await _context.BankAccounts
+                    .FirstOrDefaultAsync(ba => ba.Id == transaction.BankAccountId && ba.UserId == userId);
+
+                if (bankAccount == null)
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Bank account not found");
+                }
+
+                // Create bank transaction as Payment
+                var newPayment = new Entities.Payment
+                {
+                    BankAccountId = transaction.BankAccountId,
+                    UserId = userId,
+                    Amount = transaction.Amount,
+                    Method = "BANK_TRANSFER",
+                    Reference = transaction.ReferenceNumber ?? $"BANK_TXN_{Guid.NewGuid()}",
+                    Status = "COMPLETED",
+                    IsBankTransaction = true,
+                    TransactionType = transaction.TransactionType,
+                    Description = transaction.Description,
+                    Category = transaction.Category,
+                    ExternalTransactionId = transaction.ExternalTransactionId,
+                    Notes = transaction.Notes,
+                    Merchant = transaction.Merchant,
+                    Location = transaction.Location,
+                    IsRecurring = transaction.IsRecurring,
+                    RecurringFrequency = transaction.RecurringFrequency,
+                    Currency = transaction.Currency,
+                    ProcessedAt = transaction.TransactionDate,
+                    TransactionDate = transaction.TransactionDate,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.Payments.Add(newPayment);
+
+                // Update bank account balance
+                if (transaction.TransactionType == "CREDIT")
+                {
+                    bankAccount.CurrentBalance += transaction.Amount;
+                }
+                else if (transaction.TransactionType == "DEBIT")
+                {
+                    bankAccount.CurrentBalance -= transaction.Amount;
+                }
+
+                newPayment.BalanceAfterTransaction = bankAccount.CurrentBalance;
+                bankAccount.UpdatedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                var paymentDto = MapToPaymentDto(newPayment);
+                return ApiResponse<PaymentDto>.SuccessResult(paymentDto, "Bank transaction created successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<PaymentDto>.ErrorResult($"Failed to create bank transaction: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<PaymentDto>> GetBankTransactionAsync(string transactionId, string userId)
+        {
+            try
+            {
+                var payment = await _context.Payments
+                    .Include(p => p.BankAccount)
+                    .FirstOrDefaultAsync(p => p.Id == transactionId && p.UserId == userId && p.IsBankTransaction);
+
+                if (payment == null)
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Bank transaction not found");
+                }
+
+                var paymentDto = MapToPaymentDto(payment);
+                return ApiResponse<PaymentDto>.SuccessResult(paymentDto);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<PaymentDto>.ErrorResult($"Failed to get bank transaction: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<List<PaymentDto>>> GetBankTransactionsAsync(string userId, string? accountType = null, int page = 1, int limit = 50)
+        {
+            try
+            {
+                var query = _context.Payments
+                    .Include(p => p.BankAccount)
+                    .Where(p => p.UserId == userId && p.IsBankTransaction);
+
+                if (!string.IsNullOrEmpty(accountType))
+                {
+                    query = query.Where(p => p.BankAccount != null && p.BankAccount.AccountType == accountType.ToLower());
+                }
+
+                var payments = await query
+                    .OrderByDescending(p => p.TransactionDate ?? p.ProcessedAt)
+                    .Skip((page - 1) * limit)
+                    .Take(limit)
+                    .ToListAsync();
+
+                var paymentDtos = payments.Select(MapToPaymentDto).ToList();
+                return ApiResponse<List<PaymentDto>>.SuccessResult(paymentDtos);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<List<PaymentDto>>.ErrorResult($"Failed to get bank transactions: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<List<PaymentDto>>> GetAccountTransactionsAsync(string bankAccountId, string userId, int page = 1, int limit = 50)
+        {
+            try
+            {
+                var payments = await _context.Payments
+                    .Include(p => p.BankAccount)
+                    .Where(p => p.BankAccountId == bankAccountId && p.UserId == userId && p.IsBankTransaction)
+                    .OrderByDescending(p => p.TransactionDate ?? p.ProcessedAt)
+                    .Skip((page - 1) * limit)
+                    .Take(limit)
+                    .ToListAsync();
+
+                var paymentDtos = payments.Select(MapToPaymentDto).ToList();
+                return ApiResponse<List<PaymentDto>>.SuccessResult(paymentDtos);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<List<PaymentDto>>.ErrorResult($"Failed to get account transactions: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<bool>> DeleteBankTransactionAsync(string transactionId, string userId)
+        {
+            try
+            {
+                var payment = await _context.Payments
+                    .Include(p => p.BankAccount)
+                    .FirstOrDefaultAsync(p => p.Id == transactionId && p.UserId == userId && p.IsBankTransaction);
+
+                if (payment == null)
+                {
+                    return ApiResponse<bool>.ErrorResult("Bank transaction not found");
+                }
+
+                // Check if transaction is too old to delete (e.g., more than 24 hours)
+                var timeSinceCreation = DateTime.UtcNow - payment.CreatedAt;
+                if (timeSinceCreation.TotalHours > 24)
+                {
+                    return ApiResponse<bool>.ErrorResult("Cannot delete bank transaction older than 24 hours");
+                }
+
+                // Reverse the bank account balance
+                if (payment.BankAccount != null)
+                {
+                    if (payment.TransactionType == "CREDIT")
+                    {
+                        payment.BankAccount.CurrentBalance -= payment.Amount;
+                    }
+                    else if (payment.TransactionType == "DEBIT")
+                    {
+                        payment.BankAccount.CurrentBalance += payment.Amount;
+                    }
+                    payment.BankAccount.UpdatedAt = DateTime.UtcNow;
+                }
+
+                _context.Payments.Remove(payment);
+                await _context.SaveChangesAsync();
+
+                return ApiResponse<bool>.SuccessResult(true, "Bank transaction deleted successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Failed to delete bank transaction: {ex.Message}");
+            }
+        }
+
+        private PaymentDto MapToPaymentDto(Entities.Payment payment)
+        {
+            return new PaymentDto
+            {
+                Id = payment.Id,
+                LoanId = payment.LoanId,
+                BankAccountId = payment.BankAccountId,
+                UserId = payment.UserId,
+                Amount = payment.Amount,
+                Method = payment.Method,
+                Reference = payment.Reference,
+                Status = payment.Status,
+                IsBankTransaction = payment.IsBankTransaction,
+                TransactionType = payment.TransactionType,
+                Description = payment.Description,
+                Category = payment.Category,
+                ExternalTransactionId = payment.ExternalTransactionId,
+                Notes = payment.Notes,
+                Merchant = payment.Merchant,
+                Location = payment.Location,
+                IsRecurring = payment.IsRecurring,
+                RecurringFrequency = payment.RecurringFrequency,
+                Currency = payment.Currency,
+                BalanceAfterTransaction = payment.BalanceAfterTransaction,
+                ProcessedAt = payment.ProcessedAt,
+                TransactionDate = payment.TransactionDate,
+                CreatedAt = payment.CreatedAt,
+                UpdatedAt = payment.UpdatedAt
+            };
         }
     }
 }
