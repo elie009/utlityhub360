@@ -168,7 +168,7 @@ namespace UtilityHub360.Controllers
         /// Get bank account summary with analytics
         /// </summary>
         [HttpGet("summary")]
-        public async Task<ActionResult<ApiResponse<BankAccountSummaryDto>>> GetBankAccountSummary()
+        public async Task<ActionResult<ApiResponse<BankAccountSummaryDto>>> GetBankAccountSummary([FromQuery] string frequency = "monthly")
         {
             try
             {
@@ -178,7 +178,14 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<BankAccountSummaryDto>.ErrorResult("User not authenticated"));
                 }
 
-                var result = await _bankAccountService.GetBankAccountSummaryAsync(userId);
+                // Validate frequency parameter
+                var validFrequencies = new[] { "weekly", "monthly", "quarterly", "yearly" };
+                if (!validFrequencies.Contains(frequency.ToLower()))
+                {
+                    return BadRequest(ApiResponse<BankAccountSummaryDto>.ErrorResult("Invalid frequency. Must be one of: weekly, monthly, quarterly, yearly"));
+                }
+
+                var result = await _bankAccountService.GetBankAccountSummaryAsync(userId, frequency.ToLower());
                 
                 if (!result.Success)
                 {

@@ -182,7 +182,15 @@ namespace UtilityHub360.DTOs
         public int ConnectedAccounts { get; set; }
         public decimal TotalIncoming { get; set; }
         public decimal TotalOutgoing { get; set; }
+        public decimal CurrentMonthIncoming { get; set; }
+        public decimal CurrentMonthOutgoing { get; set; }
+        public decimal CurrentMonthNet { get; set; }
+        public string Frequency { get; set; } = "monthly";
+        public DateTime PeriodStart { get; set; }
+        public DateTime PeriodEnd { get; set; }
+        public int TransactionCount { get; set; }
         public List<BankAccountDto> Accounts { get; set; } = new List<BankAccountDto>();
+        public Dictionary<string, decimal> SpendingByCategory { get; set; } = new Dictionary<string, decimal>();
     }
 
     public class BankIntegrationDto

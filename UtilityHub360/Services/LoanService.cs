@@ -55,8 +55,8 @@ namespace UtilityHub360.Services
                 _context.LoanApplications.Add(loanApplication);
                 await _context.SaveChangesAsync();
 
-                // Create loan from application
-                var interestRate = CalculateInterestRate(application.Principal, application.Term, application.MonthlyIncome);
+                // Create loan from application using provided interest rate
+                var interestRate = application.InterestRate;
                 var monthlyPayment = CalculateMonthlyPayment(application.Principal, interestRate, application.Term);
                 var totalAmount = monthlyPayment * application.Term;
 

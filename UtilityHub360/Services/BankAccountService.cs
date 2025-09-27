@@ -191,7 +191,7 @@ namespace UtilityHub360.Services
             }
         }
 
-        public async Task<ApiResponse<BankAccountSummaryDto>> GetBankAccountSummaryAsync(string userId)
+        public async Task<ApiResponse<BankAccountSummaryDto>> GetBankAccountSummaryAsync(string userId, string frequency = "monthly")
         {
             try
             {
@@ -200,19 +200,77 @@ namespace UtilityHub360.Services
                     .Where(ba => ba.UserId == userId && ba.IsActive)
                     .ToListAsync();
 
+                if (!bankAccounts.Any())
+                {
+                    return ApiResponse<BankAccountSummaryDto>.SuccessResult(new BankAccountSummaryDto
+                    {
+                        TotalBalance = 0,
+                        TotalAccounts = 0,
+                        ActiveAccounts = 0,
+                        ConnectedAccounts = 0,
+                        TotalIncoming = 0,
+                        TotalOutgoing = 0,
+                        CurrentMonthIncoming = 0,
+                        CurrentMonthOutgoing = 0,
+                        CurrentMonthNet = 0,
+                        Frequency = frequency,
+                        PeriodStart = DateTime.UtcNow,
+                        PeriodEnd = DateTime.UtcNow,
+                        TransactionCount = 0,
+                        Accounts = new List<BankAccountDto>(),
+                        SpendingByCategory = new Dictionary<string, decimal>()
+                    });
+                }
+
+                // Calculate period dates based on frequency
+                var (periodStart, periodEnd) = GetPeriodDates(frequency);
+
+                // Get all transactions for the period
+                var allTransactions = bankAccounts
+                    .SelectMany(ba => ba.Transactions)
+                    .Where(t => t.TransactionDate >= periodStart && t.TransactionDate <= periodEnd)
+                    .ToList();
+
+                // Get current month transactions
+                var currentMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+                var currentMonthEnd = currentMonthStart.AddMonths(1).AddDays(-1);
+                var currentMonthTransactions = bankAccounts
+                    .SelectMany(ba => ba.Transactions)
+                    .Where(t => t.TransactionDate >= currentMonthStart && t.TransactionDate <= currentMonthEnd)
+                    .ToList();
+
                 var summary = new BankAccountSummaryDto
                 {
                     TotalBalance = bankAccounts.Sum(ba => ba.CurrentBalance),
                     TotalAccounts = bankAccounts.Count,
                     ActiveAccounts = bankAccounts.Count(ba => ba.IsActive),
                     ConnectedAccounts = bankAccounts.Count(ba => ba.IsConnected),
-                    TotalIncoming = bankAccounts.SelectMany(ba => ba.Transactions)
+                    TotalIncoming = allTransactions
                         .Where(t => t.TransactionType == "CREDIT")
                         .Sum(t => t.Amount),
-                    TotalOutgoing = bankAccounts.SelectMany(ba => ba.Transactions)
+                    TotalOutgoing = allTransactions
                         .Where(t => t.TransactionType == "DEBIT")
                         .Sum(t => t.Amount),
-                    Accounts = new List<BankAccountDto>()
+                    CurrentMonthIncoming = currentMonthTransactions
+                        .Where(t => t.TransactionType == "CREDIT")
+                        .Sum(t => t.Amount),
+                    CurrentMonthOutgoing = currentMonthTransactions
+                        .Where(t => t.TransactionType == "DEBIT")
+                        .Sum(t => t.Amount),
+                    CurrentMonthNet = currentMonthTransactions
+                        .Where(t => t.TransactionType == "CREDIT")
+                        .Sum(t => t.Amount) - currentMonthTransactions
+                        .Where(t => t.TransactionType == "DEBIT")
+                        .Sum(t => t.Amount),
+                    Frequency = frequency,
+                    PeriodStart = periodStart,
+                    PeriodEnd = periodEnd,
+                    TransactionCount = allTransactions.Count,
+                    Accounts = new List<BankAccountDto>(),
+                    SpendingByCategory = allTransactions
+                        .Where(t => t.TransactionType == "DEBIT" && !string.IsNullOrEmpty(t.Category))
+                        .GroupBy(t => t.Category!)
+                        .ToDictionary(g => g.Key, g => g.Sum(t => t.Amount))
                 };
 
                 foreach (var account in bankAccounts)
@@ -1101,10 +1159,10 @@ namespace UtilityHub360.Services
             
             return period.ToLower() switch
             {
-                "week" => (now.AddDays(-7).Date, now.Date),
-                "month" => (now.AddDays(-30).Date, now.Date),
-                "quarter" => (now.AddDays(-90).Date, now.Date),
-                "year" => (now.AddDays(-365).Date, now.Date),
+                "weekly" or "week" => (now.AddDays(-7).Date, now.Date),
+                "monthly" or "month" => (now.AddDays(-30).Date, now.Date),
+                "quarterly" or "quarter" => (now.AddDays(-90).Date, now.Date),
+                "yearly" or "year" => (now.AddDays(-365).Date, now.Date),
                 _ => (now.AddDays(-30).Date, now.Date) // Default to month
             };
         }

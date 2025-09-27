@@ -35,7 +35,7 @@ namespace UtilityHub360.Controllers
                     {
                         type = "https://tools.ietf.org/html/rfc9110#section-15.5.2",
                         title = "Unauthorized",
-                        status = 401,
+                        status = 200,
                         detail = "User not authenticated",
                         traceId = HttpContext.TraceIdentifier
                     });
@@ -54,7 +54,7 @@ namespace UtilityHub360.Controllers
                     {
                         type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
                         title = "One or more validation errors occurred.",
-                        status = 400,
+                        status = 200,
                         errors = errors,
                         traceId = HttpContext.TraceIdentifier
                     });
@@ -77,7 +77,7 @@ namespace UtilityHub360.Controllers
                 {
                     type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
                     title = "Loan application failed",
-                    status = 400,
+                    status = 200,
                     detail = result.Message,
                     errors = result.Errors,
                     traceId = HttpContext.TraceIdentifier
@@ -89,7 +89,7 @@ namespace UtilityHub360.Controllers
                 {
                     type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
                     title = "Internal server error",
-                    status = 500,
+                    status = 200,
                     detail = $"Failed to apply for loan: {ex.Message}",
                     traceId = HttpContext.TraceIdentifier
                 });
@@ -345,19 +345,37 @@ namespace UtilityHub360.Controllers
                 // Only admin can update financial details
                 if (effectiveRole == "ADMIN")
                 {
+                    bool recalculateRequired = false;
+                    
                     if (updateLoanDto.InterestRate.HasValue)
                     {
                         loan.InterestRate = updateLoanDto.InterestRate.Value;
+                        recalculateRequired = true;
                     }
 
-                    if (updateLoanDto.MonthlyPayment.HasValue)
+                    // If interest rate changed, recalculate monthly payment and total amount
+                    if (recalculateRequired)
                     {
-                        loan.MonthlyPayment = updateLoanDto.MonthlyPayment.Value;
+                        loan.MonthlyPayment = CalculateMonthlyPayment(loan.Principal, loan.InterestRate, loan.Term);
+                        loan.TotalAmount = loan.MonthlyPayment * loan.Term;
+                        // Keep remaining balance as is, or reset to principal if no payments made
+                        if (loan.RemainingBalance == loan.Principal)
+                        {
+                            loan.RemainingBalance = loan.Principal;
+                        }
                     }
-
-                    if (updateLoanDto.RemainingBalance.HasValue)
+                    else
                     {
-                        loan.RemainingBalance = updateLoanDto.RemainingBalance.Value;
+                        // Manual updates if no recalculation needed
+                        if (updateLoanDto.MonthlyPayment.HasValue)
+                        {
+                            loan.MonthlyPayment = updateLoanDto.MonthlyPayment.Value;
+                        }
+
+                        if (updateLoanDto.RemainingBalance.HasValue)
+                        {
+                            loan.RemainingBalance = updateLoanDto.RemainingBalance.Value;
+                        }
                     }
                 }
 
@@ -484,6 +502,23 @@ namespace UtilityHub360.Controllers
             {
                 return BadRequest(ApiResponse<decimal>.ErrorResult($"Failed to get total outstanding loan amount: {ex.Message}"));
             }
+        }
+
+        /// <summary>
+        /// Calculate monthly payment using the standard loan payment formula
+        /// </summary>
+        private decimal CalculateMonthlyPayment(decimal principal, decimal annualInterestRate, int termInMonths)
+        {
+            if (annualInterestRate == 0)
+            {
+                return principal / termInMonths;
+            }
+
+            decimal monthlyInterestRate = annualInterestRate / 100 / 12;
+            decimal monthlyPayment = principal * (monthlyInterestRate * (decimal)Math.Pow((double)(1 + monthlyInterestRate), termInMonths)) 
+                                   / ((decimal)Math.Pow((double)(1 + monthlyInterestRate), termInMonths) - 1);
+
+            return Math.Round(monthlyPayment, 2);
         }
     }
 }
