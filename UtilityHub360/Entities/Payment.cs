@@ -8,9 +8,13 @@ namespace UtilityHub360.Entities
         [Key]
         public string Id { get; set; } = Guid.NewGuid().ToString();
 
-        // Loan-related fields (nullable for bank transactions)
+        // Loan-related fields (nullable for bank transactions and bill payments)
         [StringLength(450)]
         public string? LoanId { get; set; }
+
+        // Bill-related fields (nullable for bank transactions and loan payments)
+        [StringLength(450)]
+        public string? BillId { get; set; }
 
         // Bank Account-related fields (nullable for loan payments)
         [StringLength(450)]
@@ -84,6 +88,9 @@ namespace UtilityHub360.Entities
         // Navigation properties
         [ForeignKey("LoanId")]
         public virtual Loan? Loan { get; set; }
+
+        [ForeignKey("BillId")]
+        public virtual Bill? Bill { get; set; }
 
         [ForeignKey("BankAccountId")]
         public virtual BankAccount? BankAccount { get; set; }

@@ -496,5 +496,386 @@ namespace UtilityHub360.Services
                 _ => (now.AddDays(-30).Date, now.Date) // Default to month
             };
         }
+
+        // Bill Payment Operations
+        public async Task<ApiResponse<BillPaymentDto>> MakeBillPaymentAsync(CreateBillPaymentDto payment, string userId)
+        {
+            try
+            {
+                Console.WriteLine($"DEBUG: Starting MakeBillPaymentAsync. BillId: {payment.BillId}, Amount: {payment.Amount}, Method: {payment.Method}, Reference: {payment.Reference}");
+
+                // Verify bill exists and belongs to user
+                var bill = await _context.Bills
+                    .FirstOrDefaultAsync(b => b.Id == payment.BillId && b.UserId == userId);
+
+                if (bill == null)
+                {
+                    return ApiResponse<BillPaymentDto>.ErrorResult("Bill not found");
+                }
+
+                if (bill.Status == "PAID")
+                {
+                    return ApiResponse<BillPaymentDto>.ErrorResult("Bill is already paid");
+                }
+
+                // Check if payment reference already exists for this bill
+                var existingPayment = await _context.Payments
+                    .FirstOrDefaultAsync(p => p.BillId == payment.BillId && p.Reference == payment.Reference);
+
+                if (existingPayment != null)
+                {
+                    return ApiResponse<BillPaymentDto>.ErrorResult("Payment reference already exists for this bill");
+                }
+
+                var methodLower = payment.Method.ToLower();
+
+                // Handle different payment methods
+                if (methodLower == "bank transfer" || methodLower == "bank transaction" || methodLower == "bank_transfer" || methodLower == "banktransfer")
+                {
+                    Console.WriteLine($"DEBUG: Processing bank transfer payment. Method: '{payment.Method}', MethodLower: '{methodLower}'");
+
+                    // Validate bank account for bank transfer
+                    if (string.IsNullOrEmpty(payment.BankAccountId))
+                    {
+                        return ApiResponse<BillPaymentDto>.ErrorResult("BankAccountId is required for Bank transfer method");
+                    }
+
+                    // Verify bank account exists and belongs to user
+                    var bankAccount = await _context.BankAccounts
+                        .FirstOrDefaultAsync(ba => ba.Id == payment.BankAccountId && ba.UserId == userId);
+
+                    Console.WriteLine($"DEBUG: Bank account lookup. BankAccountId: {payment.BankAccountId}, UserId: {userId}, Found: {bankAccount != null}");
+
+                    if (bankAccount == null)
+                    {
+                        return ApiResponse<BillPaymentDto>.ErrorResult("Bank account not found or does not belong to user");
+                    }
+
+                    Console.WriteLine($"DEBUG: Bank account found. CurrentBalance: {bankAccount.CurrentBalance}, AccountName: {bankAccount.AccountName}");
+
+                    // Create single payment record that serves both bill payment and bank transaction
+                    var bankTransaction = new Entities.Payment
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        BillId = payment.BillId,
+                        BankAccountId = payment.BankAccountId,
+                        UserId = userId,
+                        Amount = payment.Amount,
+                        Method = "BANK_TRANSFER",
+                        Reference = $"BILL_TXN_{payment.Reference}",
+                        Status = "COMPLETED",
+                        IsBankTransaction = true, // This is a bank transaction
+                        TransactionType = "DEBIT",
+                        Description = $"Bill payment - {payment.Reference}",
+                        Category = "BILL_PAYMENT",
+                        ExternalTransactionId = $"BILL_PAY_{payment.Reference}",
+                        Notes = payment.Notes,
+                        ProcessedAt = DateTime.UtcNow,
+                        TransactionDate = DateTime.UtcNow,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    _context.Payments.Add(bankTransaction);
+                    Console.WriteLine($"DEBUG: Added combined bill payment + bank transaction to Payments table. ID: {bankTransaction.Id}, Reference: {bankTransaction.Reference}");
+
+                    // Update bank account balance (debit)
+                    bankAccount.CurrentBalance -= payment.Amount;
+                    var newBalance = bankAccount.CurrentBalance;
+
+                    // Also create BankTransaction record
+                    var bankTxnRecord = new Entities.BankTransaction
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        BankAccountId = payment.BankAccountId,
+                        UserId = userId,
+                        Amount = payment.Amount,
+                        TransactionType = "DEBIT",
+                        Description = $"Bill payment - {payment.Reference}",
+                        Category = "BILL_PAYMENT",
+                        ReferenceNumber = $"BILL_TXN_{payment.Reference}",
+                        ExternalTransactionId = $"BILL_PAY_{payment.Reference}",
+                        BalanceAfterTransaction = newBalance, // Set the balance after transaction
+                        TransactionDate = DateTime.UtcNow,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    _context.BankTransactions.Add(bankTxnRecord);
+                    Console.WriteLine($"DEBUG: Added bank transaction to BankTransactions table. ID: {bankTxnRecord.Id}, Reference: {bankTxnRecord.ReferenceNumber}, BalanceAfter: {bankTxnRecord.BalanceAfterTransaction}");
+
+                    // Set balance after transaction for bank transaction Payment record
+                    bankTransaction.BalanceAfterTransaction = newBalance;
+                    bankAccount.UpdatedAt = DateTime.UtcNow;
+                }
+                else
+                {
+                    // Debug: Log that we're processing cash/other payment
+                    Console.WriteLine($"DEBUG: Processing cash/other payment. Method: '{payment.Method}', MethodLower: '{methodLower}'");
+                    // Cash or other payment methods - only create bill payment record
+                    var billPayment = new Entities.Payment
+                    {
+                        BillId = payment.BillId,
+                        UserId = userId,
+                        Amount = payment.Amount,
+                        Method = payment.Method,
+                        Reference = payment.Reference,
+                        Status = "COMPLETED",
+                        IsBankTransaction = false, // This is a bill payment only
+                        TransactionType = "PAYMENT",
+                        Description = $"Bill payment via {payment.Method}",
+                        Notes = payment.Notes,
+                        ProcessedAt = DateTime.UtcNow,
+                        TransactionDate = DateTime.UtcNow,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    _context.Payments.Add(billPayment);
+                }
+
+                // Update bill status to PAID
+                bill.Status = "PAID";
+                bill.PaidAt = DateTime.UtcNow;
+                bill.UpdatedAt = DateTime.UtcNow;
+
+                try
+                {
+                    Console.WriteLine($"DEBUG: About to save changes. Entities being tracked:");
+                    foreach (var entry in _context.ChangeTracker.Entries())
+                    {
+                        Console.WriteLine($"  - {entry.Entity.GetType().Name}: {entry.State}");
+                    }
+
+                    await _context.SaveChangesAsync();
+                    Console.WriteLine($"DEBUG: Successfully saved changes to database. Total changes: {_context.ChangeTracker.Entries().Count()}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"DEBUG: SaveChanges failed with error: {ex.Message}");
+                    if (ex.InnerException != null)
+                    {
+                        Console.WriteLine($"DEBUG: Inner exception: {ex.InnerException.Message}");
+                    }
+                    throw; // Re-throw to preserve the original error
+                }
+
+                // Get the payment record to return
+                var billPaymentRecord = await _context.Payments
+                    .FirstOrDefaultAsync(p => p.BillId == payment.BillId && 
+                                            p.Reference == (methodLower == "bank transfer" || methodLower == "bank transaction" || methodLower == "bank_transfer" || methodLower == "banktransfer" 
+                                                ? $"BILL_TXN_{payment.Reference}" 
+                                                : payment.Reference));
+
+                if (billPaymentRecord == null)
+                {
+                    return ApiResponse<BillPaymentDto>.ErrorResult("Failed to retrieve payment record");
+                }
+
+                var paymentDto = new BillPaymentDto
+                {
+                    Id = billPaymentRecord.Id,
+                    BillId = billPaymentRecord.BillId,
+                    BankAccountId = billPaymentRecord.BankAccountId,
+                    UserId = billPaymentRecord.UserId,
+                    Amount = billPaymentRecord.Amount,
+                    Method = billPaymentRecord.Method,
+                    Reference = billPaymentRecord.Reference,
+                    Status = billPaymentRecord.Status,
+                    IsBankTransaction = billPaymentRecord.IsBankTransaction,
+                    TransactionType = billPaymentRecord.TransactionType,
+                    Description = billPaymentRecord.Description,
+                    Category = billPaymentRecord.Category,
+                    ExternalTransactionId = billPaymentRecord.ExternalTransactionId,
+                    Notes = billPaymentRecord.Notes,
+                    Merchant = billPaymentRecord.Merchant,
+                    Location = billPaymentRecord.Location,
+                    IsRecurring = billPaymentRecord.IsRecurring,
+                    RecurringFrequency = billPaymentRecord.RecurringFrequency,
+                    Currency = billPaymentRecord.Currency,
+                    BalanceAfterTransaction = billPaymentRecord.BalanceAfterTransaction,
+                    ProcessedAt = billPaymentRecord.ProcessedAt,
+                    TransactionDate = billPaymentRecord.TransactionDate,
+                    CreatedAt = billPaymentRecord.CreatedAt,
+                    UpdatedAt = billPaymentRecord.UpdatedAt
+                };
+
+                return ApiResponse<BillPaymentDto>.SuccessResult(paymentDto, "Bill payment processed successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<BillPaymentDto>.ErrorResult($"Failed to process bill payment: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<List<BillPaymentDto>>> GetBillPaymentHistoryAsync(string billId, string userId, int page = 1, int limit = 50)
+        {
+            try
+            {
+                // Verify bill exists and belongs to user
+                var bill = await _context.Bills
+                    .FirstOrDefaultAsync(b => b.Id == billId && b.UserId == userId);
+
+                if (bill == null)
+                {
+                    return ApiResponse<List<BillPaymentDto>>.ErrorResult("Bill not found");
+                }
+
+                var payments = await _context.Payments
+                    .Where(p => p.BillId == billId)
+                    .OrderByDescending(p => p.CreatedAt)
+                    .Skip((page - 1) * limit)
+                    .Take(limit)
+                    .Select(p => new BillPaymentDto
+                    {
+                        Id = p.Id,
+                        BillId = p.BillId,
+                        BankAccountId = p.BankAccountId,
+                        UserId = p.UserId,
+                        Amount = p.Amount,
+                        Method = p.Method,
+                        Reference = p.Reference,
+                        Status = p.Status,
+                        IsBankTransaction = p.IsBankTransaction,
+                        TransactionType = p.TransactionType,
+                        Description = p.Description,
+                        Category = p.Category,
+                        ExternalTransactionId = p.ExternalTransactionId,
+                        Notes = p.Notes,
+                        Merchant = p.Merchant,
+                        Location = p.Location,
+                        IsRecurring = p.IsRecurring,
+                        RecurringFrequency = p.RecurringFrequency,
+                        Currency = p.Currency,
+                        BalanceAfterTransaction = p.BalanceAfterTransaction,
+                        ProcessedAt = p.ProcessedAt,
+                        TransactionDate = p.TransactionDate,
+                        CreatedAt = p.CreatedAt,
+                        UpdatedAt = p.UpdatedAt
+                    })
+                    .ToListAsync();
+
+                return ApiResponse<List<BillPaymentDto>>.SuccessResult(payments, "Bill payment history retrieved successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<List<BillPaymentDto>>.ErrorResult($"Failed to get bill payment history: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<BillPaymentDto>> GetBillPaymentAsync(string paymentId, string userId)
+        {
+            try
+            {
+                var payment = await _context.Payments
+                    .Where(p => p.Id == paymentId && p.UserId == userId && p.BillId != null)
+                    .Select(p => new BillPaymentDto
+                    {
+                        Id = p.Id,
+                        BillId = p.BillId,
+                        BankAccountId = p.BankAccountId,
+                        UserId = p.UserId,
+                        Amount = p.Amount,
+                        Method = p.Method,
+                        Reference = p.Reference,
+                        Status = p.Status,
+                        IsBankTransaction = p.IsBankTransaction,
+                        TransactionType = p.TransactionType,
+                        Description = p.Description,
+                        Category = p.Category,
+                        ExternalTransactionId = p.ExternalTransactionId,
+                        Notes = p.Notes,
+                        Merchant = p.Merchant,
+                        Location = p.Location,
+                        IsRecurring = p.IsRecurring,
+                        RecurringFrequency = p.RecurringFrequency,
+                        Currency = p.Currency,
+                        BalanceAfterTransaction = p.BalanceAfterTransaction,
+                        ProcessedAt = p.ProcessedAt,
+                        TransactionDate = p.TransactionDate,
+                        CreatedAt = p.CreatedAt,
+                        UpdatedAt = p.UpdatedAt
+                    })
+                    .FirstOrDefaultAsync();
+
+                if (payment == null)
+                {
+                    return ApiResponse<BillPaymentDto>.ErrorResult("Bill payment not found");
+                }
+
+                return ApiResponse<BillPaymentDto>.SuccessResult(payment, "Bill payment retrieved successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<BillPaymentDto>.ErrorResult($"Failed to get bill payment: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<bool>> DeleteBillPaymentAsync(string paymentId, string userId)
+        {
+            try
+            {
+                var payment = await _context.Payments
+                    .FirstOrDefaultAsync(p => p.Id == paymentId && p.UserId == userId && p.BillId != null);
+
+                if (payment == null)
+                {
+                    return ApiResponse<bool>.ErrorResult("Bill payment not found or you don't have permission to delete it");
+                }
+
+                // Check if payment is too old to delete (e.g., more than 24 hours)
+                var hoursSinceCreation = (DateTime.UtcNow - payment.CreatedAt).TotalHours;
+                if (hoursSinceCreation > 24)
+                {
+                    return ApiResponse<bool>.ErrorResult("Cannot delete payment older than 24 hours");
+                }
+
+                // If it's a bank transaction, reverse the bank account balance
+                if (payment.IsBankTransaction && payment.BankAccountId != null)
+                {
+                    var bankAccount = await _context.BankAccounts
+                        .FirstOrDefaultAsync(ba => ba.Id == payment.BankAccountId);
+
+                    if (bankAccount != null)
+                    {
+                        // Reverse the transaction (add back the amount)
+                        bankAccount.CurrentBalance += payment.Amount;
+                        bankAccount.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    // Also delete the corresponding BankTransaction record
+                    var bankTransaction = await _context.BankTransactions
+                        .FirstOrDefaultAsync(bt => bt.ReferenceNumber == payment.Reference);
+
+                    if (bankTransaction != null)
+                    {
+                        _context.BankTransactions.Remove(bankTransaction);
+                    }
+                }
+
+                // Update bill status back to PENDING
+                if (payment.BillId != null)
+                {
+                    var bill = await _context.Bills
+                        .FirstOrDefaultAsync(b => b.Id == payment.BillId);
+
+                    if (bill != null)
+                    {
+                        bill.Status = "PENDING";
+                        bill.PaidAt = null;
+                        bill.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+
+                _context.Payments.Remove(payment);
+                await _context.SaveChangesAsync();
+
+                return ApiResponse<bool>.SuccessResult(true, "Bill payment deleted successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Failed to delete bill payment: {ex.Message}");
+            }
+        }
     }
 }

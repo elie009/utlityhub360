@@ -99,4 +99,57 @@ namespace UtilityHub360.DTOs
         public DateTime StartDate { get; set; }
         public DateTime EndDate { get; set; }
     }
+
+    // Bill Payment DTOs
+    public class CreateBillPaymentDto
+    {
+        [Required]
+        public string BillId { get; set; } = string.Empty;
+
+        [Required]
+        [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than 0")]
+        public decimal Amount { get; set; }
+
+        [Required]
+        [StringLength(50)]
+        public string Method { get; set; } = string.Empty; // BANK_TRANSFER, CARD, WALLET, CASH
+
+        [Required]
+        [StringLength(50)]
+        public string Reference { get; set; } = string.Empty;
+
+        [StringLength(450)]
+        public string? BankAccountId { get; set; } // Required for bank transfers
+
+        [StringLength(500)]
+        public string? Notes { get; set; }
+    }
+
+    public class BillPaymentDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string BillId { get; set; } = string.Empty;
+        public string? BankAccountId { get; set; }
+        public string UserId { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public string Method { get; set; } = string.Empty;
+        public string Reference { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public bool IsBankTransaction { get; set; }
+        public string? TransactionType { get; set; }
+        public string? Description { get; set; }
+        public string? Category { get; set; }
+        public string? ExternalTransactionId { get; set; }
+        public string? Notes { get; set; }
+        public string? Merchant { get; set; }
+        public string? Location { get; set; }
+        public bool IsRecurring { get; set; }
+        public string? RecurringFrequency { get; set; }
+        public string Currency { get; set; } = string.Empty;
+        public decimal? BalanceAfterTransaction { get; set; }
+        public DateTime ProcessedAt { get; set; }
+        public DateTime? TransactionDate { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
 }

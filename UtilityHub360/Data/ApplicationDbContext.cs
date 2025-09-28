@@ -52,13 +52,18 @@ namespace UtilityHub360.Data
                     .OnDelete(DeleteBehavior.Cascade);
             });
 
-            // Payment configuration (now includes bank transactions)
+            // Payment configuration (now includes bank transactions and bill payments)
             modelBuilder.Entity<Payment>(entity =>
             {
                 entity.HasOne(d => d.Loan)
                     .WithMany(p => p.Payments)
                     .HasForeignKey(d => d.LoanId)
                     .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.Bill)
+                    .WithMany()
+                    .HasForeignKey(d => d.BillId)
+                    .OnDelete(DeleteBehavior.NoAction);
 
                 entity.HasOne(d => d.BankAccount)
                     .WithMany()
@@ -70,9 +75,14 @@ namespace UtilityHub360.Data
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.NoAction);
 
-                // Unique constraint only applies when LoanId is not null
+                // Unique constraint for LoanId and Reference
                 entity.HasIndex(e => new { e.LoanId, e.Reference })
                     .HasFilter("[LoanId] IS NOT NULL")
+                    .IsUnique();
+
+                // Unique constraint for BillId and Reference
+                entity.HasIndex(e => new { e.BillId, e.Reference })
+                    .HasFilter("[BillId] IS NOT NULL")
                     .IsUnique();
 
                 entity.HasIndex(e => e.ExternalTransactionId);
