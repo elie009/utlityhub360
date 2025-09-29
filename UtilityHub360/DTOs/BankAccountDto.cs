@@ -175,6 +175,16 @@ namespace UtilityHub360.DTOs
 
         [StringLength(10)]
         public string Currency { get; set; } = "USD";
+
+        // Optional references for bills, savings, or other purposes
+        [StringLength(450)]
+        public string? BillId { get; set; } // Reference to bill if category is bill-related
+
+        [StringLength(450)]
+        public string? SavingsAccountId { get; set; } // Reference to savings account if category is savings-related
+
+        [StringLength(450)]
+        public string? LoanId { get; set; } // Reference to loan if category is loan-related
     }
 
     public class BankAccountSummaryDto

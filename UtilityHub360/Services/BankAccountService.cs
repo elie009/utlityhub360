@@ -502,11 +502,57 @@ namespace UtilityHub360.Services
                     return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found");
                 }
 
+                // Handle category-based references
+                string? billId = null;
+                string? savingsAccountId = null;
+                string? loanId = null;
+                string enhancedDescription = createTransactionDto.Description;
+
+                if (!string.IsNullOrEmpty(createTransactionDto.Category))
+                {
+                    var categoryLower = createTransactionDto.Category.ToLower();
+                    
+                    // Bill-related categories
+                    if (categoryLower.Contains("bill") || categoryLower.Contains("utility") || 
+                        categoryLower.Contains("rent") || categoryLower.Contains("insurance") ||
+                        categoryLower.Contains("subscription") || categoryLower.Contains("payment"))
+                    {
+                        if (!string.IsNullOrEmpty(createTransactionDto.BillId))
+                        {
+                            billId = createTransactionDto.BillId;
+                            enhancedDescription = $"Bill Payment - {createTransactionDto.Description}";
+                        }
+                    }
+                    // Savings-related categories
+                    else if (categoryLower.Contains("savings") || categoryLower.Contains("deposit") || 
+                             categoryLower.Contains("investment") || categoryLower.Contains("goal"))
+                    {
+                        if (!string.IsNullOrEmpty(createTransactionDto.SavingsAccountId))
+                        {
+                            savingsAccountId = createTransactionDto.SavingsAccountId;
+                            enhancedDescription = $"Savings - {createTransactionDto.Description}";
+                        }
+                    }
+                    // Loan-related categories
+                    else if (categoryLower.Contains("loan") || categoryLower.Contains("repayment") || 
+                             categoryLower.Contains("debt") || categoryLower.Contains("installment"))
+                    {
+                        if (!string.IsNullOrEmpty(createTransactionDto.LoanId))
+                        {
+                            loanId = createTransactionDto.LoanId;
+                            enhancedDescription = $"Loan Payment - {createTransactionDto.Description}";
+                        }
+                    }
+                }
+
                 // Create transaction as Payment with IsBankTransaction = true
                 var payment = new Entities.Payment
                 {
                     Id = Guid.NewGuid().ToString(),
                     BankAccountId = createTransactionDto.BankAccountId,
+                    BillId = billId,
+                    SavingsAccountId = savingsAccountId,
+                    LoanId = loanId,
                     UserId = userId,
                     Amount = createTransactionDto.Amount,
                     Method = "BANK_TRANSFER",
@@ -514,7 +560,7 @@ namespace UtilityHub360.Services
                     Status = "COMPLETED",
                     IsBankTransaction = true,
                     TransactionType = createTransactionDto.TransactionType.ToUpper(),
-                    Description = createTransactionDto.Description,
+                    Description = enhancedDescription,
                     Category = createTransactionDto.Category,
                     ExternalTransactionId = createTransactionDto.ExternalTransactionId,
                     Notes = createTransactionDto.Notes,

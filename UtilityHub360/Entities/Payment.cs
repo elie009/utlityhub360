@@ -16,6 +16,10 @@ namespace UtilityHub360.Entities
         [StringLength(450)]
         public string? BillId { get; set; }
 
+        // Savings Account-related fields (nullable for bank transactions and other payments)
+        [StringLength(450)]
+        public string? SavingsAccountId { get; set; }
+
         // Bank Account-related fields (nullable for loan payments)
         [StringLength(450)]
         public string? BankAccountId { get; set; }
@@ -91,6 +95,9 @@ namespace UtilityHub360.Entities
 
         [ForeignKey("BillId")]
         public virtual Bill? Bill { get; set; }
+
+        [ForeignKey("SavingsAccountId")]
+        public virtual SavingsAccount? SavingsAccount { get; set; }
 
         [ForeignKey("BankAccountId")]
         public virtual BankAccount? BankAccount { get; set; }

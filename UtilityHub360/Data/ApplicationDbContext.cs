@@ -65,6 +65,11 @@ namespace UtilityHub360.Data
                     .HasForeignKey(d => d.BillId)
                     .OnDelete(DeleteBehavior.NoAction);
 
+                entity.HasOne(d => d.SavingsAccount)
+                    .WithMany()
+                    .HasForeignKey(d => d.SavingsAccountId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
                 entity.HasOne(d => d.BankAccount)
                     .WithMany()
                     .HasForeignKey(d => d.BankAccountId)
@@ -83,6 +88,11 @@ namespace UtilityHub360.Data
                 // Unique constraint for BillId and Reference
                 entity.HasIndex(e => new { e.BillId, e.Reference })
                     .HasFilter("[BillId] IS NOT NULL")
+                    .IsUnique();
+
+                // Unique constraint for SavingsAccountId and Reference
+                entity.HasIndex(e => new { e.SavingsAccountId, e.Reference })
+                    .HasFilter("[SavingsAccountId] IS NOT NULL")
                     .IsUnique();
 
                 entity.HasIndex(e => e.ExternalTransactionId);
