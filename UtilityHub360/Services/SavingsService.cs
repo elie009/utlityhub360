@@ -289,16 +289,45 @@ namespace UtilityHub360.Services
 
                 _context.SavingsTransactions.Add(savingsTransaction);
 
+                // payment trans start (implement this)
+                // Create payment (combining both payment and savings activity tracking)
+                var newPayment = new Entities.Payment
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    SavingsAccountId = transactionDto.SavingsAccountId,
+                    BankAccountId = transactionDto.SourceBankAccountId,
+                    UserId = userId,
+                    Amount = transactionDto.Amount,
+                    Method = "BANK_TRANSFER",
+                    Reference = $"SAVINGS_{transactionDto.TransactionType}_{DateTime.UtcNow:yyyyMMddHHmmss}",
+                    Status = "COMPLETED",
+                    IsBankTransaction = true, // This is a bank transaction for savings
+                    TransactionType = transactionDto.TransactionType == "DEPOSIT" ? "DEBIT" : "CREDIT",
+                    Description = $"Savings {transactionDto.TransactionType.ToLower()} - {transactionDto.Description}",
+                    Category = transactionDto.Category ?? "SAVINGS",
+                    ExternalTransactionId = $"SAVINGS_{savingsTransaction.Id}",
+                    Notes = transactionDto.Notes,
+                    ProcessedAt = DateTime.UtcNow,
+                    TransactionDate = transactionDto.TransactionDate,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.Payments.Add(newPayment);
+                // payment trans end
+
                 // Update balances
                 if (transactionDto.TransactionType == "DEPOSIT")
                 {
                     savingsAccount.CurrentBalance += transactionDto.Amount;
                     sourceBankAccount.CurrentBalance -= transactionDto.Amount;
+                    newPayment.BalanceAfterTransaction = sourceBankAccount.CurrentBalance; // Set balance after transaction
                 }
                 else if (transactionDto.TransactionType == "WITHDRAWAL")
                 {
                     savingsAccount.CurrentBalance -= transactionDto.Amount;
                     sourceBankAccount.CurrentBalance += transactionDto.Amount;
+                    newPayment.BalanceAfterTransaction = sourceBankAccount.CurrentBalance; // Set balance after transaction
                 }
 
                 savingsAccount.UpdatedAt = DateTime.UtcNow;

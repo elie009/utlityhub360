@@ -18,6 +18,9 @@ namespace UtilityHub360.Services
         Task<ApiResponse<List<PaymentDto>>> GetBankTransactionsAsync(string userId, string? accountType = null, int page = 1, int limit = 50);
         Task<ApiResponse<List<PaymentDto>>> GetAccountTransactionsAsync(string bankAccountId, string userId, int page = 1, int limit = 50);
         Task<ApiResponse<bool>> DeleteBankTransactionAsync(string transactionId, string userId);
+        
+        // Savings Transaction methods
+        Task<ApiResponse<SavingsTransactionDto>> CreateSavingsTransactionAsync(CreateSavingsTransactionDto transaction, string userId);
     }
 }
 

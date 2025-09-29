@@ -86,6 +86,9 @@ namespace UtilityHub360.DTOs
 
         [StringLength(50)]
         public string? RecurringFrequency { get; set; }
+
+        [StringLength(50)]
+        public string? Method { get; set; } = "CASH"; // BANK_TRANSFER, CASH, etc.
     }
 
     public class SavingsTransactionDto

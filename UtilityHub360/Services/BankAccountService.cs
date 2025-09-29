@@ -523,15 +523,14 @@ namespace UtilityHub360.Services
                             enhancedDescription = $"Bill Payment - {createTransactionDto.Description}";
                         }
                     }
-                    // Savings-related categories
-                    else if (categoryLower.Contains("savings") || categoryLower.Contains("deposit") || 
-                             categoryLower.Contains("investment") || categoryLower.Contains("goal"))
+                    // Savings-related categories (only if explicitly linking to a different savings account)
+                    else if ((categoryLower.Contains("savings") || categoryLower.Contains("deposit") || 
+                             categoryLower.Contains("investment") || categoryLower.Contains("goal")) &&
+                             !string.IsNullOrEmpty(createTransactionDto.SavingsAccountId) &&
+                             createTransactionDto.SavingsAccountId != createTransactionDto.BankAccountId)
                     {
-                        if (!string.IsNullOrEmpty(createTransactionDto.SavingsAccountId))
-                        {
-                            savingsAccountId = createTransactionDto.SavingsAccountId;
-                            enhancedDescription = $"Savings - {createTransactionDto.Description}";
-                        }
+                        savingsAccountId = createTransactionDto.SavingsAccountId;
+                        enhancedDescription = $"Savings - {createTransactionDto.Description}";
                     }
                     // Loan-related categories
                     else if (categoryLower.Contains("loan") || categoryLower.Contains("repayment") || 

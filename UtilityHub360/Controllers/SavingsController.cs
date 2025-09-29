@@ -14,10 +14,12 @@ namespace UtilityHub360.Controllers
     public class SavingsController : ControllerBase
     {
         private readonly ISavingsService _savingsService;
+        private readonly IPaymentService _paymentService;
 
-        public SavingsController(ISavingsService savingsService)
+        public SavingsController(ISavingsService savingsService, IPaymentService paymentService)
         {
             _savingsService = savingsService;
+            _paymentService = paymentService;
         }
 
         private string GetUserId()
@@ -149,7 +151,7 @@ namespace UtilityHub360.Controllers
                 });
             }
 
-            var result = await _savingsService.CreateSavingsTransactionAsync(transactionDto, userId);
+            var result = await _paymentService.CreateSavingsTransactionAsync(transactionDto, userId);
             
             if (!result.Success)
             {

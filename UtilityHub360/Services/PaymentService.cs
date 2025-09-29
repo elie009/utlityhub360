@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
 using UtilityHub360.Models;
+using UtilityHub360.Entities;
 
 namespace UtilityHub360.Services
 {
@@ -714,6 +715,214 @@ namespace UtilityHub360.Services
                 CreatedAt = payment.CreatedAt,
                 UpdatedAt = payment.UpdatedAt
             };
+        }
+
+        public async Task<ApiResponse<SavingsTransactionDto>> CreateSavingsTransactionAsync(CreateSavingsTransactionDto transactionDto, string userId)
+        {
+            try
+            {
+                // Verify savings account belongs to user
+                var savingsAccount = await _context.SavingsAccounts
+                    .FirstOrDefaultAsync(sa => sa.Id == transactionDto.SavingsAccountId && sa.UserId == userId);
+
+                if (savingsAccount == null)
+                {
+                    return new ApiResponse<SavingsTransactionDto>
+                    {
+                        Success = false,
+                        Message = "Savings account not found"
+                    };
+                }
+
+                // Verify source bank account belongs to user
+                var sourceBankAccount = await _context.BankAccounts
+                    .FirstOrDefaultAsync(ba => ba.Id == transactionDto.SourceBankAccountId && ba.UserId == userId);
+
+                if (sourceBankAccount == null)
+                {
+                    return new ApiResponse<SavingsTransactionDto>
+                    {
+                        Success = false,
+                        Message = "Source bank account not found"
+                    };
+                }
+
+                // For deposits, check if source account has sufficient balance
+                if (transactionDto.TransactionType == "DEPOSIT")
+                {
+                    if (sourceBankAccount.CurrentBalance < transactionDto.Amount)
+                    {
+                        return new ApiResponse<SavingsTransactionDto>
+                        {
+                            Success = false,
+                            Message = "Insufficient balance in source account"
+                        };
+                    }
+                }
+
+                // For withdrawals, check if savings account has sufficient balance
+                if (transactionDto.TransactionType == "WITHDRAWAL")
+                {
+                    if (savingsAccount.CurrentBalance < transactionDto.Amount)
+                    {
+                        return new ApiResponse<SavingsTransactionDto>
+                        {
+                            Success = false,
+                            Message = "Insufficient balance in savings account"
+                        };
+                    }
+                }
+
+                // Create savings transaction
+                var savingsTransaction = new SavingsTransaction
+                {
+                    SavingsAccountId = transactionDto.SavingsAccountId,
+                    SourceBankAccountId = transactionDto.SourceBankAccountId,
+                    Amount = transactionDto.Amount,
+                    TransactionType = transactionDto.TransactionType,
+                    Description = transactionDto.Description,
+                    Category = transactionDto.Category,
+                    Notes = transactionDto.Notes,
+                    TransactionDate = transactionDto.TransactionDate,
+                    Currency = transactionDto.Currency,
+                    IsRecurring = transactionDto.IsRecurring,
+                    RecurringFrequency = transactionDto.RecurringFrequency,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.SavingsTransactions.Add(savingsTransaction);
+
+                // Handle different payment methods
+                var methodLower = transactionDto.Method?.ToLower().Trim() ?? "cash";
+                
+                if (methodLower == "bank transfer" || methodLower == "bank transaction" || methodLower == "bank_transfer" || methodLower == "banktransfer")
+                {
+                    // Bank transfer - create single payment record that serves both savings payment and bank transaction
+                    var newPayment = new Entities.Payment
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        SavingsAccountId = transactionDto.SavingsAccountId,
+                        BankAccountId = transactionDto.SourceBankAccountId,
+                        UserId = userId,
+                        Amount = transactionDto.Amount,
+                        Method = "BANK_TRANSFER",
+                        Reference = $"SAVINGS_{transactionDto.TransactionType}_{DateTime.UtcNow:yyyyMMddHHmmss}",
+                        Status = "COMPLETED",
+                        IsBankTransaction = true, // This is a bank transaction
+                        TransactionType = transactionDto.TransactionType == "DEPOSIT" ? "DEBIT" : "CREDIT",
+                        Description = $"Savings {transactionDto.TransactionType.ToLower()} - {transactionDto.Description}",
+                        Category = "SAVINGS_TRANSACTION",
+                        ExternalTransactionId = $"SAVINGS_{transactionDto.TransactionType}_{DateTime.UtcNow:yyyyMMddHHmmss}",
+                        Notes = transactionDto.Notes,
+                        ProcessedAt = DateTime.UtcNow,
+                        TransactionDate = transactionDto.TransactionDate,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    _context.Payments.Add(newPayment);
+
+                    // Update balances
+                    if (transactionDto.TransactionType == "DEPOSIT")
+                    {
+                        savingsAccount.CurrentBalance += transactionDto.Amount;
+                        sourceBankAccount.CurrentBalance -= transactionDto.Amount;
+                        newPayment.BalanceAfterTransaction = sourceBankAccount.CurrentBalance;
+                    }
+                    else if (transactionDto.TransactionType == "WITHDRAWAL")
+                    {
+                        savingsAccount.CurrentBalance -= transactionDto.Amount;
+                        sourceBankAccount.CurrentBalance += transactionDto.Amount;
+                        newPayment.BalanceAfterTransaction = sourceBankAccount.CurrentBalance;
+                    }
+
+                    // Also create BankTransaction record
+                    var bankTxnRecord = new Entities.BankTransaction
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        BankAccountId = transactionDto.SourceBankAccountId,
+                        UserId = userId,
+                        Amount = transactionDto.Amount,
+                        TransactionType = transactionDto.TransactionType == "DEPOSIT" ? "DEBIT" : "CREDIT",
+                        Description = $"Savings {transactionDto.TransactionType.ToLower()} - {transactionDto.Description}",
+                        Category = "SAVINGS_TRANSACTION",
+                        ReferenceNumber = $"SAVINGS_{transactionDto.TransactionType}_{DateTime.UtcNow:yyyyMMddHHmmss}",
+                        ExternalTransactionId = $"SAVINGS_{transactionDto.TransactionType}_{DateTime.UtcNow:yyyyMMddHHmmss}",
+                        BalanceAfterTransaction = sourceBankAccount.CurrentBalance,
+                        TransactionDate = transactionDto.TransactionDate,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    _context.BankTransactions.Add(bankTxnRecord);
+                }
+                else
+                {
+                    // Cash or other payment methods - only create savings transaction record
+                    // Update balances
+                    if (transactionDto.TransactionType == "DEPOSIT")
+                    {
+                        savingsAccount.CurrentBalance += transactionDto.Amount;
+                    }
+                    else if (transactionDto.TransactionType == "WITHDRAWAL")
+                    {
+                        savingsAccount.CurrentBalance -= transactionDto.Amount;
+                    }
+                }
+
+                // Update timestamps
+                savingsAccount.UpdatedAt = DateTime.UtcNow;
+                sourceBankAccount.UpdatedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                // Retrieve the created savings transaction with related data
+                var createdTransaction = await _context.SavingsTransactions
+                    .Include(st => st.SavingsAccount)
+                    .Include(st => st.SourceBankAccount)
+                    .FirstOrDefaultAsync(st => st.Id == savingsTransaction.Id);
+
+                if (createdTransaction == null)
+                {
+                    return new ApiResponse<SavingsTransactionDto>
+                    {
+                        Success = false,
+                        Message = "Failed to retrieve created savings transaction"
+                    };
+                }
+
+                var transactionDto_result = new SavingsTransactionDto
+                {
+                    Id = createdTransaction.Id,
+                    SavingsAccountId = createdTransaction.SavingsAccountId,
+                    SourceBankAccountId = createdTransaction.SourceBankAccountId,
+                    Amount = createdTransaction.Amount,
+                    TransactionType = createdTransaction.TransactionType,
+                    Description = createdTransaction.Description,
+                    Category = createdTransaction.Category,
+                    Notes = createdTransaction.Notes,
+                    TransactionDate = createdTransaction.TransactionDate,
+                    Currency = createdTransaction.Currency,
+                    IsRecurring = createdTransaction.IsRecurring,
+                    RecurringFrequency = createdTransaction.RecurringFrequency,
+                    CreatedAt = createdTransaction.CreatedAt
+                };
+
+                return new ApiResponse<SavingsTransactionDto>
+                {
+                    Success = true,
+                    Message = "Savings transaction created successfully",
+                    Data = transactionDto_result
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ApiResponse<SavingsTransactionDto>
+                {
+                    Success = false,
+                    Message = $"Failed to create savings transaction: {ex.Message}"
+                };
+            }
         }
     }
 }
