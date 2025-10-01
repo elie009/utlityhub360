@@ -101,6 +101,47 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<IncomeSourceListResponseDto>> GetUserIncomeSourcesWithSummaryAsync(string userId, bool activeOnly = true)
+        {
+            try
+            {
+                var query = _context.IncomeSources.Where(i => i.UserId == userId);
+
+                if (activeOnly)
+                {
+                    query = query.Where(i => i.IsActive);
+                }
+
+                var incomeSources = await query
+                    .OrderBy(i => i.Category)
+                    .ThenBy(i => i.Name)
+                    .ToListAsync();
+
+                var incomeSourceDtos = incomeSources.Select(MapToIncomeSourceDto).ToList();
+
+                // Calculate summary statistics
+                var totalActiveSources = incomeSources.Count(i => i.IsActive);
+                var totalPrimarySources = incomeSources.Count(i => i.Category.ToUpper() == "PRIMARY");
+                var totalSources = incomeSources.Count;
+                var totalMonthlyIncome = incomeSources.Sum(i => i.MonthlyAmount);
+
+                var response = new IncomeSourceListResponseDto
+                {
+                    IncomeSources = incomeSourceDtos,
+                    TotalActiveSources = totalActiveSources,
+                    TotalPrimarySources = totalPrimarySources,
+                    TotalSources = totalSources,
+                    TotalMonthlyIncome = totalMonthlyIncome
+                };
+
+                return ApiResponse<IncomeSourceListResponseDto>.SuccessResult(response);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<IncomeSourceListResponseDto>.ErrorResult($"Failed to retrieve income sources with summary: {ex.Message}");
+            }
+        }
+
         public async Task<ApiResponse<IncomeSourceDto>> UpdateIncomeSourceAsync(string incomeSourceId, UpdateIncomeSourceDto updateIncomeSourceDto, string userId)
         {
             try
@@ -179,7 +220,7 @@ namespace UtilityHub360.Services
             }
         }
 
-        public async Task<ApiResponse<bool>> ToggleIncomeSourceStatusAsync(string incomeSourceId, string userId)
+        public async Task<ApiResponse<ToggleStatusResponseDto>> ToggleIncomeSourceStatusAsync(string incomeSourceId, string userId)
         {
             try
             {
@@ -188,7 +229,7 @@ namespace UtilityHub360.Services
 
                 if (incomeSource == null)
                 {
-                    return ApiResponse<bool>.ErrorResult("Income source not found");
+                    return ApiResponse<ToggleStatusResponseDto>.ErrorResult("Income source not found");
                 }
 
                 incomeSource.IsActive = !incomeSource.IsActive;
@@ -196,12 +237,56 @@ namespace UtilityHub360.Services
 
                 await _context.SaveChangesAsync();
 
+                // Get all income sources for the user to calculate summary statistics
+                var allIncomeSources = await _context.IncomeSources
+                    .Where(i => i.UserId == userId)
+                    .ToListAsync();
+
+                var totalActiveSources = allIncomeSources.Count(i => i.IsActive);
+                var totalPrimarySources = allIncomeSources.Count(i => i.Category.ToUpper() == "PRIMARY");
+                var totalSources = allIncomeSources.Count;
+
+                var response = new ToggleStatusResponseDto
+                {
+                    TotalActiveSources = totalActiveSources,
+                    TotalPrimarySources = totalPrimarySources,
+                    TotalSources = totalSources
+                };
+
                 var status = incomeSource.IsActive ? "activated" : "deactivated";
-                return ApiResponse<bool>.SuccessResult(true, $"Income source {status} successfully");
+                return ApiResponse<ToggleStatusResponseDto>.SuccessResult(response, $"Income source {status} successfully");
             }
             catch (Exception ex)
             {
-                return ApiResponse<bool>.ErrorResult($"Failed to toggle income source status: {ex.Message}");
+                return ApiResponse<ToggleStatusResponseDto>.ErrorResult($"Failed to toggle income source status: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<ToggleStatusResponseDto>> GetIncomeSourceSummaryAsync(string userId)
+        {
+            try
+            {
+                // Get all income sources for the user to calculate summary statistics
+                var allIncomeSources = await _context.IncomeSources
+                    .Where(i => i.UserId == userId)
+                    .ToListAsync();
+
+                var totalActiveSources = allIncomeSources.Count(i => i.IsActive);
+                var totalPrimarySources = allIncomeSources.Count(i => i.Category.ToUpper() == "PRIMARY");
+                var totalSources = allIncomeSources.Count;
+
+                var response = new ToggleStatusResponseDto
+                {
+                    TotalActiveSources = totalActiveSources,
+                    TotalPrimarySources = totalPrimarySources,
+                    TotalSources = totalSources
+                };
+
+                return ApiResponse<ToggleStatusResponseDto>.SuccessResult(response, "Income source summary retrieved successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<ToggleStatusResponseDto>.ErrorResult($"Failed to get income source summary: {ex.Message}");
             }
         }
 

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using UtilityHub360.DTOs;
 using UtilityHub360.Models;
@@ -137,6 +138,34 @@ namespace UtilityHub360.Controllers
         }
 
         /// <summary>
+        /// Get all income sources for the user with summary statistics
+        /// </summary>
+        [HttpGet("with-summary")]
+        public async Task<ActionResult<ApiResponse<IncomeSourceListResponseDto>>> GetAllIncomeSourcesWithSummary([FromQuery] bool activeOnly = true)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _incomeSourceService.GetUserIncomeSourcesWithSummaryAsync(userId, activeOnly);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<IncomeSourceListResponseDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<IncomeSourceListResponseDto>.ErrorResult($"Failed to get income sources with summary: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
         /// Update income source
         /// </summary>
         [HttpPut("{incomeSourceId}")]
@@ -193,15 +222,15 @@ namespace UtilityHub360.Controllers
         }
 
         /// <summary>
-        /// Toggle income source status (active/inactive)
+        /// Get income source summary statistics for current user
         /// </summary>
-        [HttpPut("{incomeSourceId}/toggle-status")]
-        public async Task<ActionResult<ApiResponse<IncomeSourceDto>>> ToggleIncomeSourceStatus(string incomeSourceId)
+        [HttpGet("toggle-status")]
+        public async Task<ActionResult<ApiResponse<ToggleStatusResponseDto>>> GetIncomeSourceSummary()
         {
             try
             {
                 var userId = GetUserId();
-                var result = await _incomeSourceService.ToggleIncomeSourceStatusAsync(incomeSourceId, userId);
+                var result = await _incomeSourceService.GetIncomeSourceSummaryAsync(userId);
                 
                 if (!result.Success)
                 {
@@ -212,11 +241,11 @@ namespace UtilityHub360.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Unauthorized(ApiResponse<IncomeSourceDto>.ErrorResult(ex.Message));
+                return Unauthorized(ApiResponse<ToggleStatusResponseDto>.ErrorResult(ex.Message));
             }
             catch (Exception ex)
             {
-                return BadRequest(ApiResponse<IncomeSourceDto>.ErrorResult($"Failed to toggle income source status: {ex.Message}"));
+                return BadRequest(ApiResponse<ToggleStatusResponseDto>.ErrorResult($"Failed to get income source summary: {ex.Message}"));
             }
         }
 

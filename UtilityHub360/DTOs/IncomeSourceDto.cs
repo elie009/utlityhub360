@@ -115,4 +115,20 @@ namespace UtilityHub360.DTOs
         [Required(ErrorMessage = "At least one income source is required.")]
         public List<CreateIncomeSourceDto> IncomeSources { get; set; } = new List<CreateIncomeSourceDto>();
     }
+
+    public class IncomeSourceListResponseDto
+    {
+        public List<IncomeSourceDto> IncomeSources { get; set; } = new List<IncomeSourceDto>();
+        public int TotalActiveSources { get; set; }
+        public int TotalPrimarySources { get; set; }
+        public int TotalSources { get; set; }
+        public decimal TotalMonthlyIncome { get; set; }
+    }
+
+    public class ToggleStatusResponseDto
+    {
+        public int TotalActiveSources { get; set; }
+        public int TotalPrimarySources { get; set; }
+        public int TotalSources { get; set; }
+    }
 }

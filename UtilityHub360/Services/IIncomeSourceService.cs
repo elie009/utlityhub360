@@ -9,9 +9,11 @@ namespace UtilityHub360.Services
         Task<ApiResponse<IncomeSourceDto>> CreateIncomeSourceAsync(CreateIncomeSourceDto createIncomeSourceDto, string userId);
         Task<ApiResponse<IncomeSourceDto>> GetIncomeSourceAsync(string incomeSourceId, string userId);
         Task<ApiResponse<List<IncomeSourceDto>>> GetUserIncomeSourcesAsync(string userId, bool activeOnly = true);
+        Task<ApiResponse<IncomeSourceListResponseDto>> GetUserIncomeSourcesWithSummaryAsync(string userId, bool activeOnly = true);
         Task<ApiResponse<IncomeSourceDto>> UpdateIncomeSourceAsync(string incomeSourceId, UpdateIncomeSourceDto updateIncomeSourceDto, string userId);
         Task<ApiResponse<bool>> DeleteIncomeSourceAsync(string incomeSourceId, string userId);
-        Task<ApiResponse<bool>> ToggleIncomeSourceStatusAsync(string incomeSourceId, string userId);
+        Task<ApiResponse<ToggleStatusResponseDto>> ToggleIncomeSourceStatusAsync(string incomeSourceId, string userId);
+        Task<ApiResponse<ToggleStatusResponseDto>> GetIncomeSourceSummaryAsync(string userId);
 
         // Bulk Operations
         Task<ApiResponse<List<IncomeSourceDto>>> CreateMultipleIncomeSourcesAsync(CreateMultipleIncomeSourcesDto createMultipleDto, string userId);
