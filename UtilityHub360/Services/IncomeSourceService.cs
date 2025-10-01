@@ -401,9 +401,11 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var totalIncome = await _context.IncomeSources
+                var incomeSources = await _context.IncomeSources
                     .Where(i => i.UserId == userId && i.IsActive)
-                    .SumAsync(i => i.MonthlyAmount);
+                    .ToListAsync();
+
+                var totalIncome = incomeSources.Sum(i => i.MonthlyAmount);
 
                 return ApiResponse<decimal>.SuccessResult(totalIncome);
             }
