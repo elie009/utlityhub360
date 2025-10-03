@@ -38,6 +38,8 @@ This is a comprehensive loan management system API built with ASP.NET Core 8.0 a
   "confirmPassword": "password123"
 }
 ```
+
+**Note:** Phone number is optional. If not provided, it will be set to null.
 **Response:**
 ```json
 {
