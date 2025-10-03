@@ -16,6 +16,9 @@ namespace UtilityHub360.Services
         Task<ApiResponse<LoanDto>> RejectLoanAsync(string loanId, string adminId, string reason, string? notes);
         Task<ApiResponse<object>> DisburseLoanAsync(string loanId, string adminId, string disbursementMethod, string? reference);
         Task<ApiResponse<LoanDto>> CloseLoanAsync(string loanId, string adminId, string? notes);
+        Task<ApiResponse<bool>> DeleteLoanAsync(string loanId, string userId);
+        Task<ApiResponse<PaymentDto>> MakeLoanPaymentAsync(string loanId, CreatePaymentDto payment, string userId);
+        Task<ApiResponse<decimal>> GetTotalOutstandingLoanAmountAsync(string userId);
         Task<Loan?> GetLoanWithAccessCheckAsync(string loanId, string userId);
     }
 }

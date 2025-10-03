@@ -404,5 +404,114 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<PaginatedResponse<BillDto>>.ErrorResult($"Failed to get all bills: {ex.Message}"));
             }
         }
+
+        // Bill Payment Endpoints
+        [HttpPost("payments")]
+        public async Task<ActionResult<ApiResponse<BillPaymentDto>>> MakeBillPayment([FromBody] CreateBillPaymentDto paymentDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<BillPaymentDto>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _billService.MakeBillPaymentAsync(paymentDto, userId);
+                
+                if (result.Success)
+                {
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillPaymentDto>.ErrorResult($"Failed to process bill payment: {ex.Message}"));
+            }
+        }
+
+        [HttpGet("{billId}/payments")]
+        public async Task<ActionResult<ApiResponse<List<BillPaymentDto>>>> GetBillPaymentHistory(string billId, int page = 1, int limit = 50)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<List<BillPaymentDto>>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _billService.GetBillPaymentHistoryAsync(billId, userId, page, limit);
+                
+                if (result.Success)
+                {
+                    return Ok(result);
+                }
+                
+                return NotFound(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<BillPaymentDto>>.ErrorResult($"Failed to get bill payment history: {ex.Message}"));
+            }
+        }
+
+        [HttpGet("payments/{paymentId}")]
+        public async Task<ActionResult<ApiResponse<BillPaymentDto>>> GetBillPayment(string paymentId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<BillPaymentDto>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _billService.GetBillPaymentAsync(paymentId, userId);
+                
+                if (result.Success)
+                {
+                    return Ok(result);
+                }
+                
+                return NotFound(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillPaymentDto>.ErrorResult($"Failed to get bill payment: {ex.Message}"));
+            }
+        }
+
+        [HttpDelete("payments/{paymentId}")]
+        public async Task<ActionResult<ApiResponse<bool>>> DeleteBillPayment(string paymentId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _billService.DeleteBillPaymentAsync(paymentId, userId);
+                
+                if (result.Success)
+                {
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete bill payment: {ex.Message}"));
+            }
+        }
     }
 }

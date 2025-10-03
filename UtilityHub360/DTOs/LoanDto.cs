@@ -28,7 +28,7 @@ namespace UtilityHub360.DTOs
         public decimal Principal { get; set; }
 
         [Required]
-        [Range(0.01, 100)]
+        [Range(0, 100)]
         public decimal InterestRate { get; set; }
 
         [Required]
@@ -36,7 +36,7 @@ namespace UtilityHub360.DTOs
         public int Term { get; set; }
 
         [Required]
-        [StringLength(500, MinimumLength = 10)]
+        [StringLength(500)]
         public string Purpose { get; set; } = string.Empty;
 
         [StringLength(1000)]

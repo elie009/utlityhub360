@@ -30,7 +30,9 @@ namespace UtilityHub360.Services
                 throw new InvalidOperationException("User with this email already exists");
             }
 
-            if (await _context.Users.AnyAsync(u => u.Phone == registerData.Phone))
+            // Only check for phone number uniqueness if phone number is provided
+            if (!string.IsNullOrEmpty(registerData.Phone) && 
+                await _context.Users.AnyAsync(u => u.Phone == registerData.Phone))
             {
                 throw new InvalidOperationException("User with this phone number already exists");
             }

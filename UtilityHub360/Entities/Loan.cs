@@ -62,6 +62,5 @@ namespace UtilityHub360.Entities
 
         public virtual ICollection<RepaymentSchedule> RepaymentSchedules { get; set; } = new List<RepaymentSchedule>();
         public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
-        public virtual ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
     }
 }

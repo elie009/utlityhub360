@@ -24,37 +24,75 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpPost("apply")]
-        public async Task<ActionResult<ApiResponse<LoanDto>>> ApplyForLoan([FromBody] CreateLoanApplicationDto application)
+        public async Task<ActionResult<object>> ApplyForLoan([FromBody] CreateLoanApplicationDto application)
         {
             try
             {
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(userId))
                 {
-                    return Unauthorized(ApiResponse<LoanDto>.ErrorResult("User not authenticated"));
+                    return Ok(new
+                    {
+                        type = "https://tools.ietf.org/html/rfc9110#section-15.5.2",
+                        title = "Unauthorized",
+                        status = 200,
+                        detail = "User not authenticated",
+                        traceId = HttpContext.TraceIdentifier
+                    });
                 }
 
                 if (!ModelState.IsValid)
                 {
-                    var errors = ModelState.Values
-                        .SelectMany(v => v.Errors)
-                        .Select(e => e.ErrorMessage)
-                        .ToList();
-                    return BadRequest(ApiResponse<LoanDto>.ErrorResult("Validation failed", errors));
+                    var errors = ModelState
+                        .Where(x => x.Value.Errors.Count > 0)
+                        .ToDictionary(
+                            kvp => kvp.Key,
+                            kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+                        );
+
+                    return Ok(new
+                    {
+                        type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+                        title = "One or more validation errors occurred.",
+                        status = 200,
+                        errors = errors,
+                        traceId = HttpContext.TraceIdentifier
+                    });
                 }
 
                 var result = await _loanService.ApplyForLoanAsync(application, userId);
                 
                 if (result.Success)
                 {
-                    return Ok(result);
+                    return Ok(new
+                    {
+                        success = true,
+                        data = result.Data,
+                        message = result.Message,
+                        status = 200
+                    });
                 }
                 
-                return BadRequest(result);
+                return Ok(new
+                {
+                    type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+                    title = "Loan application failed",
+                    status = 200,
+                    detail = result.Message,
+                    errors = result.Errors,
+                    traceId = HttpContext.TraceIdentifier
+                });
             }
             catch (Exception ex)
             {
-                return BadRequest(ApiResponse<LoanDto>.ErrorResult($"Failed to apply for loan: {ex.Message}"));
+                return Ok(new
+                {
+                    type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+                    title = "Internal server error",
+                    status = 200,
+                    detail = $"Failed to apply for loan: {ex.Message}",
+                    traceId = HttpContext.TraceIdentifier
+                });
             }
         }
 
@@ -307,19 +345,37 @@ namespace UtilityHub360.Controllers
                 // Only admin can update financial details
                 if (effectiveRole == "ADMIN")
                 {
+                    bool recalculateRequired = false;
+                    
                     if (updateLoanDto.InterestRate.HasValue)
                     {
                         loan.InterestRate = updateLoanDto.InterestRate.Value;
+                        recalculateRequired = true;
                     }
 
-                    if (updateLoanDto.MonthlyPayment.HasValue)
+                    // If interest rate changed, recalculate monthly payment and total amount
+                    if (recalculateRequired)
                     {
-                        loan.MonthlyPayment = updateLoanDto.MonthlyPayment.Value;
+                        loan.MonthlyPayment = CalculateMonthlyPayment(loan.Principal, loan.InterestRate, loan.Term);
+                        loan.TotalAmount = loan.MonthlyPayment * loan.Term;
+                        // Keep remaining balance as is, or reset to principal if no payments made
+                        if (loan.RemainingBalance == loan.Principal)
+                        {
+                            loan.RemainingBalance = loan.Principal;
+                        }
                     }
-
-                    if (updateLoanDto.RemainingBalance.HasValue)
+                    else
                     {
-                        loan.RemainingBalance = updateLoanDto.RemainingBalance.Value;
+                        // Manual updates if no recalculation needed
+                        if (updateLoanDto.MonthlyPayment.HasValue)
+                        {
+                            loan.MonthlyPayment = updateLoanDto.MonthlyPayment.Value;
+                        }
+
+                        if (updateLoanDto.RemainingBalance.HasValue)
+                        {
+                            loan.RemainingBalance = updateLoanDto.RemainingBalance.Value;
+                        }
                     }
                 }
 
@@ -350,6 +406,119 @@ namespace UtilityHub360.Controllers
             {
                 return BadRequest(ApiResponse<LoanDto>.ErrorResult($"Failed to update loan: {ex.Message}"));
             }
+        }
+
+        /// <summary>
+        /// Delete a loan
+        /// </summary>
+        [HttpDelete("{loanId}")]
+        public async Task<ActionResult<ApiResponse<bool>>> DeleteLoan(string loanId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _loanService.DeleteLoanAsync(loanId, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete loan: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Make a payment for a specific loan
+        /// </summary>
+        [HttpPost("{loanId}/payment")]
+        public async Task<ActionResult<ApiResponse<PaymentDto>>> MakeLoanPayment(string loanId, [FromBody] CreatePaymentDto payment)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<PaymentDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<PaymentDto>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _loanService.MakeLoanPaymentAsync(loanId, payment, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<PaymentDto>.ErrorResult($"Failed to process payment: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get total outstanding loan amount for the authenticated user
+        /// </summary>
+        [HttpGet("outstanding-amount")]
+        public async Task<ActionResult<ApiResponse<decimal>>> GetTotalOutstandingLoanAmount()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<decimal>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _loanService.GetTotalOutstandingLoanAmountAsync(userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<decimal>.ErrorResult($"Failed to get total outstanding loan amount: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Calculate monthly payment using the standard loan payment formula
+        /// </summary>
+        private decimal CalculateMonthlyPayment(decimal principal, decimal annualInterestRate, int termInMonths)
+        {
+            if (annualInterestRate == 0)
+            {
+                return principal / termInMonths;
+            }
+
+            decimal monthlyInterestRate = annualInterestRate / 100 / 12;
+            decimal monthlyPayment = principal * (monthlyInterestRate * (decimal)Math.Pow((double)(1 + monthlyInterestRate), termInMonths)) 
+                                   / ((decimal)Math.Pow((double)(1 + monthlyInterestRate), termInMonths) - 1);
+
+            return Math.Round(monthlyPayment, 2);
         }
     }
 }

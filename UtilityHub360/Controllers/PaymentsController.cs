@@ -140,6 +140,52 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<PaymentDto>.ErrorResult($"Failed to update payment status: {ex.Message}"));
             }
         }
+
+        [HttpDelete("{paymentId}")]
+        public async Task<ActionResult<ApiResponse<bool>>> DeletePayment(string paymentId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _paymentService.DeletePaymentAsync(paymentId, userId);
+                
+                if (result.Success)
+                {
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete payment: {ex.Message}"));
+            }
+        }
+
+        [HttpGet("{paymentId}/debug")]
+        public async Task<ActionResult<ApiResponse<object>>> DebugPayment(string paymentId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<object>.ErrorResult("User not authenticated"));
+                }
+
+                var debugInfo = await _paymentService.DebugPaymentAsync(paymentId, userId);
+                return Ok(debugInfo);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.ErrorResult($"Debug failed: {ex.Message}"));
+            }
+        }
     }
 
     public class UpdatePaymentStatusDto

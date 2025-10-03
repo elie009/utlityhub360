@@ -11,9 +11,12 @@ Register a new user account.
   "name": "John Doe",
   "email": "john@example.com",
   "password": "SecurePassword123!",
+  "confirmPassword": "SecurePassword123!",
   "phone": "+1234567890"
 }
 ```
+
+**Note:** Phone number is optional. If not provided, it will be set to null.
 
 **Response:**
 ```json

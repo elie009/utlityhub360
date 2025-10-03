@@ -13,10 +13,15 @@ namespace UtilityHub360.Data
         public DbSet<Loan> Loans { get; set; }
         public DbSet<RepaymentSchedule> RepaymentSchedules { get; set; }
         public DbSet<Payment> Payments { get; set; }
-        public DbSet<Transaction> Transactions { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<LoanApplication> LoanApplications { get; set; }
         public DbSet<Bill> Bills { get; set; }
+        public DbSet<BankAccount> BankAccounts { get; set; }
+        public DbSet<BankTransaction> BankTransactions { get; set; }
+        public DbSet<SavingsAccount> SavingsAccounts { get; set; }
+        public DbSet<SavingsTransaction> SavingsTransactions { get; set; }
+        public DbSet<UserProfile> UserProfiles { get; set; }
+        public DbSet<IncomeSource> IncomeSources { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -47,7 +52,7 @@ namespace UtilityHub360.Data
                     .OnDelete(DeleteBehavior.Cascade);
             });
 
-            // Payment configuration
+            // Payment configuration (now includes bank transactions and bill payments)
             modelBuilder.Entity<Payment>(entity =>
             {
                 entity.HasOne(d => d.Loan)
@@ -55,22 +60,47 @@ namespace UtilityHub360.Data
                     .HasForeignKey(d => d.LoanId)
                     .OnDelete(DeleteBehavior.Cascade);
 
+                entity.HasOne(d => d.Bill)
+                    .WithMany()
+                    .HasForeignKey(d => d.BillId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(d => d.SavingsAccount)
+                    .WithMany()
+                    .HasForeignKey(d => d.SavingsAccountId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(d => d.BankAccount)
+                    .WithMany()
+                    .HasForeignKey(d => d.BankAccountId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
                 entity.HasOne(d => d.User)
                     .WithMany(p => p.Payments)
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.NoAction);
 
-                entity.HasIndex(e => new { e.LoanId, e.Reference }).IsUnique();
+                // Unique constraint for LoanId and Reference
+                entity.HasIndex(e => new { e.LoanId, e.Reference })
+                    .HasFilter("[LoanId] IS NOT NULL")
+                    .IsUnique();
+
+                // Unique constraint for BillId and Reference
+                entity.HasIndex(e => new { e.BillId, e.Reference })
+                    .HasFilter("[BillId] IS NOT NULL")
+                    .IsUnique();
+
+                // Unique constraint for SavingsAccountId and Reference
+                entity.HasIndex(e => new { e.SavingsAccountId, e.Reference })
+                    .HasFilter("[SavingsAccountId] IS NOT NULL")
+                    .IsUnique();
+
+                entity.HasIndex(e => e.ExternalTransactionId);
+                entity.HasIndex(e => e.TransactionDate);
+                entity.HasIndex(e => e.IsBankTransaction);
+                entity.HasIndex(e => e.BankAccountId);
             });
 
-            // Transaction configuration
-            modelBuilder.Entity<Transaction>(entity =>
-            {
-                entity.HasOne(d => d.Loan)
-                    .WithMany(p => p.Transactions)
-                    .HasForeignKey(d => d.LoanId)
-                    .OnDelete(DeleteBehavior.Cascade);
-            });
 
             // Notification configuration
             modelBuilder.Entity<Notification>(entity =>
@@ -88,6 +118,99 @@ namespace UtilityHub360.Data
                     .WithMany(p => p.LoanApplications)
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // Bill configuration
+            modelBuilder.Entity<Bill>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // BankAccount configuration
+            modelBuilder.Entity<BankAccount>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => new { e.UserId, e.AccountName }).IsUnique();
+                entity.HasIndex(e => new { e.UserId, e.AccountNumber }).IsUnique();
+            });
+
+            // BankTransaction configuration
+            modelBuilder.Entity<BankTransaction>(entity =>
+            {
+                entity.HasOne(d => d.BankAccount)
+                    .WithMany(p => p.Transactions)
+                    .HasForeignKey(d => d.BankAccountId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(e => e.ExternalTransactionId);
+                entity.HasIndex(e => e.TransactionDate);
+            });
+
+            // SavingsAccount configuration
+            modelBuilder.Entity<SavingsAccount>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => new { e.UserId, e.AccountName }).IsUnique();
+            });
+
+            // SavingsTransaction configuration
+            modelBuilder.Entity<SavingsTransaction>(entity =>
+            {
+                entity.HasOne(d => d.SavingsAccount)
+                    .WithMany(p => p.SavingsTransactions)
+                    .HasForeignKey(d => d.SavingsAccountId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.SourceBankAccount)
+                    .WithMany()
+                    .HasForeignKey(d => d.SourceBankAccountId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(e => e.TransactionDate);
+            });
+
+            // UserProfile configuration
+            modelBuilder.Entity<UserProfile>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId).IsUnique();
+                entity.HasIndex(e => e.Industry);
+                entity.HasIndex(e => e.EmploymentType);
+            });
+
+            // IncomeSource configuration
+            modelBuilder.Entity<IncomeSource>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.Category);
+                entity.HasIndex(e => e.Frequency);
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => new { e.UserId, e.Name }).IsUnique();
             });
 
             // Seed data

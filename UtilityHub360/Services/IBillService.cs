@@ -27,5 +27,11 @@ namespace UtilityHub360.Services
 
         // Admin Operations
         Task<ApiResponse<PaginatedResponse<BillDto>>> GetAllBillsAsync(string? status, string? billType, int page, int limit);
+
+        // Bill Payment Operations
+        Task<ApiResponse<BillPaymentDto>> MakeBillPaymentAsync(CreateBillPaymentDto payment, string userId);
+        Task<ApiResponse<List<BillPaymentDto>>> GetBillPaymentHistoryAsync(string billId, string userId, int page = 1, int limit = 50);
+        Task<ApiResponse<BillPaymentDto>> GetBillPaymentAsync(string paymentId, string userId);
+        Task<ApiResponse<bool>> DeleteBillPaymentAsync(string paymentId, string userId);
     }
 }

@@ -26,7 +26,11 @@ namespace UtilityHub360.DTOs
         public decimal Principal { get; set; }
 
         [Required]
-        [StringLength(500, MinimumLength = 10)]
+        [Range(0, 100)]
+        public decimal InterestRate { get; set; }
+
+        [Required]
+        [StringLength(500)]
         public string Purpose { get; set; } = string.Empty;
 
         [Required]

@@ -17,9 +17,8 @@ namespace UtilityHub360.Entities
         [StringLength(255)]
         public string Email { get; set; } = string.Empty;
 
-        [Required]
         [StringLength(20)]
-        public string Phone { get; set; } = string.Empty;
+        public string? Phone { get; set; }
 
         [Required]
         [StringLength(20)]

@@ -55,8 +55,8 @@ namespace UtilityHub360.Services
                 _context.LoanApplications.Add(loanApplication);
                 await _context.SaveChangesAsync();
 
-                // Create loan from application
-                var interestRate = CalculateInterestRate(application.Principal, application.Term, application.MonthlyIncome);
+                // Create loan from application using provided interest rate
+                var interestRate = application.InterestRate;
                 var monthlyPayment = CalculateMonthlyPayment(application.Principal, interestRate, application.Term);
                 var totalAmount = monthlyPayment * application.Term;
 
@@ -272,20 +272,20 @@ namespace UtilityHub360.Services
                     return ApiResponse<List<TransactionDto>>.ErrorResult("Loan not found");
                 }
 
-                var transactions = await _context.Transactions
-                    .Where(t => t.LoanId == loanId)
-                    .OrderByDescending(t => t.CreatedAt)
+                var payments = await _context.Payments
+                    .Where(p => p.LoanId == loanId && !p.IsBankTransaction) // Only loan activities, not bank transactions
+                    .OrderByDescending(p => p.CreatedAt)
                     .ToListAsync();
 
-                var transactionDtos = transactions.Select(transaction => new TransactionDto
+                var transactionDtos = payments.Select(payment => new TransactionDto
                 {
-                    Id = transaction.Id,
-                    LoanId = transaction.LoanId,
-                    Type = transaction.Type,
-                    Amount = transaction.Amount,
-                    Description = transaction.Description,
-                    Reference = transaction.Reference,
-                    CreatedAt = transaction.CreatedAt
+                    Id = payment.Id,
+                    LoanId = payment.LoanId ?? "",
+                    Type = payment.TransactionType ?? "UNKNOWN",
+                    Amount = payment.Amount,
+                    Description = payment.Description ?? "",
+                    Reference = payment.Reference,
+                    CreatedAt = payment.CreatedAt
                 }).ToList();
 
                 return ApiResponse<List<TransactionDto>>.SuccessResult(transactionDtos);
@@ -397,18 +397,26 @@ namespace UtilityHub360.Services
                 loan.Status = "ACTIVE";
                 loan.DisbursedAt = DateTime.UtcNow;
 
-                // Create disbursement transaction
-                var transaction = new Entities.Transaction
+                // Create disbursement transaction as Payment record
+                var disbursementPayment = new Entities.Payment
                 {
+                    Id = Guid.NewGuid().ToString(),
                     LoanId = loanId,
-                    Type = "DISBURSEMENT",
+                    UserId = loan.UserId,
                     Amount = loan.Principal,
-                    Description = $"Loan disbursement via {disbursementMethod}",
+                    Method = disbursementMethod,
                     Reference = reference,
-                    CreatedAt = DateTime.UtcNow
+                    Status = "COMPLETED",
+                    IsBankTransaction = false, // This is a loan activity, not a bank transaction
+                    TransactionType = "DISBURSEMENT",
+                    Description = $"Loan disbursement via {disbursementMethod}",
+                    ProcessedAt = DateTime.UtcNow,
+                    TransactionDate = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
                 };
 
-                _context.Transactions.Add(transaction);
+                _context.Payments.Add(disbursementPayment);
                 await _context.SaveChangesAsync();
 
                 var result = new
@@ -470,6 +478,166 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<bool>> DeleteLoanAsync(string loanId, string userId)
+        {
+            try
+            {
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return ApiResponse<bool>.ErrorResult("Loan not found");
+                }
+
+                // Check if loan can be deleted based on status
+                if (loan.Status == "ACTIVE" || loan.Status == "COMPLETED")
+                {
+                    return ApiResponse<bool>.ErrorResult("Cannot delete active or completed loans");
+                }
+
+                // Check if there are any payments made
+                var hasPayments = await _context.Payments.AnyAsync(p => p.LoanId == loanId);
+                if (hasPayments)
+                {
+                    return ApiResponse<bool>.ErrorResult("Cannot delete loan with existing payments");
+                }
+
+                // Delete related data first (due to foreign key constraints)
+                var repaymentSchedules = await _context.RepaymentSchedules
+                    .Where(rs => rs.LoanId == loanId)
+                    .ToListAsync();
+                _context.RepaymentSchedules.RemoveRange(repaymentSchedules);
+
+                // Remove all loan activities for this loan (Payment records with IsBankTransaction = false)
+                var loanActivities = await _context.Payments
+                    .Where(p => p.LoanId == loanId && !p.IsBankTransaction)
+                    .ToListAsync();
+                _context.Payments.RemoveRange(loanActivities);
+
+                // Delete the loan
+                _context.Loans.Remove(loan);
+                await _context.SaveChangesAsync();
+
+                return ApiResponse<bool>.SuccessResult(true, "Loan deleted successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Failed to delete loan: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<PaymentDto>> MakeLoanPaymentAsync(string loanId, CreatePaymentDto payment, string userId)
+        {
+            try
+            {
+                // Verify loan exists and belongs to user
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Loan not found");
+                }
+
+                if (loan.Status != "ACTIVE")
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Loan is not active");
+                }
+
+                // Check if payment reference already exists for this loan
+                var existingPayment = await _context.Payments
+                    .FirstOrDefaultAsync(p => p.LoanId == loanId && p.Reference == payment.Reference);
+
+                if (existingPayment != null)
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Payment reference already exists for this loan");
+                }
+
+                // Validate payment amount
+                if (payment.Amount <= 0)
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Payment amount must be greater than 0");
+                }
+
+                if (payment.Amount > loan.RemainingBalance)
+                {
+                    return ApiResponse<PaymentDto>.ErrorResult("Payment amount cannot exceed remaining loan balance");
+                }
+
+                // Create payment (combining both payment and loan activity tracking)
+                var newPayment = new Entities.Payment
+                {
+                    LoanId = loanId,
+                    UserId = userId,
+                    Amount = payment.Amount,
+                    Method = payment.Method,
+                    Reference = payment.Reference,
+                    Status = "COMPLETED",
+                    IsBankTransaction = false, // This is a loan payment, not a bank transaction
+                    TransactionType = "PAYMENT",
+                    Description = $"Payment via {payment.Method}",
+                    ProcessedAt = DateTime.UtcNow,
+                    TransactionDate = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.Payments.Add(newPayment);
+
+                // Update loan remaining balance
+                loan.RemainingBalance -= payment.Amount;
+
+                // Check if loan is fully paid
+                if (loan.RemainingBalance <= 0)
+                {
+                    loan.Status = "COMPLETED";
+                    loan.CompletedAt = DateTime.UtcNow;
+                }
+
+                await _context.SaveChangesAsync();
+
+                // Update payment status to completed
+                newPayment.Status = "COMPLETED";
+                await _context.SaveChangesAsync();
+
+                var paymentDto = new PaymentDto
+                {
+                    Id = newPayment.Id,
+                    LoanId = newPayment.LoanId,
+                    UserId = newPayment.UserId,
+                    Amount = newPayment.Amount,
+                    Method = newPayment.Method,
+                    Reference = newPayment.Reference,
+                    Status = newPayment.Status,
+                    ProcessedAt = newPayment.ProcessedAt,
+                    CreatedAt = newPayment.CreatedAt
+                };
+
+                return ApiResponse<PaymentDto>.SuccessResult(paymentDto, "Payment processed successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<PaymentDto>.ErrorResult($"Failed to process payment: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<decimal>> GetTotalOutstandingLoanAmountAsync(string userId)
+        {
+            try
+            {
+                // Get all active loans for the user
+                var activeLoans = await _context.Loans
+                    .Where(l => l.UserId == userId && l.Status == "ACTIVE")
+                    .ToListAsync();
+
+                // Calculate total outstanding amount from remaining balances
+                var totalOutstanding = activeLoans.Sum(l => l.RemainingBalance);
+
+                return ApiResponse<decimal>.SuccessResult(totalOutstanding);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<decimal>.ErrorResult($"Failed to get total outstanding loan amount: {ex.Message}");
+            }
+        }
+
         private decimal CalculateInterestRate(decimal principal, int term, decimal monthlyIncome)
         {
             // Simple interest rate calculation based on principal amount and income
@@ -482,6 +650,12 @@ namespace UtilityHub360.Services
 
         private decimal CalculateMonthlyPayment(decimal principal, decimal interestRate, int term)
         {
+            if (interestRate == 0)
+            {
+                // For 0% interest loans, simply divide principal by term
+                return principal / term;
+            }
+
             var monthlyRate = interestRate / 100 / 12;
             var power = (decimal)Math.Pow((double)(1 + monthlyRate), term);
             return principal * (monthlyRate * power) / (power - 1);
@@ -490,25 +664,47 @@ namespace UtilityHub360.Services
         private async Task CreateRepaymentScheduleAsync(string loanId, decimal monthlyPayment, int term, decimal interestRate)
         {
             var schedules = new List<Entities.RepaymentSchedule>();
-            var monthlyRate = interestRate / 100 / 12;
-            var remainingPrincipal = monthlyPayment * term;
-
-            for (int i = 1; i <= term; i++)
+            
+            if (interestRate == 0)
             {
-                var interestAmount = remainingPrincipal * monthlyRate;
-                var principalAmount = monthlyPayment - interestAmount;
-                remainingPrincipal -= principalAmount;
-
-                schedules.Add(new Entities.RepaymentSchedule
+                // For 0% interest loans, all payments go to principal
+                for (int i = 1; i <= term; i++)
                 {
-                    LoanId = loanId,
-                    InstallmentNumber = i,
-                    DueDate = DateTime.UtcNow.AddMonths(i),
-                    PrincipalAmount = principalAmount,
-                    InterestAmount = interestAmount,
-                    TotalAmount = monthlyPayment,
-                    Status = "PENDING"
-                });
+                    schedules.Add(new Entities.RepaymentSchedule
+                    {
+                        LoanId = loanId,
+                        InstallmentNumber = i,
+                        DueDate = DateTime.UtcNow.AddMonths(i),
+                        PrincipalAmount = monthlyPayment,
+                        InterestAmount = 0,
+                        TotalAmount = monthlyPayment,
+                        Status = "PENDING"
+                    });
+                }
+            }
+            else
+            {
+                // For loans with interest, calculate principal and interest portions
+                var monthlyRate = interestRate / 100 / 12;
+                var remainingPrincipal = monthlyPayment * term;
+
+                for (int i = 1; i <= term; i++)
+                {
+                    var interestAmount = remainingPrincipal * monthlyRate;
+                    var principalAmount = monthlyPayment - interestAmount;
+                    remainingPrincipal -= principalAmount;
+
+                    schedules.Add(new Entities.RepaymentSchedule
+                    {
+                        LoanId = loanId,
+                        InstallmentNumber = i,
+                        DueDate = DateTime.UtcNow.AddMonths(i),
+                        PrincipalAmount = principalAmount,
+                        InterestAmount = interestAmount,
+                        TotalAmount = monthlyPayment,
+                        Status = "PENDING"
+                    });
+                }
             }
 
             _context.RepaymentSchedules.AddRange(schedules);

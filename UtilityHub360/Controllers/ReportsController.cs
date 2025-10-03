@@ -145,10 +145,10 @@ namespace UtilityHub360.Controllers
                     .OrderBy(p => p.CreatedAt)
                     .ToListAsync();
 
-                // Get transactions
-                var transactions = await _context.Transactions
-                    .Where(t => t.LoanId == loanId)
-                    .OrderByDescending(t => t.CreatedAt)
+                // Get loan activities (Payment records with IsBankTransaction = false)
+                var transactions = await _context.Payments
+                    .Where(p => p.LoanId == loanId && !p.IsBankTransaction)
+                    .OrderByDescending(p => p.CreatedAt)
                     .ToListAsync();
 
                 // Calculate payment summary
@@ -208,7 +208,7 @@ namespace UtilityHub360.Controllers
                     transactions = transactions.Select(t => new
                     {
                         id = t.Id,
-                        type = t.Type,
+                        type = t.TransactionType,
                         amount = t.Amount,
                         description = t.Description,
                         reference = t.Reference,
