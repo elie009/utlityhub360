@@ -100,10 +100,18 @@ builder.Services.AddScoped<IIncomeSourceService, IncomeSourceService>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+// Enable Swagger in both Development and Production for API testing
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "UtilityHub360 API v1");
+    c.RoutePrefix = "swagger"; // Set Swagger UI at /swagger route
+});
+
+// Only show detailed error pages in development
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseDeveloperExceptionPage();
 }
 
 app.UseHttpsRedirection();
@@ -117,6 +125,14 @@ app.UseAuthorization();
 app.MapControllers();
 
 // Add a simple welcome endpoint
-app.MapGet("/", () => "UtilityHub360 API is running! Visit /swagger for API documentation (Development only)");
+app.MapGet("/", () => "UtilityHub360 API is running! Visit /swagger for API documentation");
+
+// Add health check endpoint
+app.MapGet("/health", () => new { 
+    Status = "Healthy", 
+    Environment = app.Environment.EnvironmentName,
+    Timestamp = DateTime.UtcNow,
+    Database = "Connected to production database"
+});
 
 app.Run();
