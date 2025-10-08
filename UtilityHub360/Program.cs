@@ -57,7 +57,12 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "https://localhost:3000")
+        policy.WithOrigins(
+                "http://localhost:3000", 
+                "https://localhost:3000",
+                "https://wh1479740.ispot.cc",
+                "http://wh1479740.ispot.cc"
+              )
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
