@@ -13,6 +13,9 @@ namespace UtilityHub360.DTOs
         [StringLength(20)]
         public string? Status { get; set; }
 
+        [Range(0.01, double.MaxValue, ErrorMessage = "Principal amount must be greater than 0")]
+        public decimal? Principal { get; set; }
+
         [Range(0, 100)]
         public decimal? InterestRate { get; set; }
 

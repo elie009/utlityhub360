@@ -342,44 +342,138 @@ namespace UtilityHub360.Controllers
                     loan.Status = updateLoanDto.Status;
                 }
 
-                // Only admin can update financial details
-                if (effectiveRole == "ADMIN")
-                {
-                    bool recalculateRequired = false;
-                    
-                    if (updateLoanDto.InterestRate.HasValue)
-                    {
-                        loan.InterestRate = updateLoanDto.InterestRate.Value;
-                        recalculateRequired = true;
-                    }
+                // ============================================
+                // AUTOMATED FINANCIAL UPDATE LOGIC
+                // ============================================
+                // Frontend: Just send the values you want to update
+                // Backend: Automatically calculates everything else
+                // ============================================
 
-                    // If interest rate changed, recalculate monthly payment and total amount
-                    if (recalculateRequired)
+                Console.WriteLine($"[DEBUG] === LOAN UPDATE START ===");
+                Console.WriteLine($"[DEBUG] Loan ID: {loanId}");
+                Console.WriteLine($"[DEBUG] Request - Principal: {updateLoanDto.Principal?.ToString() ?? "null"}");
+                Console.WriteLine($"[DEBUG] Request - InterestRate: {updateLoanDto.InterestRate?.ToString() ?? "null"}");
+                Console.WriteLine($"[DEBUG] Request - MonthlyPayment: {updateLoanDto.MonthlyPayment?.ToString() ?? "null"}");
+                Console.WriteLine($"[DEBUG] Request - RemainingBalance: {updateLoanDto.RemainingBalance?.ToString() ?? "null"}");
+                Console.WriteLine($"[DEBUG] Current - Principal: {loan.Principal}");
+                Console.WriteLine($"[DEBUG] Current - MonthlyPayment: {loan.MonthlyPayment}");
+                Console.WriteLine($"[DEBUG] Current - TotalAmount: {loan.TotalAmount}");
+                Console.WriteLine($"[DEBUG] Current - RemainingBalance: {loan.RemainingBalance}");
+
+                bool financialValuesChanged = false;
+                
+                // Store old values BEFORE making any changes
+                decimal oldPrincipal = loan.Principal;
+                decimal oldRemainingBalance = loan.RemainingBalance;
+                decimal oldTotalAmount = loan.TotalAmount;
+
+                // 1. Update Principal if provided (triggers full recalculation)
+                if (updateLoanDto.Principal.HasValue)
+                {
+                    loan.Principal = updateLoanDto.Principal.Value;
+                    financialValuesChanged = true;
+                    Console.WriteLine($"[UPDATE] Principal: {oldPrincipal} -> {loan.Principal}");
+                }
+
+                // 2. Update Interest Rate if provided
+                if (updateLoanDto.InterestRate.HasValue)
+                {
+                    loan.InterestRate = updateLoanDto.InterestRate.Value;
+                    financialValuesChanged = true;
+                    Console.WriteLine($"[UPDATE] Interest Rate: {loan.InterestRate}%");
+                }
+
+                Console.WriteLine($"[DEBUG] financialValuesChanged after Principal/InterestRate: {financialValuesChanged}");
+
+                // 3. Update Monthly Payment if provided (manual override)
+                if (updateLoanDto.MonthlyPayment.HasValue)
+                {
+                    loan.MonthlyPayment = updateLoanDto.MonthlyPayment.Value;
+                    financialValuesChanged = true;
+                    Console.WriteLine($"[UPDATE] Monthly Payment (Manual): {loan.MonthlyPayment}");
+                }
+                // If principal or interest rate changed but no manual payment, calculate it
+                else if (updateLoanDto.Principal.HasValue || updateLoanDto.InterestRate.HasValue)
+                {
+                    Console.WriteLine($"[DEBUG] Calculating monthly payment...");
+                    Console.WriteLine($"[DEBUG] Parameters - Principal: {loan.Principal}, InterestRate: {loan.InterestRate}, Term: {loan.Term}");
+                    loan.MonthlyPayment = CalculateMonthlyPayment(loan.Principal, loan.InterestRate, loan.Term);
+                    Console.WriteLine($"[UPDATE] Monthly Payment (Calculated): {loan.MonthlyPayment}");
+                    financialValuesChanged = true;  // Make sure this is set!
+                }
+
+                Console.WriteLine($"[DEBUG] financialValuesChanged after MonthlyPayment: {financialValuesChanged}");
+
+                // 4. Recalculate Total Amount based on monthly payment and term
+                if (financialValuesChanged)
+                {
+                    loan.TotalAmount = loan.MonthlyPayment * loan.Term;
+                    Console.WriteLine($"[UPDATE] Total Amount: {loan.TotalAmount}");
+                }
+
+                // 5. Update Remaining Balance if provided (manual override)
+                if (updateLoanDto.RemainingBalance.HasValue)
+                {
+                    loan.RemainingBalance = updateLoanDto.RemainingBalance.Value;
+                    Console.WriteLine($"[UPDATE] Remaining Balance (Manual): {loan.RemainingBalance}");
+                }
+                // If financial values changed but no manual remaining balance, recalculate it
+                else if (financialValuesChanged)
+                {
+                    // Use the old values we saved at the beginning
+                    if (updateLoanDto.Principal.HasValue)
                     {
-                        loan.MonthlyPayment = CalculateMonthlyPayment(loan.Principal, loan.InterestRate, loan.Term);
-                        loan.TotalAmount = loan.MonthlyPayment * loan.Term;
-                        // Keep remaining balance as is, or reset to principal if no payments made
-                        if (loan.RemainingBalance == loan.Principal)
+                        // Principal changed - check if this is a major increase or just a minor adjustment
+                        // If old remaining balance was close to old principal, no payments were made
+                        if (oldRemainingBalance >= oldPrincipal * 0.95m)
                         {
-                            loan.RemainingBalance = loan.Principal;
+                            // No significant payments made - set to new total
+                            loan.RemainingBalance = loan.TotalAmount;
+                            Console.WriteLine($"[UPDATE] Remaining Balance (No Payments): {loan.RemainingBalance}");
+                        }
+                        else
+                        {
+                            // Payments have been made - calculate how much was paid
+                            var paidAmount = oldTotalAmount - oldRemainingBalance;
+                            
+                            // Maintain the paid amount
+                            loan.RemainingBalance = loan.TotalAmount - paidAmount;
+                            
+                            // Make sure remaining balance doesn't go negative
+                            if (loan.RemainingBalance < 0)
+                            {
+                                loan.RemainingBalance = 0;
+                            }
+                            
+                            Console.WriteLine($"[UPDATE] Remaining Balance (After {paidAmount} paid): {loan.RemainingBalance}");
                         }
                     }
                     else
                     {
-                        // Manual updates if no recalculation needed
-                        if (updateLoanDto.MonthlyPayment.HasValue)
+                        // Interest rate changed but not principal
+                        if (loan.RemainingBalance >= loan.Principal)
                         {
-                            loan.MonthlyPayment = updateLoanDto.MonthlyPayment.Value;
+                            // No payments made yet - set to new total amount
+                            loan.RemainingBalance = loan.TotalAmount;
+                            Console.WriteLine($"[UPDATE] Remaining Balance (No Payments): {loan.RemainingBalance}");
                         }
-
-                        if (updateLoanDto.RemainingBalance.HasValue)
+                        else
                         {
-                            loan.RemainingBalance = updateLoanDto.RemainingBalance.Value;
+                            // Payments have been made - maintain the same paid amount
+                            var paidAmount = loan.TotalAmount - loan.RemainingBalance;
+                            loan.RemainingBalance = loan.TotalAmount - paidAmount;
+                            Console.WriteLine($"[UPDATE] Remaining Balance (After {paidAmount} paid): {loan.RemainingBalance}");
                         }
                     }
                 }
 
                 await _context.SaveChangesAsync();
+
+                Console.WriteLine($"[DEBUG] === LOAN UPDATE END ===");
+                Console.WriteLine($"[DEBUG] Final - Principal: {loan.Principal}");
+                Console.WriteLine($"[DEBUG] Final - MonthlyPayment: {loan.MonthlyPayment}");
+                Console.WriteLine($"[DEBUG] Final - TotalAmount: {loan.TotalAmount}");
+                Console.WriteLine($"[DEBUG] Final - RemainingBalance: {loan.RemainingBalance}");
 
                 var loanDto = new LoanDto
                 {
@@ -501,6 +595,110 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<decimal>.ErrorResult($"Failed to get total outstanding loan amount: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Calculate loan values preview (without saving) - for frontend form validation
+        /// </summary>
+        [HttpPost("calculate-preview")]
+        public ActionResult<ApiResponse<object>> CalculateLoanPreview([FromBody] CalculateLoanPreviewDto previewDto)
+        {
+            try
+            {
+                var monthlyPayment = CalculateMonthlyPayment(previewDto.Principal, previewDto.InterestRate, previewDto.Term);
+                var totalAmount = monthlyPayment * previewDto.Term;
+                
+                var preview = new
+                {
+                    principal = previewDto.Principal,
+                    interestRate = previewDto.InterestRate,
+                    term = previewDto.Term,
+                    monthlyPayment = Math.Round(monthlyPayment, 2),
+                    totalAmount = Math.Round(totalAmount, 2),
+                    totalInterest = Math.Round(totalAmount - previewDto.Principal, 2)
+                };
+
+                return Ok(ApiResponse<object>.SuccessResult(preview, "Loan calculation preview generated"));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.ErrorResult($"Failed to calculate loan preview: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Calculate updated loan values when changing interest rate
+        /// </summary>
+        [HttpPost("{loanId}/recalculate-preview")]
+        public async Task<ActionResult<ApiResponse<object>>> RecalculateLoanPreview(string loanId, [FromBody] RecalculateLoanPreviewDto previewDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<object>.ErrorResult("User not authenticated"));
+                }
+
+                var loan = await _loanService.GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return NotFound(ApiResponse<object>.ErrorResult("Loan not found"));
+                }
+
+                // Calculate new values based on new interest rate
+                var newMonthlyPayment = CalculateMonthlyPayment(loan.Principal, previewDto.NewInterestRate, loan.Term);
+                var newTotalAmount = newMonthlyPayment * loan.Term;
+                
+                // Calculate new remaining balance based on payments made
+                decimal newRemainingBalance;
+                if (loan.RemainingBalance >= loan.Principal)
+                {
+                    // No payments made yet
+                    newRemainingBalance = newTotalAmount;
+                }
+                else
+                {
+                    // Payments have been made
+                    var paidAmount = loan.Principal - loan.RemainingBalance;
+                    newRemainingBalance = newTotalAmount - paidAmount;
+                }
+
+                var preview = new
+                {
+                    currentValues = new
+                    {
+                        principal = loan.Principal,
+                        interestRate = loan.InterestRate,
+                        term = loan.Term,
+                        monthlyPayment = loan.MonthlyPayment,
+                        totalAmount = loan.TotalAmount,
+                        remainingBalance = loan.RemainingBalance
+                    },
+                    newValues = new
+                    {
+                        principal = loan.Principal,
+                        interestRate = previewDto.NewInterestRate,
+                        term = loan.Term,
+                        monthlyPayment = Math.Round(newMonthlyPayment, 2),
+                        totalAmount = Math.Round(newTotalAmount, 2),
+                        remainingBalance = Math.Round(newRemainingBalance, 2),
+                        totalInterest = Math.Round(newTotalAmount - loan.Principal, 2)
+                    },
+                    changes = new
+                    {
+                        monthlyPaymentChange = Math.Round(newMonthlyPayment - loan.MonthlyPayment, 2),
+                        totalAmountChange = Math.Round(newTotalAmount - loan.TotalAmount, 2),
+                        remainingBalanceChange = Math.Round(newRemainingBalance - loan.RemainingBalance, 2)
+                    }
+                };
+
+                return Ok(ApiResponse<object>.SuccessResult(preview, "Loan recalculation preview generated"));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.ErrorResult($"Failed to calculate preview: {ex.Message}"));
             }
         }
 

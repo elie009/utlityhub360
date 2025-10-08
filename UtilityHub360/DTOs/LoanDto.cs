@@ -24,7 +24,7 @@ namespace UtilityHub360.DTOs
     public class CreateLoanDto
     {
         [Required]
-        [Range(1000, 100000)]
+        [Range(0.01, double.MaxValue, ErrorMessage = "Principal amount must be greater than 0")]
         public decimal Principal { get; set; }
 
         [Required]
@@ -32,7 +32,7 @@ namespace UtilityHub360.DTOs
         public decimal InterestRate { get; set; }
 
         [Required]
-        [Range(6, 60)]
+        [Range(1, int.MaxValue, ErrorMessage = "Term must be at least 1 month")]
         public int Term { get; set; }
 
         [Required]
