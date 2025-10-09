@@ -19,6 +19,9 @@ namespace UtilityHub360.DTOs
         public DateTime? DisbursedAt { get; set; }
         public DateTime? CompletedAt { get; set; }
         public string? AdditionalInfo { get; set; }
+        
+        // Next payment due date (from RepaymentSchedule)
+        public DateTime? NextDueDate { get; set; }
     }
 
     public class CreateLoanDto

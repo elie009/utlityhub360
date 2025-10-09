@@ -162,6 +162,8 @@ namespace UtilityHub360.Controllers
                     DisbursedAt = loan.DisbursedAt,
                     CompletedAt = loan.CompletedAt,
                     AdditionalInfo = loan.AdditionalInfo
+                    // NextDueDate = loan.NextDueDate,
+                    // FinalDueDate = loan.FinalDueDate
                 }).ToList();
 
                 var paginatedResponse = new PaginatedResponse<LoanDto>
@@ -492,6 +494,8 @@ namespace UtilityHub360.Controllers
                     DisbursedAt = loan.DisbursedAt,
                     CompletedAt = loan.CompletedAt,
                     AdditionalInfo = loan.AdditionalInfo
+                    // NextDueDate = loan.NextDueDate,
+                    // FinalDueDate = loan.FinalDueDate
                 };
 
                 return Ok(ApiResponse<LoanDto>.SuccessResult(loanDto, "Loan updated successfully"));
@@ -717,6 +721,155 @@ namespace UtilityHub360.Controllers
                                    / ((decimal)Math.Pow((double)(1 + monthlyInterestRate), termInMonths) - 1);
 
             return Math.Round(monthlyPayment, 2);
+        }
+
+        /// <summary>
+        /// Get upcoming payments for the authenticated user
+        /// </summary>
+        [HttpGet("upcoming-payments")]
+        public async Task<ActionResult<ApiResponse<List<UpcomingPaymentDto>>>> GetUpcomingPayments([FromQuery] int days = 30)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<List<UpcomingPaymentDto>>.ErrorResult("User not authenticated"));
+                }
+
+                var dueDateService = new LoanDueDateService(_context, null!); // NotificationService not needed for this
+                var upcomingPayments = await dueDateService.GetUpcomingPaymentsForUserAsync(userId, days);
+
+                return Ok(ApiResponse<List<UpcomingPaymentDto>>.SuccessResult(upcomingPayments));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<UpcomingPaymentDto>>.ErrorResult($"Failed to get upcoming payments: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get overdue payments for the authenticated user
+        /// </summary>
+        [HttpGet("overdue-payments")]
+        public async Task<ActionResult<ApiResponse<List<OverduePaymentDto>>>> GetOverduePayments()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<List<OverduePaymentDto>>.ErrorResult("User not authenticated"));
+                }
+
+                var dueDateService = new LoanDueDateService(_context, null!); // NotificationService not needed for this
+                var overduePayments = await dueDateService.GetOverduePaymentsForUserAsync(userId);
+
+                return Ok(ApiResponse<List<OverduePaymentDto>>.SuccessResult(overduePayments));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<OverduePaymentDto>>.ErrorResult($"Failed to get overdue payments: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get next due date for a specific loan
+        /// </summary>
+        [HttpGet("{loanId}/next-due-date")]
+        public async Task<ActionResult<ApiResponse<DateTime?>>> GetNextDueDate(string loanId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<DateTime?>.ErrorResult("User not authenticated"));
+                }
+
+                // Verify user has access to this loan
+                var loan = await _loanService.GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return NotFound(ApiResponse<DateTime?>.ErrorResult("Loan not found"));
+                }
+
+                var dueDateService = new LoanDueDateService(_context, null!);
+                var nextDueDate = await dueDateService.GetNextDueDateAsync(loanId);
+
+                return Ok(ApiResponse<DateTime?>.SuccessResult(nextDueDate));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<DateTime?>.ErrorResult($"Failed to get next due date: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Update a repayment schedule due date (Admin or loan owner)
+        /// </summary>
+        [HttpPut("{loanId}/schedule/{installmentNumber}")]
+        public async Task<ActionResult<ApiResponse<RepaymentScheduleDto>>> UpdateRepaymentScheduleDueDate(
+            string loanId, 
+            int installmentNumber, 
+            [FromBody] UpdateRepaymentScheduleDto updateDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+                
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<RepaymentScheduleDto>.ErrorResult("User not authenticated"));
+                }
+
+                // Get the loan to check access
+                var loan = await _loanService.GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return NotFound(ApiResponse<RepaymentScheduleDto>.ErrorResult("Loan not found"));
+                }
+
+                // Get the repayment schedule entry
+                var schedule = await _context.RepaymentSchedules
+                    .FirstOrDefaultAsync(rs => rs.LoanId == loanId && rs.InstallmentNumber == installmentNumber);
+
+                if (schedule == null)
+                {
+                    return NotFound(ApiResponse<RepaymentScheduleDto>.ErrorResult("Repayment schedule not found"));
+                }
+
+                // Check if already paid
+                if (schedule.Status == "PAID")
+                {
+                    return BadRequest(ApiResponse<RepaymentScheduleDto>.ErrorResult("Cannot update a paid installment"));
+                }
+
+                // Update the due date
+                schedule.DueDate = updateDto.NewDueDate;
+
+                await _context.SaveChangesAsync();
+
+                var scheduleDto = new RepaymentScheduleDto
+                {
+                    Id = schedule.Id,
+                    LoanId = schedule.LoanId,
+                    InstallmentNumber = schedule.InstallmentNumber,
+                    DueDate = schedule.DueDate,
+                    PrincipalAmount = schedule.PrincipalAmount,
+                    InterestAmount = schedule.InterestAmount,
+                    TotalAmount = schedule.TotalAmount,
+                    Status = schedule.Status,
+                    PaidAt = schedule.PaidAt
+                };
+
+                return Ok(ApiResponse<RepaymentScheduleDto>.SuccessResult(scheduleDto, "Repayment schedule updated successfully"));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<RepaymentScheduleDto>.ErrorResult($"Failed to update repayment schedule: {ex.Message}"));
+            }
         }
     }
 }

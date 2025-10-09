@@ -336,6 +336,9 @@ namespace UtilityHub360.Services
                 await _context.SaveChangesAsync();
 
                 var billDto = MapToBillDto(bill);
+
+
+
                 return ApiResponse<BillDto>.SuccessResult(billDto, "Bill marked as paid");
             }
             catch (Exception ex)

@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace UtilityHub360.DTOs
 {
     public class RepaymentScheduleDto
@@ -11,6 +13,12 @@ namespace UtilityHub360.DTOs
         public decimal TotalAmount { get; set; }
         public string Status { get; set; } = string.Empty;
         public DateTime? PaidAt { get; set; }
+    }
+
+    public class UpdateRepaymentScheduleDto
+    {
+        [Required]
+        public DateTime NewDueDate { get; set; }
     }
 }
 

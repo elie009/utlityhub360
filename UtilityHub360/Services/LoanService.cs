@@ -81,6 +81,10 @@ namespace UtilityHub360.Services
                 // Create repayment schedule
                 await CreateRepaymentScheduleAsync(loan.Id, monthlyPayment, application.Term, interestRate);
 
+                // Update due dates based on repayment schedule
+                await UpdateLoanDueDatesAsync(loan);
+                await _context.SaveChangesAsync();
+
                 var loanDto = new LoanDto
                 {
                     Id = loan.Id,
@@ -98,6 +102,8 @@ namespace UtilityHub360.Services
                     DisbursedAt = loan.DisbursedAt,
                     CompletedAt = loan.CompletedAt,
                     AdditionalInfo = loan.AdditionalInfo
+                    // NextDueDate = loan.NextDueDate,
+                    // FinalDueDate = loan.FinalDueDate
                 };
 
                 return ApiResponse<LoanDto>.SuccessResult(loanDto, "Loan application submitted successfully");
@@ -119,6 +125,13 @@ namespace UtilityHub360.Services
                     return ApiResponse<LoanDto>.ErrorResult("Loan not found");
                 }
 
+                // Get next due date from RepaymentSchedule
+                var nextDueDate = await _context.RepaymentSchedules
+                    .Where(rs => rs.LoanId == loanId && rs.Status == "PENDING")
+                    .OrderBy(rs => rs.DueDate)
+                    .Select(rs => rs.DueDate)
+                    .FirstOrDefaultAsync();
+
                 var loanDto = new LoanDto
                 {
                     Id = loan.Id,
@@ -135,7 +148,8 @@ namespace UtilityHub360.Services
                     ApprovedAt = loan.ApprovedAt,
                     DisbursedAt = loan.DisbursedAt,
                     CompletedAt = loan.CompletedAt,
-                    AdditionalInfo = loan.AdditionalInfo
+                    AdditionalInfo = loan.AdditionalInfo,
+                    NextDueDate = nextDueDate == default(DateTime) ? null : nextDueDate
                 };
 
                 return ApiResponse<LoanDto>.SuccessResult(loanDto);
@@ -164,6 +178,20 @@ namespace UtilityHub360.Services
                     .Take(limit)
                     .ToListAsync();
 
+                // Get loan IDs for batch query
+                var loanIds = loans.Select(l => l.Id).ToList();
+                
+                // Get next due dates from RepaymentSchedule for all loans at once
+                var nextDueDates = await _context.RepaymentSchedules
+                    .Where(rs => loanIds.Contains(rs.LoanId) && rs.Status == "PENDING")
+                    .GroupBy(rs => rs.LoanId)
+                    .Select(g => new
+                    {
+                        LoanId = g.Key,
+                        NextDueDate = g.OrderBy(rs => rs.DueDate).FirstOrDefault()!.DueDate
+                    })
+                    .ToListAsync();
+
                 var loanDtos = loans.Select(loan => new LoanDto
                 {
                     Id = loan.Id,
@@ -180,7 +208,8 @@ namespace UtilityHub360.Services
                     ApprovedAt = loan.ApprovedAt,
                     DisbursedAt = loan.DisbursedAt,
                     CompletedAt = loan.CompletedAt,
-                    AdditionalInfo = loan.AdditionalInfo
+                    AdditionalInfo = loan.AdditionalInfo,
+                    NextDueDate = nextDueDates.FirstOrDefault(d => d.LoanId == loan.Id)?.NextDueDate
                 }).ToList();
 
                 var paginatedResponse = new PaginatedResponse<LoanDto>
@@ -709,6 +738,51 @@ namespace UtilityHub360.Services
 
             _context.RepaymentSchedules.AddRange(schedules);
             await _context.SaveChangesAsync();
+        }
+
+        /// Updates NextDueDate and FinalDueDate for a loan based on its repayment schedule - TEMPORARILY DISABLED
+        /// 
+        private async Task UpdateLoanDueDatesAsync(Loan loan)
+        {
+            // TEMPORARILY DISABLED - causing issues
+            return;
+            /*
+            if (loan.Status == "COMPLETED" || loan.Status == "CANCELLED" || loan.Status == "REJECTED")
+            {
+                // Completed/cancelled/rejected loans don't have due dates
+                loan.NextDueDate = null;
+                loan.FinalDueDate = null;
+                return;
+            }
+
+            var repaymentSchedules = await _context.RepaymentSchedules
+                .Where(rs => rs.LoanId == loan.Id)
+                .OrderBy(rs => rs.InstallmentNumber)
+                .ToListAsync();
+
+            if (repaymentSchedules.Any())
+            {
+                // Get the next unpaid installment
+                var nextUnpaid = repaymentSchedules.FirstOrDefault(rs => rs.Status == "PENDING");
+                loan.NextDueDate = nextUnpaid?.DueDate;
+
+                // Get the final installment's due date
+                var lastInstallment = repaymentSchedules.Last();
+                loan.FinalDueDate = lastInstallment.DueDate;
+            }
+            else if (loan.DisbursedAt.HasValue)
+            {
+                // If no repayment schedule exists but loan is disbursed, calculate estimated dates
+                loan.NextDueDate = loan.DisbursedAt.Value.AddMonths(1);
+                loan.FinalDueDate = loan.DisbursedAt.Value.AddMonths(loan.Term);
+            }
+            else
+            {
+                // Loan not yet disbursed
+                loan.NextDueDate = null;
+                loan.FinalDueDate = null;
+            }
+            */
         }
     }
 }

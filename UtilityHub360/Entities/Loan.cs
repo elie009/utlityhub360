@@ -55,6 +55,11 @@ namespace UtilityHub360.Entities
         [StringLength(1000)]
         public string? AdditionalInfo { get; set; }
 
+        // Due date information - TEMPORARILY COMMENTED OUT
+        // public DateTime? NextDueDate { get; set; }
+        
+        // public DateTime? FinalDueDate { get; set; }
+
 
         // Navigation properties
         [ForeignKey("UserId")]
