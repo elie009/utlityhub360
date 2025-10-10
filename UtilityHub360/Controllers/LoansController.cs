@@ -871,6 +871,70 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<RepaymentScheduleDto>.ErrorResult($"Failed to update repayment schedule: {ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// Get total monthly payment obligation for all active loans
+        /// </summary>
+        [HttpGet("monthly-payment-total")]
+        public async Task<ActionResult<ApiResponse<object>>> GetMonthlyPaymentTotal()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<object>.ErrorResult("User not authenticated"));
+                }
+
+                // Get all active loans for the user with repayment schedules
+                var activeLoans = await _context.Loans
+                    .Where(l => l.UserId == userId && l.Status == "ACTIVE")
+                    .Include(l => l.RepaymentSchedules)
+                    .ToListAsync();
+
+                // Calculate totals
+                var totalMonthlyPayment = activeLoans.Sum(l => l.MonthlyPayment);
+                var totalRemainingBalance = activeLoans.Sum(l => l.RemainingBalance);
+                var loanCount = activeLoans.Count;
+
+                // Calculate payment counts
+                var totalPayment = activeLoans.Sum(l => l.RepaymentSchedules.Count);
+                var totalPaymentRemaining = activeLoans.Sum(l => 
+                    l.RepaymentSchedules.Count(rs => rs.Status == "PENDING" || rs.Status == "OVERDUE"));
+                
+                // Calculate average months remaining (based on remaining balance / monthly payment)
+                var totalMonthsRemaining = activeLoans
+                    .Where(l => l.MonthlyPayment > 0)
+                    .Sum(l => Math.Ceiling(l.RemainingBalance / l.MonthlyPayment));
+
+                var result = new
+                {
+                    TotalMonthlyPayment = totalMonthlyPayment,
+                    TotalRemainingBalance = totalRemainingBalance,
+                    ActiveLoanCount = loanCount,
+                    TotalPayment = totalPayment,
+                    TotalPaymentRemaining = totalPaymentRemaining,
+                    TotalMonthsRemaining = (int)totalMonthsRemaining,
+                    Loans = activeLoans.Select(l => new
+                    {
+                        l.Id,
+                        l.Purpose,
+                        l.MonthlyPayment,
+                        l.RemainingBalance,
+                        l.InterestRate,
+                        TotalInstallments = l.RepaymentSchedules.Count,
+                        InstallmentsRemaining = l.RepaymentSchedules.Count(rs => rs.Status == "PENDING" || rs.Status == "OVERDUE"),
+                        MonthsRemaining = l.MonthlyPayment > 0 ? (int)Math.Ceiling(l.RemainingBalance / l.MonthlyPayment) : 0
+                    })
+                };
+
+                return Ok(ApiResponse<object>.SuccessResult(result));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.ErrorResult($"Failed to get monthly payment total: {ex.Message}"));
+            }
+        }
     }
 }
 

@@ -96,6 +96,17 @@ Get all loans (Admin only).
 - `page`: Page number (default: 1)
 - `limit`: Items per page (default: 10)
 
+### GET /api/loans/monthly-payment-total
+Get total monthly payment obligation for all active loans (requires authentication).
+
+**Response includes:**
+- Total monthly payment amount across all active loans
+- Total remaining balance
+- Active loan count
+- Individual loan breakdown
+
+**Detailed Documentation:** [Loan Monthly Payment Total API](../Loan/loanMonthlyPaymentTotal.md)
+
 ### PUT /api/loans/{loanId}
 Update loan information (requires authentication).
 
@@ -150,6 +161,9 @@ Process a payment (requires authentication).
 
 ### GET /api/payments/loan/{loanId}
 Get payment history for a loan (requires authentication).
+
+### DELETE /api/payments/{paymentId}
+Delete a payment (requires authentication).
 
 ---
 

@@ -133,11 +133,20 @@ app.MapControllers();
 app.MapGet("/", () => "UtilityHub360 API is running! Visit /swagger for API documentation");
 
 // Add health check endpoint
-app.MapGet("/health", () => new { 
-    Status = "Healthy", 
-    Environment = app.Environment.EnvironmentName,
-    Timestamp = DateTime.UtcNow,
-    Database = "Connected to production database"
+app.MapGet("/health", (ApplicationDbContext db) => 
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? "";
+    var serverInfo = connectionString.Contains("localhost") ? "Local Database (localhost\\SQLEXPRESS)" 
+                   : connectionString.Contains("174.138.185.18") ? "LIVE Production Database (174.138.185.18)" 
+                   : "Unknown Database";
+    
+    return new { 
+        Status = "Healthy", 
+        Environment = app.Environment.EnvironmentName,
+        Timestamp = DateTime.UtcNow,
+        DatabaseServer = serverInfo,
+        ConnectionStringPrefix = connectionString.Substring(0, Math.Min(50, connectionString.Length)) + "..."
+    };
 });
 
 app.Run();
