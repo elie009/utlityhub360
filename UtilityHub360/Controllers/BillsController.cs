@@ -1015,5 +1015,63 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<List<BillDto>>.ErrorResult($"Failed to get auto-generated bills: {ex.Message}"));
             }
         }
+
+        // ============================================
+        // Monthly Bill Management Endpoints
+        // ============================================
+
+        /// <summary>
+        /// Get all bills for a specific month
+        /// </summary>
+        [HttpGet("monthly")]
+        public async Task<ActionResult<ApiResponse<List<BillDto>>>> GetBillsByMonth(
+            [FromQuery] int year,
+            [FromQuery] int month,
+            [FromQuery] string? provider = null,
+            [FromQuery] string? billType = null)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<List<BillDto>>.ErrorResult("User not authenticated"));
+
+                if (year < 2000 || year > 2100)
+                    return BadRequest(ApiResponse<List<BillDto>>.ErrorResult("Invalid year"));
+
+                if (month < 1 || month > 12)
+                    return BadRequest(ApiResponse<List<BillDto>>.ErrorResult("Invalid month"));
+
+                var result = await _billService.GetBillsByMonthAsync(userId, year, month, provider, billType);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<BillDto>>.ErrorResult($"Failed to get monthly bills: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Update a specific month's bill amount and details
+        /// </summary>
+        [HttpPut("{billId}/monthly")]
+        public async Task<ActionResult<ApiResponse<BillDto>>> UpdateMonthlyBill(
+            string billId,
+            [FromBody] UpdateMonthlyBillDto updateDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BillDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billService.UpdateMonthlyBillAsync(billId, updateDto, userId);
+                return result.Success ? Ok(result) : NotFound(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillDto>.ErrorResult($"Failed to update monthly bill: {ex.Message}"));
+            }
+        }
     }
 }

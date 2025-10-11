@@ -59,6 +59,10 @@ namespace UtilityHub360.Entities
 
         public DateTime? ConfirmedAt { get; set; } // When user confirmed auto-generated bill
 
+        // Parent-Child relationship for auto-generated bills
+        [StringLength(450)]
+        public string? ParentBillId { get; set; } // Links auto-generated bills to their parent
+
         // Navigation property
         [ForeignKey("UserId")]
         public virtual User User { get; set; } = null!;

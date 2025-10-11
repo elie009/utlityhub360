@@ -33,5 +33,9 @@ namespace UtilityHub360.Services
         Task<ApiResponse<List<BillPaymentDto>>> GetBillPaymentHistoryAsync(string billId, string userId, int page = 1, int limit = 50);
         Task<ApiResponse<BillPaymentDto>> GetBillPaymentAsync(string paymentId, string userId);
         Task<ApiResponse<bool>> DeleteBillPaymentAsync(string paymentId, string userId);
+
+        // Monthly Bill Management
+        Task<ApiResponse<List<BillDto>>> GetBillsByMonthAsync(string userId, int year, int month, string? provider = null, string? billType = null);
+        Task<ApiResponse<BillDto>> UpdateMonthlyBillAsync(string billId, UpdateMonthlyBillDto updateDto, string userId);
     }
 }

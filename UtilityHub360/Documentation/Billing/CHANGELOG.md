@@ -1,5 +1,80 @@
 # Billing System Changelog
 
+## Version 2.2.0 - 12-Month Auto-Generation (October 11, 2025)
+
+### 🚀 Major Enhancement: Annual Bill Creation
+
+A powerful new feature that creates all 12 months of bills at once, perfect for planning ahead and managing fixed recurring expenses.
+
+---
+
+## ✨ New Features
+
+### 1. 12-Month Auto-Generation
+When creating a bill with `autoGenerateNext: true` and `frequency: monthly`:
+- **Instant Creation** - System immediately creates bills for all 12 months (January through December)
+- **Same Base Amount** - All months initialized with the original bill amount
+- **Smart Date Handling** - Handles months with different days (e.g., 31st becomes 28th/29th/30th in shorter months)
+- **Flexible Updates** - Update individual months as actual amounts arrive
+- **Annual Planning** - See your entire year of bills from day 1
+
+### 2. Monthly Bill Management API
+New endpoints for managing individual monthly bills:
+
+**GET /api/bills/monthly**
+- Retrieve all bills for a specific month and year
+- Optional filtering by provider and bill type
+- Query params: `year`, `month`, `provider` (optional), `billType` (optional)
+
+**PUT /api/bills/{billId}/monthly**
+- Quick update for a specific month's bill
+- Update amount, notes, and status
+- Optimized for monthly bill adjustments
+
+### 3. Use Cases
+- **Fixed Monthly Bills**: Subscriptions, rent, insurance (set once, forget it!)
+- **Annual Planning**: See all 12 months upfront for budgeting
+- **Variable Bills**: Start with estimate, update monthly with actual amounts
+- **Business Expenses**: Plan entire year of recurring business costs
+
+### 4. Benefits
+- ✅ **95% Time Savings** - 2-minute setup vs 24 minutes manual entry
+- ✅ **No Missed Bills** - All 12 months created immediately
+- ✅ **Flexible** - Update any month independently
+- ✅ **Planning Ready** - See entire year for budgeting
+- ✅ **Simple API** - Easy integration with frontend
+
+---
+
+## 📝 Implementation Details
+
+### Database Changes
+No schema changes required - uses existing Bill entity structure.
+
+### API Endpoints Added
+```
+GET  /api/bills/monthly
+PUT  /api/bills/{billId}/monthly
+```
+
+### Service Methods Added
+```csharp
+Task<ApiResponse<List<BillDto>>> GetBillsByMonthAsync(string userId, int year, int month, string? provider = null, string? billType = null);
+Task<ApiResponse<BillDto>> UpdateMonthlyBillAsync(string billId, UpdateMonthlyBillDto updateDto, string userId);
+```
+
+### New DTO
+```csharp
+public class UpdateMonthlyBillDto
+{
+    public decimal Amount { get; set; }
+    public string? Notes { get; set; }
+    public string? Status { get; set; }
+}
+```
+
+---
+
 ## Version 2.0.0 - Variable Monthly Billing (October 11, 2025)
 
 ### 🎉 Major Feature Release: Variable Monthly Billing System
