@@ -2,7 +2,7 @@
 # ENVIRONMENT SWITCHER FOR UTILITYHUB360
 # ================================================
 # Change this value to switch environments:
-$Environment = "Production"  # Options: Development, Staging, Production
+$Environment = "Development"  # Options: Development, Staging, Production
 # ================================================
 
 Write-Host ""

@@ -139,10 +139,58 @@ namespace UtilityHub360.Services
                     return ApiResponse<bool>.ErrorResult("Bill not found");
                 }
 
+                // Delete all related payments first
+                var relatedPayments = await _context.Payments
+                    .Where(p => p.BillId == billId)
+                    .ToListAsync();
+
+                if (relatedPayments.Any())
+                {
+                    // For each payment, if it's a bank transaction, we need to handle it properly
+                    foreach (var payment in relatedPayments)
+                    {
+                        // If it's a bank transaction, reverse the balance and delete BankTransaction record
+                        if (payment.IsBankTransaction && payment.BankAccountId != null)
+                        {
+                            var bankAccount = await _context.BankAccounts
+                                .FirstOrDefaultAsync(ba => ba.Id == payment.BankAccountId);
+
+                            if (bankAccount != null)
+                            {
+                                // Reverse the transaction (add back the amount since it was a debit)
+                                bankAccount.CurrentBalance += payment.Amount;
+                                bankAccount.UpdatedAt = DateTime.UtcNow;
+                            }
+
+                            // Delete the corresponding BankTransaction record
+                            var bankTransaction = await _context.BankTransactions
+                                .FirstOrDefaultAsync(bt => bt.ReferenceNumber == payment.Reference);
+
+                            if (bankTransaction != null)
+                            {
+                                _context.BankTransactions.Remove(bankTransaction);
+                            }
+                        }
+                    }
+
+                    _context.Payments.RemoveRange(relatedPayments);
+                }
+
+                // Delete any related bill alerts
+                var relatedAlerts = await _context.BillAlerts
+                    .Where(a => a.BillId == billId)
+                    .ToListAsync();
+
+                if (relatedAlerts.Any())
+                {
+                    _context.BillAlerts.RemoveRange(relatedAlerts);
+                }
+
+                // Now delete the bill
                 _context.Bills.Remove(bill);
                 await _context.SaveChangesAsync();
 
-                return ApiResponse<bool>.SuccessResult(true, "Bill deleted successfully");
+                return ApiResponse<bool>.SuccessResult(true, "Bill and all related records deleted successfully");
             }
             catch (Exception ex)
             {

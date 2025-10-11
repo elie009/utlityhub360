@@ -60,6 +60,8 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(
                 "http://localhost:3000", 
                 "https://localhost:3000",
+                "http://localhost:5000",
+                "https://localhost:5000",
                 "https://wh1479740.ispot.cc",
                 "http://wh1479740.ispot.cc"
               )
