@@ -523,12 +523,8 @@ namespace UtilityHub360.Services
                     return ApiResponse<bool>.ErrorResult("Cannot delete active or completed loans");
                 }
 
-                // Check if there are any payments made
-                var hasPayments = await _context.Payments.AnyAsync(p => p.LoanId == loanId);
-                if (hasPayments)
-                {
-                    return ApiResponse<bool>.ErrorResult("Cannot delete loan with existing payments");
-                }
+                // Payment check removed - deletion will automatically clean up all related payments
+                // This allows deletion of PENDING, CANCELLED, and REJECTED loans with their payment history
 
                 // Delete related data first (due to foreign key constraints)
                 var repaymentSchedules = await _context.RepaymentSchedules

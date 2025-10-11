@@ -674,3 +674,822 @@ Authorization: Bearer <token>
 ## 🎯 Testing Endpoints
 
 Use Swagger UI at `http://localhost:5000/swagger` for interactive testing, or use tools like Postman with the provided examples above.
+
+---
+
+# 📊 Variable Monthly Billing - Advanced Features
+
+## Overview
+
+The Variable Monthly Billing system provides advanced analytics, forecasting, budgeting, and alerting capabilities for bills with variable amounts (like electricity, water, etc.). This helps users predict future expenses, track spending trends, and stay within budget.
+
+---
+
+## 🔮 Analytics & Forecasting Endpoints
+
+### 15. Get Bill History with Analytics
+
+**Endpoint:** `GET /api/bills/analytics/history`
+
+**Description:** Retrieve bill history along with comprehensive analytics and forecast data
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| provider | string | ❌ | null | Filter by provider name |
+| billType | string | ❌ | null | Filter by bill type |
+| months | integer | ❌ | 6 | Number of months to analyze |
+
+**Example Request:**
+```
+GET /api/bills/analytics/history?provider=Meralco&billType=utility&months=6
+```
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "message": null,
+  "data": {
+    "bills": [
+      {
+        "id": "bill-123",
+        "billName": "Electricity Bill - October",
+        "amount": 3050.00,
+        "dueDate": "2025-10-10T00:00:00Z",
+        "status": "PENDING",
+        "provider": "Meralco",
+        "createdAt": "2025-10-01T00:00:00Z"
+      }
+    ],
+    "analytics": {
+      "averageSimple": 2903.33,
+      "averageWeighted": 2989.00,
+      "averageSeasonal": 2903.33,
+      "totalSpent": 17190.00,
+      "highestBill": 3200.00,
+      "lowestBill": 2450.00,
+      "trend": "increasing",
+      "billCount": 6,
+      "firstBillDate": "2025-05-01T00:00:00Z",
+      "lastBillDate": "2025-10-01T00:00:00Z"
+    },
+    "forecast": {
+      "estimatedAmount": 2989.00,
+      "calculationMethod": "weighted",
+      "confidence": "medium",
+      "estimatedForMonth": "2025-11-01T00:00:00Z",
+      "recommendation": "Based on historical patterns, expect around ₱2,989.00 for next month."
+    },
+    "totalCount": 6
+  },
+  "errors": []
+}
+```
+
+---
+
+### 16. Get Analytics Calculations
+
+**Endpoint:** `GET /api/bills/analytics/calculations`
+
+**Description:** Get detailed analytics calculations without bill history
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| provider | string | ❌ | null | Filter by provider name |
+| billType | string | ❌ | null | Filter by bill type |
+| months | integer | ❌ | 6 | Number of months to analyze |
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "data": {
+    "averageSimple": 2903.33,
+    "averageWeighted": 2989.00,
+    "averageSeasonal": 2903.33,
+    "totalSpent": 17190.00,
+    "highestBill": 3200.00,
+    "lowestBill": 2450.00,
+    "trend": "increasing",
+    "billCount": 6,
+    "firstBillDate": "2025-05-01T00:00:00Z",
+    "lastBillDate": "2025-10-01T00:00:00Z"
+  },
+  "errors": []
+}
+```
+
+---
+
+### 17. Get Bill Forecast
+
+**Endpoint:** `GET /api/bills/analytics/forecast`
+
+**Description:** Get forecast for next month's bill based on historical data
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| provider | string | ✅ | - | Provider name |
+| billType | string | ✅ | - | Bill type |
+| method | string | ❌ | weighted | Calculation method: simple, weighted, seasonal |
+
+**Example Request:**
+```
+GET /api/bills/analytics/forecast?provider=Meralco&billType=utility&method=weighted
+```
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "data": {
+    "estimatedAmount": 2989.00,
+    "calculationMethod": "weighted",
+    "confidence": "medium",
+    "estimatedForMonth": "2025-11-01T00:00:00Z",
+    "recommendation": "Based on historical patterns, expect around ₱2,989.00 for next month."
+  },
+  "errors": []
+}
+```
+
+**Calculation Methods:**
+- **simple**: Average of last N months (equal weight)
+- **weighted**: Recent months weighted more (50%, 30%, 20%)
+- **seasonal**: Average of same month from previous years
+
+**Confidence Levels:**
+- **high**: 12+ months of data
+- **medium**: 6-11 months of data
+- **low**: Less than 6 months of data
+
+---
+
+### 18. Calculate Bill Variance
+
+**Endpoint:** `GET /api/bills/{billId}/variance`
+
+**Description:** Calculate variance between actual bill and estimated amount
+
+**Path Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| billId | string | ✅ | Unique bill identifier |
+
+**Example Request:**
+```
+GET /api/bills/bill-123/variance
+```
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "data": {
+    "billId": "bill-123",
+    "actualAmount": 3050.00,
+    "estimatedAmount": 2989.00,
+    "variance": 61.00,
+    "variancePercentage": 2.04,
+    "status": "slightly_over",
+    "message": "Your bill is slightly higher than expected (+2.04%)",
+    "recommendation": "Your bill is slightly above average. Monitor usage to keep costs down."
+  },
+  "errors": []
+}
+```
+
+**Variance Status Values:**
+- `over_budget`: Variance >= 5%
+- `slightly_over`: Variance > 1% and < 5%
+- `on_target`: Variance between -1% and +1%
+- `under_budget`: Variance < -1%
+
+---
+
+### 19. Get Monthly Trend
+
+**Endpoint:** `GET /api/bills/analytics/trend`
+
+**Description:** Get monthly spending trend data for visualization
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| provider | string | ❌ | null | Filter by provider name |
+| billType | string | ❌ | null | Filter by bill type |
+| months | integer | ❌ | 12 | Number of months to retrieve |
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "year": 2025,
+      "month": 5,
+      "monthName": "May 2025",
+      "totalAmount": 2450.00,
+      "billCount": 1,
+      "averageAmount": 2450.00,
+      "status": "paid"
+    },
+    {
+      "year": 2025,
+      "month": 6,
+      "monthName": "Jun 2025",
+      "totalAmount": 2980.00,
+      "billCount": 1,
+      "averageAmount": 2980.00,
+      "status": "paid"
+    }
+  ],
+  "errors": []
+}
+```
+
+---
+
+## 💰 Budget Management Endpoints
+
+### 20. Create Budget
+
+**Endpoint:** `POST /api/bills/budgets`
+
+**Description:** Create a monthly budget for a specific provider and bill type
+
+**Request Body:**
+```json
+{
+  "provider": "Meralco",
+  "billType": "utility",
+  "monthlyBudget": 3000.00,
+  "enableAlerts": true,
+  "alertThreshold": 90
+}
+```
+
+**Request Body Validation:**
+| Field | Type | Required | Validation Rules | Description |
+|-------|------|----------|------------------|-------------|
+| provider | string | ✅ | Max 100 characters | Provider name |
+| billType | string | ✅ | Must be: utility, subscription, loan, others | Bill type |
+| monthlyBudget | decimal | ✅ | Must be > 0 | Monthly budget amount |
+| enableAlerts | boolean | ❌ | Default: true | Enable budget alerts |
+| alertThreshold | integer | ❌ | 1-100, Default: 90 | Alert when % of budget reached |
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "message": "Budget created successfully",
+  "data": {
+    "id": "budget-123",
+    "userId": "user-456",
+    "provider": "Meralco",
+    "billType": "utility",
+    "monthlyBudget": 3000.00,
+    "enableAlerts": true,
+    "alertThreshold": 90,
+    "createdAt": "2025-10-11T00:00:00Z",
+    "updatedAt": "2025-10-11T00:00:00Z"
+  },
+  "errors": []
+}
+```
+
+---
+
+### 21. Update Budget
+
+**Endpoint:** `PUT /api/bills/budgets/{budgetId}`
+
+**Description:** Update an existing budget
+
+**Path Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| budgetId | string | ✅ | Budget identifier |
+
+**Request Body:** Same as Create Budget
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "message": "Budget updated successfully",
+  "data": { /* Budget object */ },
+  "errors": []
+}
+```
+
+---
+
+### 22. Delete Budget
+
+**Endpoint:** `DELETE /api/bills/budgets/{budgetId}`
+
+**Description:** Delete a budget
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "message": "Budget deleted successfully",
+  "data": true,
+  "errors": []
+}
+```
+
+---
+
+### 23. Get Budget
+
+**Endpoint:** `GET /api/bills/budgets/{budgetId}`
+
+**Description:** Get a specific budget by ID
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "budget-123",
+    "userId": "user-456",
+    "provider": "Meralco",
+    "billType": "utility",
+    "monthlyBudget": 3000.00,
+    "enableAlerts": true,
+    "alertThreshold": 90
+  },
+  "errors": []
+}
+```
+
+---
+
+### 24. Get All User Budgets
+
+**Endpoint:** `GET /api/bills/budgets`
+
+**Description:** Get all budgets for the authenticated user
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "budget-123",
+      "provider": "Meralco",
+      "billType": "utility",
+      "monthlyBudget": 3000.00
+    },
+    {
+      "id": "budget-456",
+      "provider": "Globe",
+      "billType": "utility",
+      "monthlyBudget": 1500.00
+    }
+  ],
+  "errors": []
+}
+```
+
+---
+
+### 25. Get Budget Status
+
+**Endpoint:** `GET /api/bills/budgets/status`
+
+**Description:** Get current budget status for a provider/bill type
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| provider | string | ✅ | Provider name |
+| billType | string | ✅ | Bill type |
+
+**Example Request:**
+```
+GET /api/bills/budgets/status?provider=Meralco&billType=utility
+```
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "data": {
+    "budgetId": "budget-123",
+    "provider": "Meralco",
+    "billType": "utility",
+    "monthlyBudget": 3000.00,
+    "currentBill": 3050.00,
+    "remaining": -50.00,
+    "percentageUsed": 101.7,
+    "status": "over_budget",
+    "alert": true,
+    "message": "You exceeded your budget by ₱50"
+  },
+  "errors": []
+}
+```
+
+**Budget Status Values:**
+- `on_track`: Usage below alert threshold
+- `approaching_limit`: Usage >= alert threshold
+- `over_budget`: Usage > 100% of budget
+
+---
+
+## 🔔 Alert Management Endpoints
+
+### 26. Get User Alerts
+
+**Endpoint:** `GET /api/bills/alerts`
+
+**Description:** Get alerts for the authenticated user
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| isRead | boolean | ❌ | null | Filter by read status |
+| limit | integer | ❌ | 50 | Maximum number of alerts |
+
+**Example Request:**
+```
+GET /api/bills/alerts?isRead=false&limit=10
+```
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "alert-123",
+      "alertType": "due_date",
+      "severity": "warning",
+      "title": "Payment Reminder",
+      "message": "Your Meralco bill of ₱3,050 is due in 3 days (Oct 10)",
+      "billId": "bill-123",
+      "provider": "Meralco",
+      "amount": 3050.00,
+      "createdAt": "2025-10-07T00:00:00Z",
+      "isRead": false,
+      "actionLink": "/bills/bill-123"
+    },
+    {
+      "id": "alert-456",
+      "alertType": "budget_exceeded",
+      "severity": "error",
+      "title": "Budget Alert",
+      "message": "You exceeded your budget by ₱50",
+      "billId": "bill-123",
+      "provider": "Meralco",
+      "amount": 3050.00,
+      "createdAt": "2025-10-10T00:00:00Z",
+      "isRead": false,
+      "actionLink": "/bills/bill-123"
+    }
+  ],
+  "errors": []
+}
+```
+
+**Alert Types:**
+- `due_date`: Bill due in 3 days
+- `overdue`: Bill past due date
+- `budget_exceeded`: Bill exceeds budget
+- `trend_increase`: Bills trending upward
+- `unusual_spike`: Bill significantly higher than average
+- `savings`: Bill significantly lower than average
+
+**Severity Levels:**
+- `info`: Informational
+- `warning`: Warning
+- `error`: Critical issue
+- `success`: Positive outcome
+
+---
+
+### 27. Mark Alert as Read
+
+**Endpoint:** `PUT /api/bills/alerts/{alertId}/read`
+
+**Description:** Mark a specific alert as read
+
+**Path Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| alertId | string | ✅ | Alert identifier |
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "message": "Alert marked as read",
+  "data": true,
+  "errors": []
+}
+```
+
+---
+
+### 28. Generate Alerts
+
+**Endpoint:** `POST /api/bills/alerts/generate`
+
+**Description:** Manually trigger alert generation for the authenticated user
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "data": [
+    { /* Alert object */ },
+    { /* Alert object */ }
+  ],
+  "errors": []
+}
+```
+
+**Note:** Alerts are automatically generated every 6 hours by the background service.
+
+---
+
+## 📈 Provider Analytics Endpoints
+
+### 29. Get Provider Analytics
+
+**Endpoint:** `GET /api/bills/analytics/providers`
+
+**Description:** Get analytics for all providers
+
+**Query Parameters:**
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| months | integer | ❌ | 6 | Number of months to analyze |
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "provider": "Meralco",
+      "billType": "utility",
+      "totalSpent": 17190.00,
+      "averageMonthly": 2865.00,
+      "billCount": 6,
+      "highestBill": 3200.00,
+      "lowestBill": 2450.00,
+      "lastBillDate": "2025-10-01T00:00:00Z",
+      "currentBudget": 3000.00,
+      "monthlySummary": [
+        {
+          "year": 2025,
+          "month": 5,
+          "monthName": "May 2025",
+          "totalAmount": 2450.00,
+          "billCount": 1,
+          "averageAmount": 2450.00,
+          "status": "paid"
+        }
+      ]
+    }
+  ],
+  "errors": []
+}
+```
+
+---
+
+### 30. Get Provider Analytics by Provider
+
+**Endpoint:** `GET /api/bills/analytics/providers/{provider}`
+
+**Description:** Get detailed analytics for a specific provider
+
+**Path Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| provider | string | ✅ | Provider name |
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| billType | string | ✅ | Bill type |
+| months | integer | ❌ | Number of months (default: 6) |
+
+**Example Request:**
+```
+GET /api/bills/analytics/providers/Meralco?billType=utility&months=6
+```
+
+**Response:** Same as Get Provider Analytics but for single provider
+
+---
+
+## 📊 Dashboard Endpoint
+
+### 31. Get Dashboard Data
+
+**Endpoint:** `GET /api/bills/dashboard`
+
+**Description:** Get comprehensive dashboard data including current bills, upcoming bills, analytics, budgets, and alerts
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "data": {
+    "currentBills": [
+      { /* Bill object */ }
+    ],
+    "upcomingBills": [
+      { /* Bill object */ }
+    ],
+    "overdueBills": [
+      { /* Bill object */ }
+    ],
+    "providerAnalytics": [
+      { /* Provider analytics object */ }
+    ],
+    "budgetStatuses": [
+      { /* Budget status object */ }
+    ],
+    "alerts": [
+      { /* Alert object */ }
+    ],
+    "summary": {
+      "totalPendingAmount": 1250.50,
+      "totalPaidAmount": 2100.00,
+      "totalOverdueAmount": 300.00,
+      "totalPendingBills": 8,
+      "totalPaidBills": 15,
+      "totalOverdueBills": 2
+    }
+  },
+  "errors": []
+}
+```
+
+---
+
+## 🎯 Variable Monthly Billing Use Cases
+
+### Use Case 1: Track Electricity Bills
+
+**Scenario:** User wants to track variable electricity bills and get forecasts
+
+**Steps:**
+1. Create bills each month with actual amounts
+2. Get analytics to see averages and trends
+3. Get forecast for next month's bill
+4. Set a budget and receive alerts
+
+**Example Flow:**
+```http
+# 1. Create monthly bills
+POST /api/bills
+{
+  "billName": "Electricity - October",
+  "billType": "utility",
+  "provider": "Meralco",
+  "amount": 3050.00,
+  "dueDate": "2025-10-10T00:00:00Z",
+  "frequency": "monthly"
+}
+
+# 2. Get analytics
+GET /api/bills/analytics/history?provider=Meralco&billType=utility&months=6
+
+# 3. Get forecast
+GET /api/bills/analytics/forecast?provider=Meralco&billType=utility&method=weighted
+
+# 4. Set budget
+POST /api/bills/budgets
+{
+  "provider": "Meralco",
+  "billType": "utility",
+  "monthlyBudget": 3000.00,
+  "enableAlerts": true
+}
+
+# 5. Check budget status
+GET /api/bills/budgets/status?provider=Meralco&billType=utility
+```
+
+---
+
+### Use Case 2: Monitor All Utility Bills
+
+**Scenario:** User wants to see overall utility spending across all providers
+
+**Steps:**
+```http
+# 1. Get dashboard with all data
+GET /api/bills/dashboard
+
+# 2. Get provider analytics
+GET /api/bills/analytics/providers?months=6
+
+# 3. Get monthly trends
+GET /api/bills/analytics/trend?billType=utility&months=12
+
+# 4. Check alerts
+GET /api/bills/alerts?isRead=false
+```
+
+---
+
+### Use Case 3: Budget Management
+
+**Scenario:** User wants to set budgets and track spending
+
+**Steps:**
+```http
+# 1. Create budgets for different providers
+POST /api/bills/budgets
+{
+  "provider": "Meralco",
+  "billType": "utility",
+  "monthlyBudget": 3000.00
+}
+
+POST /api/bills/budgets
+{
+  "provider": "Globe",
+  "billType": "utility",
+  "monthlyBudget": 1500.00
+}
+
+# 2. Get all budget statuses
+GET /api/bills/budgets
+
+# 3. Check specific budget status
+GET /api/bills/budgets/status?provider=Meralco&billType=utility
+
+# 4. View budget alerts
+GET /api/bills/alerts?isRead=false
+```
+
+---
+
+## 🔄 Background Services
+
+### Bill Reminder Background Service
+
+**Description:** Automated service that runs every 6 hours to generate alerts
+
+**Features:**
+- Generates due date reminders (3 days before)
+- Creates overdue alerts
+- Checks budget violations
+- Detects unusual spending spikes
+
+**Schedule:** Every 6 hours
+
+**Manual Trigger:** Use `POST /api/bills/alerts/generate` to manually trigger alert generation
+
+---
+
+## 📝 Best Practices
+
+### 1. Bill Entry
+- Enter bills consistently each month
+- Use consistent provider names
+- Include accurate due dates
+
+### 2. Budget Setting
+- Set realistic budgets based on historical data
+- Use analytics to determine appropriate budget amounts
+- Enable alerts to stay informed
+
+### 3. Alert Management
+- Review alerts regularly
+- Mark alerts as read after taking action
+- Adjust budgets based on alert patterns
+
+### 4. Forecasting
+- Wait for at least 3 months of data for reliable forecasts
+- Use weighted average for variable bills
+- Use seasonal average for bills with yearly patterns
+
+---
+
+## 🎯 Updated Testing Endpoints
+
+Use Swagger UI at `http://localhost:5000/swagger` for interactive testing.
+
+**Recommended Testing Flow:**
+1. Create several bills for the same provider (different months)
+2. Test analytics endpoints to verify calculations
+3. Create a budget and verify status calculations
+4. Test alert generation
+5. Use dashboard endpoint to see integrated data

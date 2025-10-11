@@ -13,10 +13,12 @@ namespace UtilityHub360.Controllers
     public class BillsController : ControllerBase
     {
         private readonly IBillService _billService;
+        private readonly IBillAnalyticsService _billAnalyticsService;
 
-        public BillsController(IBillService billService)
+        public BillsController(IBillService billService, IBillAnalyticsService billAnalyticsService)
         {
             _billService = billService;
+            _billAnalyticsService = billAnalyticsService;
         }
 
         [HttpPost]
@@ -511,6 +513,506 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete bill payment: {ex.Message}"));
+            }
+        }
+
+        // ============================================
+        // Variable Monthly Billing - Analytics Endpoints
+        // ============================================
+
+        /// <summary>
+        /// Get bill history with analytics for a specific provider/type
+        /// </summary>
+        [HttpGet("analytics/history")]
+        public async Task<ActionResult<ApiResponse<BillHistoryWithAnalyticsDto>>> GetBillHistoryWithAnalytics(
+            [FromQuery] string? provider = null,
+            [FromQuery] string? billType = null,
+            [FromQuery] int months = 6)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BillHistoryWithAnalyticsDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.GetBillHistoryWithAnalyticsAsync(userId, provider, billType, months);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillHistoryWithAnalyticsDto>.ErrorResult($"Failed to get bill history: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get analytics calculations for bills
+        /// </summary>
+        [HttpGet("analytics/calculations")]
+        public async Task<ActionResult<ApiResponse<BillAnalyticsCalculationsDto>>> GetAnalyticsCalculations(
+            [FromQuery] string? provider = null,
+            [FromQuery] string? billType = null,
+            [FromQuery] int months = 6)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BillAnalyticsCalculationsDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.CalculateAnalyticsAsync(userId, provider, billType, months);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillAnalyticsCalculationsDto>.ErrorResult($"Failed to calculate analytics: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get forecast for next bill
+        /// </summary>
+        [HttpGet("analytics/forecast")]
+        public async Task<ActionResult<ApiResponse<BillForecastDto>>> GetForecast(
+            [FromQuery] string provider,
+            [FromQuery] string billType,
+            [FromQuery] string method = "weighted")
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BillForecastDto>.ErrorResult("User not authenticated"));
+
+                if (string.IsNullOrEmpty(provider) || string.IsNullOrEmpty(billType))
+                    return BadRequest(ApiResponse<BillForecastDto>.ErrorResult("Provider and billType are required"));
+
+                var result = await _billAnalyticsService.GetForecastAsync(userId, provider, billType, method);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillForecastDto>.ErrorResult($"Failed to get forecast: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Calculate variance for a specific bill
+        /// </summary>
+        [HttpGet("{billId}/variance")]
+        public async Task<ActionResult<ApiResponse<BillVarianceDto>>> GetBillVariance(string billId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BillVarianceDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.CalculateVarianceAsync(billId, userId);
+                return result.Success ? Ok(result) : NotFound(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillVarianceDto>.ErrorResult($"Failed to calculate variance: {ex.Message}"));
+            }
+        }
+
+        // ============================================
+        // Budget Management Endpoints
+        // ============================================
+
+        /// <summary>
+        /// Create a new budget for a provider/bill type
+        /// </summary>
+        [HttpPost("budgets")]
+        public async Task<ActionResult<ApiResponse<BudgetSettingDto>>> CreateBudget([FromBody] CreateBudgetSettingDto budgetDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BudgetSettingDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.CreateBudgetAsync(budgetDto, userId);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BudgetSettingDto>.ErrorResult($"Failed to create budget: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Update an existing budget
+        /// </summary>
+        [HttpPut("budgets/{budgetId}")]
+        public async Task<ActionResult<ApiResponse<BudgetSettingDto>>> UpdateBudget(
+            string budgetId,
+            [FromBody] CreateBudgetSettingDto budgetDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BudgetSettingDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.UpdateBudgetAsync(budgetId, budgetDto, userId);
+                return result.Success ? Ok(result) : NotFound(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BudgetSettingDto>.ErrorResult($"Failed to update budget: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Delete a budget
+        /// </summary>
+        [HttpDelete("budgets/{budgetId}")]
+        public async Task<ActionResult<ApiResponse<bool>>> DeleteBudget(string budgetId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.DeleteBudgetAsync(budgetId, userId);
+                return result.Success ? Ok(result) : NotFound(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete budget: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get a specific budget
+        /// </summary>
+        [HttpGet("budgets/{budgetId}")]
+        public async Task<ActionResult<ApiResponse<BudgetSettingDto>>> GetBudget(string budgetId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BudgetSettingDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.GetBudgetAsync(budgetId, userId);
+                return result.Success ? Ok(result) : NotFound(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BudgetSettingDto>.ErrorResult($"Failed to get budget: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get all budgets for the user
+        /// </summary>
+        [HttpGet("budgets")]
+        public async Task<ActionResult<ApiResponse<List<BudgetSettingDto>>>> GetUserBudgets()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<List<BudgetSettingDto>>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.GetUserBudgetsAsync(userId);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<BudgetSettingDto>>.ErrorResult($"Failed to get budgets: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get budget status for a provider/bill type
+        /// </summary>
+        [HttpGet("budgets/status")]
+        public async Task<ActionResult<ApiResponse<BudgetStatusDto>>> GetBudgetStatus(
+            [FromQuery] string provider,
+            [FromQuery] string billType)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BudgetStatusDto>.ErrorResult("User not authenticated"));
+
+                if (string.IsNullOrEmpty(provider) || string.IsNullOrEmpty(billType))
+                    return BadRequest(ApiResponse<BudgetStatusDto>.ErrorResult("Provider and billType are required"));
+
+                var result = await _billAnalyticsService.GetBudgetStatusAsync(userId, provider, billType);
+                return result.Success ? Ok(result) : NotFound(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BudgetStatusDto>.ErrorResult($"Failed to get budget status: {ex.Message}"));
+            }
+        }
+
+        // ============================================
+        // Alerts Endpoints
+        // ============================================
+
+        /// <summary>
+        /// Get user alerts
+        /// </summary>
+        [HttpGet("alerts")]
+        public async Task<ActionResult<ApiResponse<List<BillAlertDto>>>> GetAlerts(
+            [FromQuery] bool? isRead = null,
+            [FromQuery] int limit = 50)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<List<BillAlertDto>>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.GetUserAlertsAsync(userId, isRead, limit);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<BillAlertDto>>.ErrorResult($"Failed to get alerts: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Mark an alert as read
+        /// </summary>
+        [HttpPut("alerts/{alertId}/read")]
+        public async Task<ActionResult<ApiResponse<bool>>> MarkAlertAsRead(string alertId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.MarkAlertAsReadAsync(alertId, userId);
+                return result.Success ? Ok(result) : NotFound(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to mark alert as read: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Generate alerts for the user
+        /// </summary>
+        [HttpPost("alerts/generate")]
+        public async Task<ActionResult<ApiResponse<List<BillAlertDto>>>> GenerateAlerts()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<List<BillAlertDto>>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.GenerateAlertsAsync(userId);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<BillAlertDto>>.ErrorResult($"Failed to generate alerts: {ex.Message}"));
+            }
+        }
+
+        // ============================================
+        // Provider Analytics Endpoints
+        // ============================================
+
+        /// <summary>
+        /// Get analytics for all providers
+        /// </summary>
+        [HttpGet("analytics/providers")]
+        public async Task<ActionResult<ApiResponse<List<ProviderAnalyticsDto>>>> GetProviderAnalytics(
+            [FromQuery] int months = 6)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<List<ProviderAnalyticsDto>>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.GetProviderAnalyticsAsync(userId, months);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<ProviderAnalyticsDto>>.ErrorResult($"Failed to get provider analytics: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get analytics for a specific provider
+        /// </summary>
+        [HttpGet("analytics/providers/{provider}")]
+        public async Task<ActionResult<ApiResponse<ProviderAnalyticsDto>>> GetProviderAnalyticsByProvider(
+            string provider,
+            [FromQuery] string billType,
+            [FromQuery] int months = 6)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<ProviderAnalyticsDto>.ErrorResult("User not authenticated"));
+
+                if (string.IsNullOrEmpty(billType))
+                    return BadRequest(ApiResponse<ProviderAnalyticsDto>.ErrorResult("Bill type is required"));
+
+                var result = await _billAnalyticsService.GetProviderAnalyticsByProviderAsync(userId, provider, billType, months);
+                return result.Success ? Ok(result) : NotFound(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<ProviderAnalyticsDto>.ErrorResult($"Failed to get provider analytics: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get monthly trend data
+        /// </summary>
+        [HttpGet("analytics/trend")]
+        public async Task<ActionResult<ApiResponse<List<MonthlyBillSummaryDto>>>> GetMonthlyTrend(
+            [FromQuery] string? provider = null,
+            [FromQuery] string? billType = null,
+            [FromQuery] int months = 12)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<List<MonthlyBillSummaryDto>>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.GetMonthlyTrendAsync(userId, provider, billType, months);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<MonthlyBillSummaryDto>>.ErrorResult($"Failed to get monthly trend: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get comprehensive dashboard data
+        /// </summary>
+        [HttpGet("dashboard")]
+        public async Task<ActionResult<ApiResponse<BillDashboardDto>>> GetDashboard()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BillDashboardDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.GetDashboardDataAsync(userId);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillDashboardDto>.ErrorResult($"Failed to get dashboard: {ex.Message}"));
+            }
+        }
+
+        // ============================================
+        // Auto-Recurring Bill Generation Endpoints
+        // ============================================
+
+        /// <summary>
+        /// Auto-generate next month's bill for a specific provider
+        /// </summary>
+        [HttpPost("auto-generate")]
+        public async Task<ActionResult<ApiResponse<BillDto>>> AutoGenerateNextMonthBill(
+            [FromQuery] string provider,
+            [FromQuery] string billType)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BillDto>.ErrorResult("User not authenticated"));
+
+                if (string.IsNullOrEmpty(provider) || string.IsNullOrEmpty(billType))
+                    return BadRequest(ApiResponse<BillDto>.ErrorResult("Provider and billType are required"));
+
+                var result = await _billAnalyticsService.AutoGenerateNextMonthBillAsync(userId, provider, billType);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillDto>.ErrorResult($"Failed to auto-generate bill: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Auto-generate all recurring bills for the user
+        /// </summary>
+        [HttpPost("auto-generate-all")]
+        public async Task<ActionResult<ApiResponse<List<BillDto>>>> AutoGenerateAllRecurringBills()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<List<BillDto>>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.AutoGenerateAllRecurringBillsAsync(userId);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<BillDto>>.ErrorResult($"Failed to auto-generate bills: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Confirm and update auto-generated bill amount
+        /// </summary>
+        [HttpPut("{billId}/confirm-amount")]
+        public async Task<ActionResult<ApiResponse<BillDto>>> ConfirmAutoGeneratedBill(
+            string billId,
+            [FromBody] ConfirmBillAmountDto confirmDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BillDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.ConfirmAutoGeneratedBillAsync(billId, confirmDto, userId);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillDto>.ErrorResult($"Failed to confirm bill: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get all auto-generated bills
+        /// </summary>
+        [HttpGet("auto-generated")]
+        public async Task<ActionResult<ApiResponse<List<BillDto>>>> GetAutoGeneratedBills(
+            [FromQuery] bool? confirmed = null)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<List<BillDto>>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.GetAutoGeneratedBillsAsync(userId, confirmed);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<BillDto>>.ErrorResult($"Failed to get auto-generated bills: {ex.Message}"));
             }
         }
     }

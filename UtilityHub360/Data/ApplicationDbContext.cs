@@ -22,6 +22,11 @@ namespace UtilityHub360.Data
         public DbSet<SavingsTransaction> SavingsTransactions { get; set; }
         public DbSet<UserProfile> UserProfiles { get; set; }
         public DbSet<IncomeSource> IncomeSources { get; set; }
+        
+        // Bill Analytics Tables
+        public DbSet<BudgetSetting> BudgetSettings { get; set; }
+        public DbSet<BillAnalyticsCache> BillAnalyticsCaches { get; set; }
+        public DbSet<BillAlert> BillAlerts { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -211,6 +216,49 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.Frequency);
                 entity.HasIndex(e => e.IsActive);
                 entity.HasIndex(e => new { e.UserId, e.Name }).IsUnique();
+            });
+
+            // BudgetSetting configuration
+            modelBuilder.Entity<BudgetSetting>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => new { e.UserId, e.Provider, e.BillType }).IsUnique();
+            });
+
+            // BillAnalyticsCache configuration
+            modelBuilder.Entity<BillAnalyticsCache>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => new { e.UserId, e.Provider, e.BillType, e.CalculationMonth }).IsUnique();
+            });
+
+            // BillAlert configuration
+            modelBuilder.Entity<BillAlert>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.Bill)
+                    .WithMany()
+                    .HasForeignKey(d => d.BillId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.AlertType);
+                entity.HasIndex(e => e.IsRead);
+                entity.HasIndex(e => e.CreatedAt);
             });
 
             // Seed data

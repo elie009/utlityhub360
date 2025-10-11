@@ -97,10 +97,14 @@ builder.Services.AddScoped<ILoanService, LoanService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IBillService, BillService>();
+builder.Services.AddScoped<IBillAnalyticsService, BillAnalyticsService>();
 builder.Services.AddScoped<IBankAccountService, BankAccountService>();
 builder.Services.AddScoped<ISavingsService, SavingsService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IIncomeSourceService, IncomeSourceService>();
+
+// Add Background Services
+builder.Services.AddHostedService<BillReminderBackgroundService>();
 
 var app = builder.Build();
 
@@ -119,7 +123,11 @@ if (app.Environment.IsDevelopment())
     app.UseDeveloperExceptionPage();
 }
 
-app.UseHttpsRedirection();
+// Only use HTTPS redirection in production to avoid CORS preflight issues in development
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 // Add CORS middleware - must be before UseAuthentication and UseAuthorization
 app.UseCors("AllowFrontend");
