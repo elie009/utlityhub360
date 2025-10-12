@@ -104,6 +104,7 @@ builder.Services.AddScoped<IBankAccountService, BankAccountService>();
 builder.Services.AddScoped<ISavingsService, SavingsService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IIncomeSourceService, IncomeSourceService>();
+builder.Services.AddScoped<IDisposableAmountService, DisposableAmountService>();
 
 // Add Background Services
 builder.Services.AddHostedService<BillReminderBackgroundService>();

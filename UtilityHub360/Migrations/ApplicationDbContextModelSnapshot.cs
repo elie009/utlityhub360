@@ -1027,13 +1027,13 @@ namespace UtilityHub360.Migrations
                         new
                         {
                             Id = "admin-001",
-                            CreatedAt = new DateTime(2025, 10, 11, 16, 43, 5, 987, DateTimeKind.Utc).AddTicks(8301),
+                            CreatedAt = new DateTime(2025, 10, 11, 19, 24, 39, 350, DateTimeKind.Utc).AddTicks(4722),
                             Email = "admin@utilityhub360.com",
                             IsActive = true,
                             Name = "System Administrator",
                             Phone = "+1234567890",
                             Role = "ADMIN",
-                            UpdatedAt = new DateTime(2025, 10, 11, 16, 43, 5, 987, DateTimeKind.Utc).AddTicks(8301)
+                            UpdatedAt = new DateTime(2025, 10, 11, 19, 24, 39, 350, DateTimeKind.Utc).AddTicks(4722)
                         });
                 });
 

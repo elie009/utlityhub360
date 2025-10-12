@@ -22,6 +22,7 @@ namespace UtilityHub360.Data
         public DbSet<SavingsTransaction> SavingsTransactions { get; set; }
         public DbSet<UserProfile> UserProfiles { get; set; }
         public DbSet<IncomeSource> IncomeSources { get; set; }
+        public DbSet<VariableExpense> VariableExpenses { get; set; }
         
         // Bill Analytics Tables
         public DbSet<BudgetSetting> BudgetSettings { get; set; }
@@ -216,6 +217,20 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.Frequency);
                 entity.HasIndex(e => e.IsActive);
                 entity.HasIndex(e => new { e.UserId, e.Name }).IsUnique();
+            });
+
+            // VariableExpense configuration
+            modelBuilder.Entity<VariableExpense>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.Category);
+                entity.HasIndex(e => e.ExpenseDate);
+                entity.HasIndex(e => new { e.UserId, e.ExpenseDate, e.Category });
             });
 
             // BudgetSetting configuration

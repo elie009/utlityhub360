@@ -61,6 +61,13 @@ The project is configured to run in Development mode by default with Swagger UI 
 - [Billing Flow Diagrams](./Billing/billingFlowDiagrams.md) - System flows
 - [Billing Form Validation](./Billing/billingFormValidation.md) - Frontend validation
 
+### Financial Dashboard ⭐ NEW
+- [Financial Dashboard README](./Financial/README.md) - Complete documentation hub
+- [Disposable Amount Flow](./Financial/disposableAmountFlow.md) - User guide & concepts
+- [Dashboard API Documentation](./Financial/disposableAmountApiDocumentation.md) - API reference
+- [Quick Start Guide](./Financial/DASHBOARD_QUICK_START.md) - Get started in 10 minutes
+- [Dashboard Widgets Guide](./Financial/dashboardWidgetsGuide.md) - UI/UX implementation
+
 ### Loan System
 - [Loan Due Date Tracking](./Loan/loanDueDateTracking.md) - Due date system
 - [Loan Update Flow](./Loan/loanUpdateFlow.md) - Update workflows
@@ -92,7 +99,7 @@ The project is configured to run in Development mode by default with Swagger UI 
 - **Savings Management** - Savings accounts and goals
 - **Income Tracking** - Multiple income sources
 
-### Advanced Billing Features ⭐ NEW
+### Advanced Billing Features ⭐
 - **Variable Monthly Billing Analytics** - Track bills with changing amounts
 - **Bill Forecasting** - Predict future expenses (Simple, Weighted, Seasonal methods)
 - **Variance Analysis** - Compare actual vs estimated bills
@@ -103,6 +110,16 @@ The project is configured to run in Development mode by default with Swagger UI 
 - **Automated Reminders** - Background service for notifications
 - **Dashboard Integration** - Comprehensive financial overview
 
+### Financial Dashboard Features ⭐ NEW
+- **Disposable Amount Calculation** - Track money left after expenses
+- **Variable Expense Tracking** - Log all discretionary spending
+- **Financial Summary Dashboard** - Complete financial overview
+- **Smart Insights** - AI-generated financial recommendations
+- **Period Comparisons** - Track trends month-over-month
+- **Savings Goal Integration** - Plan and track savings targets
+- **Category Analytics** - Understand spending patterns
+- **Beautiful UI Components** - Pre-built dashboard widgets
+
 ## 📞 Support
 
 For questions or issues, please refer to the documentation files in this folder or contact the development team.
@@ -110,6 +127,22 @@ For questions or issues, please refer to the documentation files in this folder 
 ---
 
 ## 🎯 What's New in Latest Release
+
+### Financial Dashboard & Disposable Amount System (October 2025) ⭐ LATEST
+A complete financial health tracking system with disposable amount calculation:
+
+- **New Entity**: VariableExpense for tracking all discretionary spending
+- **3 new DTOs**: DisposableAmountDto, FinancialSummaryDto, VariableExpenseDto
+- **New Service**: DisposableAmountService with intelligent calculations
+- **2 new Controllers**: DashboardController & VariableExpensesController
+- **10+ API endpoints** for complete financial tracking
+- **Smart Insights**: AI-generated recommendations based on spending
+- **Period Comparisons**: Automatic trend analysis
+- **Category Analytics**: Understand where money goes
+- **Complete UI Library**: Pre-built dashboard widgets
+- **Mobile Responsive**: Beautiful UI components
+
+See [Financial Dashboard README](./Financial/README.md) for complete documentation.
 
 ### Variable Monthly Billing System (October 2025)
 A comprehensive analytics and forecasting system for bills with variable amounts:
@@ -124,9 +157,9 @@ A comprehensive analytics and forecasting system for bills with variable amounts
 - **Provider analytics** with monthly trends
 - **Comprehensive dashboard** integration
 
-See [Variable Monthly Billing Flow](./Billing/variableMonthlyBillingFlow.md) for user guide and [Implementation Guide](./Billing/variableMonthlyBillingImplementation.md) for technical details.
+See [Variable Monthly Billing Flow](./Billing/variableMonthlyBillingFlow.md) for user guide.
 
 ---
 
 **Last Updated**: October 11, 2025  
-**Version**: 2.0.0
+**Version**: 2.1.0

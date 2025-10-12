@@ -43,26 +43,43 @@ namespace UtilityHub360.Services
 
                 _context.Bills.Add(bill);
 
-                // If AutoGenerateNext is enabled, create bills for all 12 months of the year
+                // If AutoGenerateNext is enabled, create bills for remaining months of current year only
                 if (createBillDto.AutoGenerateNext && createBillDto.Frequency.ToLower() == "monthly")
                 {
-                    var currentYear = DateTime.UtcNow.Year;
+                    var now = DateTime.UtcNow;
+                    var currentYear = now.Year;
+                    var currentMonth = now.Month;
                     var baseDueDay = createBillDto.DueDate.Day;
+                    var billDueYear = createBillDto.DueDate.Year;
+                    var billDueMonth = createBillDto.DueDate.Month;
 
-                    // Generate bills for all 12 months starting from January
-                    for (int month = 1; month <= 12; month++)
+                    // Only generate for remaining months of the current year
+                    // Start from the next month after the bill's month, or current month if bill is from a past year
+                    int startMonth;
+                    if (billDueYear < currentYear)
                     {
-                        // Skip if the month is the same as the original bill
-                        if (month == createBillDto.DueDate.Month && createBillDto.DueDate.Year == currentYear)
-                            continue;
+                        startMonth = currentMonth;
+                    }
+                    else if (billDueYear == currentYear)
+                    {
+                        startMonth = billDueMonth + 1;
+                    }
+                    else
+                    {
+                        // Bill is in future year, don't auto-generate
+                        startMonth = 13; // This will skip the loop
+                    }
 
+                    // Generate bills only for remaining months of current year (up to December)
+                    for (int month = startMonth; month <= 12; month++)
+                    {
                         // Calculate due date for this month, handling months with fewer days
                         var daysInMonth = DateTime.DaysInMonth(currentYear, month);
                         var dueDay = Math.Min(baseDueDay, daysInMonth);
                         var monthlyDueDate = new DateTime(currentYear, month, dueDay);
 
-                        // Only create bills for current and future months
-                        if (monthlyDueDate < DateTime.UtcNow.Date && month != createBillDto.DueDate.Month)
+                        // Skip if this date has already passed
+                        if (monthlyDueDate < now.Date)
                             continue;
 
                         var monthlyBill = new Bill
@@ -93,7 +110,7 @@ namespace UtilityHub360.Services
 
                 var billDto = MapToBillDto(bill);
                 var message = createBillDto.AutoGenerateNext && createBillDto.Frequency.ToLower() == "monthly" 
-                    ? "Bill created successfully with 12-month auto-generation enabled" 
+                    ? "Bill created successfully with auto-generation for remaining months of the current year" 
                     : "Bill created successfully";
                 
                 return ApiResponse<BillDto>.SuccessResult(billDto, message);
