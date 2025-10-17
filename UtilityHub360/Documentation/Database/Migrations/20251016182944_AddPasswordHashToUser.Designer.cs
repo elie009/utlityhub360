@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using UtilityHub360.Data;
 
@@ -11,9 +12,11 @@ using UtilityHub360.Data;
 namespace UtilityHub360.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251016182944_AddPasswordHashToUser")]
+    partial class AddPasswordHashToUser
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1000,6 +1003,11 @@ namespace UtilityHub360.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
                     b.Property<string>("Phone")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
@@ -1027,14 +1035,90 @@ namespace UtilityHub360.Migrations
                         new
                         {
                             Id = "admin-001",
-                            CreatedAt = new DateTime(2025, 10, 11, 19, 24, 39, 350, DateTimeKind.Utc).AddTicks(4722),
+                            CreatedAt = new DateTime(2025, 10, 16, 18, 29, 39, 382, DateTimeKind.Utc).AddTicks(6979),
                             Email = "admin@utilityhub360.com",
                             IsActive = true,
                             Name = "System Administrator",
+                            PasswordHash = "",
                             Phone = "+1234567890",
                             Role = "ADMIN",
-                            UpdatedAt = new DateTime(2025, 10, 11, 19, 24, 39, 350, DateTimeKind.Utc).AddTicks(4722)
+                            UpdatedAt = new DateTime(2025, 10, 16, 18, 29, 39, 382, DateTimeKind.Utc).AddTicks(6982)
                         });
+                });
+
+            modelBuilder.Entity("UtilityHub360.Entities.UserOnboarding", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("BillsSetupCompleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CurrentStep")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("DashboardTourCompleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("FinancialGoal")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IncomeSetupCompleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastUpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("LoansSetupCompleted")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("MonthlyExpenseTarget")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("MonthlyIncomeTarget")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("OnboardingCompleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PreferredCurrency")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal?>("SavingsGoalAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("SavingsGoalDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("TotalSteps")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("VariableExpensesSetupCompleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("WelcomeCompleted")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CurrentStep");
+
+                    b.HasIndex("OnboardingCompleted");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserOnboardings");
                 });
 
             modelBuilder.Entity("UtilityHub360.Entities.UserProfile", b =>
@@ -1105,6 +1189,71 @@ namespace UtilityHub360.Migrations
                         .IsUnique();
 
                     b.ToTable("UserProfiles");
+                });
+
+            modelBuilder.Entity("UtilityHub360.Entities.VariableExpense", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("ExpenseDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsRecurring")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Merchant")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("ExpenseDate");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "ExpenseDate", "Category");
+
+                    b.ToTable("VariableExpenses");
                 });
 
             modelBuilder.Entity("UtilityHub360.Entities.BankAccount", b =>
@@ -1316,7 +1465,29 @@ namespace UtilityHub360.Migrations
                     b.Navigation("SourceBankAccount");
                 });
 
+            modelBuilder.Entity("UtilityHub360.Entities.UserOnboarding", b =>
+                {
+                    b.HasOne("UtilityHub360.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("UtilityHub360.Entities.UserProfile", b =>
+                {
+                    b.HasOne("UtilityHub360.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("UtilityHub360.Entities.VariableExpense", b =>
                 {
                     b.HasOne("UtilityHub360.Entities.User", "User")
                         .WithMany()

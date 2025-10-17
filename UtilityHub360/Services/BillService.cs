@@ -19,6 +19,22 @@ namespace UtilityHub360.Services
         {
             try
             {
+                // ============================================
+                // VALIDATION: Only allow bills for current year
+                // ============================================
+                var currentYear = DateTime.UtcNow.Year;
+                var billYear = createBillDto.DueDate.Year;
+
+                if (billYear != currentYear)
+                {
+                    return ApiResponse<BillDto>.ErrorResult(
+                        $"Bills can only be created for the current year ({currentYear}). " +
+                        $"You tried to create a bill for {createBillDto.DueDate:MMMM yyyy}. " +
+                        $"Please select a date within {currentYear}.");
+                }
+
+                Console.WriteLine($"DEBUG CREATE BILL: Validation passed - Bill year {billYear} matches current year {currentYear}");
+
                 var billId = Guid.NewGuid().ToString();
                 
                 var bill = new Bill
@@ -43,44 +59,35 @@ namespace UtilityHub360.Services
 
                 _context.Bills.Add(bill);
 
-                // If AutoGenerateNext is enabled, create bills for remaining months of current year only
+                // If AutoGenerateNext is enabled, create bills ONLY for remaining months of current year
                 if (createBillDto.AutoGenerateNext && createBillDto.Frequency.ToLower() == "monthly")
                 {
                     var now = DateTime.UtcNow;
-                    var currentYear = now.Year;
-                    var currentMonth = now.Month;
+                    // Use the currentYear variable already declared above
                     var baseDueDay = createBillDto.DueDate.Day;
-                    var billDueYear = createBillDto.DueDate.Year;
-                    var billDueMonth = createBillDto.DueDate.Month;
+                    var billDueDate = createBillDto.DueDate.Date;
+                    var billMonth = billDueDate.Month;
 
-                    // Only generate for remaining months of the current year
-                    // Start from the next month after the bill's month, or current month if bill is from a past year
-                    int startMonth;
-                    if (billDueYear < currentYear)
-                    {
-                        startMonth = currentMonth;
-                    }
-                    else if (billDueYear == currentYear)
-                    {
-                        startMonth = billDueMonth + 1;
-                    }
-                    else
-                    {
-                        // Bill is in future year, don't auto-generate
-                        startMonth = 13; // This will skip the loop
-                    }
+                    Console.WriteLine($"DEBUG AUTO-GEN: Starting auto-generation. Current year: {currentYear}, Bill month: {billMonth}");
 
-                    // Generate bills only for remaining months of current year (up to December)
-                    for (int month = startMonth; month <= 12; month++)
+                    int generatedCount = 0;
+                    int skippedCount = 0;
+                    
+                    // Only generate bills for remaining months of the current year
+                    for (int month = billMonth + 1; month <= 12; month++)
                     {
                         // Calculate due date for this month, handling months with fewer days
                         var daysInMonth = DateTime.DaysInMonth(currentYear, month);
                         var dueDay = Math.Min(baseDueDay, daysInMonth);
                         var monthlyDueDate = new DateTime(currentYear, month, dueDay);
 
-                        // Skip if this date has already passed
-                        if (monthlyDueDate < now.Date)
+                        // Skip if this date has already passed and is more than 30 days old
+                        if (monthlyDueDate < now.Date.AddDays(-30))
+                        {
+                            skippedCount++;
+                            Console.WriteLine($"DEBUG AUTO-GEN: Skipping {monthlyDueDate:yyyy-MM-dd} - too far in the past");
                             continue;
+                        }
 
                         var monthlyBill = new Bill
                         {
@@ -103,14 +110,18 @@ namespace UtilityHub360.Services
                         };
 
                         _context.Bills.Add(monthlyBill);
+                        generatedCount++;
+                        Console.WriteLine($"DEBUG AUTO-GEN: Generated bill for {monthlyDueDate:yyyy-MM-dd}");
                     }
+                    
+                    Console.WriteLine($"DEBUG AUTO-GEN: Auto-generation complete. Generated: {generatedCount}, Skipped: {skippedCount} bills");
                 }
 
                 await _context.SaveChangesAsync();
 
                 var billDto = MapToBillDto(bill);
                 var message = createBillDto.AutoGenerateNext && createBillDto.Frequency.ToLower() == "monthly" 
-                    ? "Bill created successfully with auto-generation for remaining months of the current year" 
+                    ? $"Bill created successfully with auto-generation for remaining months of {DateTime.UtcNow.Year}" 
                     : "Bill created successfully";
                 
                 return ApiResponse<BillDto>.SuccessResult(billDto, message);
@@ -165,7 +176,23 @@ namespace UtilityHub360.Services
                     bill.Amount = updateBillDto.Amount.Value;
 
                 if (updateBillDto.DueDate.HasValue)
+                {
+                    // ============================================
+                    // VALIDATION: Only allow due dates for current year
+                    // ============================================
+                    var currentYear = DateTime.UtcNow.Year;
+                    var newDueDateYear = updateBillDto.DueDate.Value.Year;
+
+                    if (newDueDateYear != currentYear)
+                    {
+                        return ApiResponse<BillDto>.ErrorResult(
+                            $"Bill due dates can only be set for the current year ({currentYear}). " +
+                            $"You tried to set a due date for {updateBillDto.DueDate.Value:MMMM yyyy}. " +
+                            $"Please select a date within {currentYear}.");
+                    }
+
                     bill.DueDate = updateBillDto.DueDate.Value;
+                }
 
                 if (!string.IsNullOrEmpty(updateBillDto.Frequency))
                     bill.Frequency = updateBillDto.Frequency.ToLower();
@@ -1148,6 +1175,353 @@ namespace UtilityHub360.Services
             catch (Exception ex)
             {
                 return ApiResponse<BillDto>.ErrorResult($"Failed to update monthly bill: {ex.Message}");
+            }
+        }
+
+        // ============================================
+        // Auto-Generated Bills Cleanup Methods
+        // ============================================
+
+        /// <summary>
+        /// Clean up auto-generated bills that are not within the current year
+        /// </summary>
+        public async Task<ApiResponse<CleanupResultDto>> CleanupOutOfYearAutoGeneratedBillsAsync(string userId)
+        {
+            try
+            {
+                var currentYear = DateTime.UtcNow.Year;
+                var startOfCurrentYear = new DateTime(currentYear, 1, 1);
+                var endOfCurrentYear = new DateTime(currentYear, 12, 31, 23, 59, 59);
+
+                Console.WriteLine($"DEBUG CLEANUP: Starting cleanup for user {userId}. Current year: {currentYear}");
+
+                // Find all auto-generated bills that are NOT within the current year
+                var outOfYearBills = await _context.Bills
+                    .Where(b => b.UserId == userId && 
+                               b.IsAutoGenerated && 
+                               (b.DueDate < startOfCurrentYear || b.DueDate > endOfCurrentYear))
+                    .ToListAsync();
+
+                Console.WriteLine($"DEBUG CLEANUP: Found {outOfYearBills.Count} auto-generated bills outside current year");
+
+                if (!outOfYearBills.Any())
+                {
+                    return ApiResponse<CleanupResultDto>.SuccessResult(
+                        new CleanupResultDto 
+                        { 
+                            DeletedBillsCount = 0, 
+                            DeletedPaymentsCount = 0,
+                            DeletedAlertsCount = 0,
+                            Message = "No auto-generated bills found outside the current year" 
+                        },
+                        "No cleanup needed"
+                    );
+                }
+
+                var billIdsToDelete = outOfYearBills.Select(b => b.Id).ToList();
+                Console.WriteLine($"DEBUG CLEANUP: Bill IDs to delete: {string.Join(", ", billIdsToDelete)}");
+
+                // Find and delete related payments
+                var relatedPayments = await _context.Payments
+                    .Where(p => billIdsToDelete.Contains(p.BillId))
+                    .ToListAsync();
+
+                Console.WriteLine($"DEBUG CLEANUP: Found {relatedPayments.Count} related payments");
+
+                var deletedPaymentsCount = 0;
+                if (relatedPayments.Any())
+                {
+                    // Handle bank transactions - reverse balances if needed
+                    foreach (var payment in relatedPayments)
+                    {
+                        if (payment.IsBankTransaction && payment.BankAccountId != null)
+                        {
+                            Console.WriteLine($"DEBUG CLEANUP: Reversing bank transaction for payment {payment.Id}");
+                            
+                            var bankAccount = await _context.BankAccounts
+                                .FirstOrDefaultAsync(ba => ba.Id == payment.BankAccountId);
+
+                            if (bankAccount != null)
+                            {
+                                // Reverse the transaction (add back the amount since it was a debit)
+                                bankAccount.CurrentBalance += payment.Amount;
+                                bankAccount.UpdatedAt = DateTime.UtcNow;
+                                Console.WriteLine($"DEBUG CLEANUP: Reversed bank balance by {payment.Amount}");
+                            }
+
+                            // Delete the corresponding BankTransaction record
+                            var bankTransaction = await _context.BankTransactions
+                                .FirstOrDefaultAsync(bt => bt.ReferenceNumber == payment.Reference);
+
+                            if (bankTransaction != null)
+                            {
+                                _context.BankTransactions.Remove(bankTransaction);
+                                Console.WriteLine($"DEBUG CLEANUP: Removed BankTransaction {bankTransaction.Id}");
+                            }
+                        }
+                    }
+
+                    _context.Payments.RemoveRange(relatedPayments);
+                    deletedPaymentsCount = relatedPayments.Count;
+                }
+
+                // Find and delete related bill alerts
+                var relatedAlerts = await _context.BillAlerts
+                    .Where(a => billIdsToDelete.Contains(a.BillId))
+                    .ToListAsync();
+
+                Console.WriteLine($"DEBUG CLEANUP: Found {relatedAlerts.Count} related alerts");
+
+                var deletedAlertsCount = 0;
+                if (relatedAlerts.Any())
+                {
+                    _context.BillAlerts.RemoveRange(relatedAlerts);
+                    deletedAlertsCount = relatedAlerts.Count;
+                }
+
+                // Delete the bills
+                _context.Bills.RemoveRange(outOfYearBills);
+                var deletedBillsCount = outOfYearBills.Count;
+
+                Console.WriteLine($"DEBUG CLEANUP: About to save changes...");
+                await _context.SaveChangesAsync();
+                Console.WriteLine($"DEBUG CLEANUP: Successfully saved changes");
+
+                // Verify deletion
+                var stillExists = await _context.Bills
+                    .Where(b => billIdsToDelete.Contains(b.Id))
+                    .CountAsync();
+
+                if (stillExists > 0)
+                {
+                    Console.WriteLine($"DEBUG CLEANUP WARNING: {stillExists} bills still exist after cleanup");
+                    return ApiResponse<CleanupResultDto>.ErrorResult($"Cleanup partially failed - {stillExists} bills still remain");
+                }
+
+                var result = new CleanupResultDto
+                {
+                    DeletedBillsCount = deletedBillsCount,
+                    DeletedPaymentsCount = deletedPaymentsCount,
+                    DeletedAlertsCount = deletedAlertsCount,
+                    Message = $"Successfully cleaned up {deletedBillsCount} auto-generated bills outside current year {currentYear}"
+                };
+
+                Console.WriteLine($"DEBUG CLEANUP: Cleanup completed successfully. Bills: {deletedBillsCount}, Payments: {deletedPaymentsCount}, Alerts: {deletedAlertsCount}");
+
+                return ApiResponse<CleanupResultDto>.SuccessResult(result,
+                    $"Cleanup completed: Removed {deletedBillsCount} auto-generated bills, {deletedPaymentsCount} payments, and {deletedAlertsCount} alerts from outside year {currentYear}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DEBUG CLEANUP ERROR: {ex.Message}");
+                Console.WriteLine($"DEBUG CLEANUP ERROR STACK: {ex.StackTrace}");
+                return ApiResponse<CleanupResultDto>.ErrorResult($"Failed to cleanup out-of-year auto-generated bills: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get count of auto-generated bills that are outside the current year
+        /// </summary>
+        public async Task<ApiResponse<OutOfYearBillsCountDto>> GetOutOfYearAutoGeneratedBillsCountAsync(string userId)
+        {
+            try
+            {
+                var currentYear = DateTime.UtcNow.Year;
+                var startOfCurrentYear = new DateTime(currentYear, 1, 1);
+                var endOfCurrentYear = new DateTime(currentYear, 12, 31, 23, 59, 59);
+
+                var count = await _context.Bills
+                    .Where(b => b.UserId == userId && 
+                               b.IsAutoGenerated && 
+                               (b.DueDate < startOfCurrentYear || b.DueDate > endOfCurrentYear))
+                    .CountAsync();
+
+                var result = new OutOfYearBillsCountDto
+                {
+                    Count = count,
+                    CurrentYear = currentYear,
+                    Message = count > 0 
+                        ? $"Found {count} auto-generated bills outside current year {currentYear}" 
+                        : $"No auto-generated bills found outside current year {currentYear}"
+                };
+
+                return ApiResponse<OutOfYearBillsCountDto>.SuccessResult(result);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<OutOfYearBillsCountDto>.ErrorResult($"Failed to get out-of-year bills count: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Delete auto-generated bills within a specific date range
+        /// </summary>
+        public async Task<ApiResponse<CleanupResultDto>> DeleteAutoGeneratedBillsByDateRangeAsync(
+            string userId, 
+            DateTime startDate, 
+            DateTime endDate)
+        {
+            try
+            {
+                Console.WriteLine($"DEBUG RANGE DELETE: Starting cleanup for user {userId}. Date range: {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd}");
+
+                // Find all auto-generated bills within the specified date range
+                var billsToDelete = await _context.Bills
+                    .Where(b => b.UserId == userId && 
+                               b.IsAutoGenerated && 
+                               b.DueDate >= startDate && 
+                               b.DueDate <= endDate)
+                    .ToListAsync();
+
+                Console.WriteLine($"DEBUG RANGE DELETE: Found {billsToDelete.Count} auto-generated bills in date range");
+
+                if (!billsToDelete.Any())
+                {
+                    return ApiResponse<CleanupResultDto>.SuccessResult(
+                        new CleanupResultDto 
+                        { 
+                            DeletedBillsCount = 0, 
+                            DeletedPaymentsCount = 0,
+                            DeletedAlertsCount = 0,
+                            Message = $"No auto-generated bills found between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}" 
+                        },
+                        "No cleanup needed"
+                    );
+                }
+
+                var billIdsToDelete = billsToDelete.Select(b => b.Id).ToList();
+                Console.WriteLine($"DEBUG RANGE DELETE: Bill IDs to delete: {string.Join(", ", billIdsToDelete)}");
+
+                // Find and delete related payments
+                var relatedPayments = await _context.Payments
+                    .Where(p => billIdsToDelete.Contains(p.BillId))
+                    .ToListAsync();
+
+                Console.WriteLine($"DEBUG RANGE DELETE: Found {relatedPayments.Count} related payments");
+
+                var deletedPaymentsCount = 0;
+                if (relatedPayments.Any())
+                {
+                    // Handle bank transactions - reverse balances if needed
+                    foreach (var payment in relatedPayments)
+                    {
+                        if (payment.IsBankTransaction && payment.BankAccountId != null)
+                        {
+                            Console.WriteLine($"DEBUG RANGE DELETE: Reversing bank transaction for payment {payment.Id}");
+                            
+                            var bankAccount = await _context.BankAccounts
+                                .FirstOrDefaultAsync(ba => ba.Id == payment.BankAccountId);
+
+                            if (bankAccount != null)
+                            {
+                                // Reverse the transaction (add back the amount since it was a debit)
+                                bankAccount.CurrentBalance += payment.Amount;
+                                bankAccount.UpdatedAt = DateTime.UtcNow;
+                                Console.WriteLine($"DEBUG RANGE DELETE: Reversed bank balance by {payment.Amount}");
+                            }
+
+                            // Delete the corresponding BankTransaction record
+                            var bankTransaction = await _context.BankTransactions
+                                .FirstOrDefaultAsync(bt => bt.ReferenceNumber == payment.Reference);
+
+                            if (bankTransaction != null)
+                            {
+                                _context.BankTransactions.Remove(bankTransaction);
+                                Console.WriteLine($"DEBUG RANGE DELETE: Removed BankTransaction {bankTransaction.Id}");
+                            }
+                        }
+                    }
+
+                    _context.Payments.RemoveRange(relatedPayments);
+                    deletedPaymentsCount = relatedPayments.Count;
+                }
+
+                // Find and delete related bill alerts
+                var relatedAlerts = await _context.BillAlerts
+                    .Where(a => billIdsToDelete.Contains(a.BillId))
+                    .ToListAsync();
+
+                Console.WriteLine($"DEBUG RANGE DELETE: Found {relatedAlerts.Count} related alerts");
+
+                var deletedAlertsCount = 0;
+                if (relatedAlerts.Any())
+                {
+                    _context.BillAlerts.RemoveRange(relatedAlerts);
+                    deletedAlertsCount = relatedAlerts.Count;
+                }
+
+                // Delete the bills
+                _context.Bills.RemoveRange(billsToDelete);
+                var deletedBillsCount = billsToDelete.Count;
+
+                Console.WriteLine($"DEBUG RANGE DELETE: About to save changes...");
+                await _context.SaveChangesAsync();
+                Console.WriteLine($"DEBUG RANGE DELETE: Successfully saved changes");
+
+                // Verify deletion
+                var stillExists = await _context.Bills
+                    .Where(b => billIdsToDelete.Contains(b.Id))
+                    .CountAsync();
+
+                if (stillExists > 0)
+                {
+                    Console.WriteLine($"DEBUG RANGE DELETE WARNING: {stillExists} bills still exist after cleanup");
+                    return ApiResponse<CleanupResultDto>.ErrorResult($"Cleanup partially failed - {stillExists} bills still remain");
+                }
+
+                var result = new CleanupResultDto
+                {
+                    DeletedBillsCount = deletedBillsCount,
+                    DeletedPaymentsCount = deletedPaymentsCount,
+                    DeletedAlertsCount = deletedAlertsCount,
+                    Message = $"Successfully cleaned up {deletedBillsCount} auto-generated bills between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}"
+                };
+
+                Console.WriteLine($"DEBUG RANGE DELETE: Cleanup completed successfully. Bills: {deletedBillsCount}, Payments: {deletedPaymentsCount}, Alerts: {deletedAlertsCount}");
+
+                return ApiResponse<CleanupResultDto>.SuccessResult(result,
+                    $"Cleanup completed: Removed {deletedBillsCount} auto-generated bills, {deletedPaymentsCount} payments, and {deletedAlertsCount} alerts from {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DEBUG RANGE DELETE ERROR: {ex.Message}");
+                Console.WriteLine($"DEBUG RANGE DELETE ERROR STACK: {ex.StackTrace}");
+                return ApiResponse<CleanupResultDto>.ErrorResult($"Failed to cleanup auto-generated bills by date range: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get count of auto-generated bills within a specific date range
+        /// </summary>
+        public async Task<ApiResponse<DateRangeBillsCountDto>> GetAutoGeneratedBillsCountByDateRangeAsync(
+            string userId, 
+            DateTime startDate, 
+            DateTime endDate)
+        {
+            try
+            {
+                var count = await _context.Bills
+                    .Where(b => b.UserId == userId && 
+                               b.IsAutoGenerated && 
+                               b.DueDate >= startDate && 
+                               b.DueDate <= endDate)
+                    .CountAsync();
+
+                var result = new DateRangeBillsCountDto
+                {
+                    Count = count,
+                    StartDate = startDate,
+                    EndDate = endDate,
+                    Message = count > 0 
+                        ? $"Found {count} auto-generated bills between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}" 
+                        : $"No auto-generated bills found between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}"
+                };
+
+                return ApiResponse<DateRangeBillsCountDto>.SuccessResult(result);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<DateRangeBillsCountDto>.ErrorResult($"Failed to get bills count by date range: {ex.Message}");
             }
         }
     }

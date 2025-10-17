@@ -1,0 +1,56 @@
+### 🛠️ FINAL CLEANUP: Delete 2026-2031 Bills + Fix Future Generation
+
+### Step 1: Login
+POST https://localhost:7299/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "your-email@example.com",
+  "password": "your-password"
+}
+
+### Step 2: Check current count (should show how many exist)
+GET https://localhost:7299/api/bills/cleanup/date-range/count?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### Step 3: 🗑️ FINAL DELETION - Remove all 2026-2031 auto-generated bills
+POST https://localhost:7299/api/bills/cleanup/date-range?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### Step 4: Verify they're gone (should show count = 0)
+GET https://localhost:7299/api/bills/cleanup/date-range/count?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### Step 5: Test the fix - Create a bill for 2030 (should NOT generate 2026-2031 bills anymore)
+POST https://localhost:7299/api/bills
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "billName": "Test Future Bill 2030",
+  "billType": "utility", 
+  "amount": 100.00,
+  "dueDate": "2030-06-15T00:00:00Z",
+  "frequency": "monthly",
+  "provider": "Test Provider",
+  "autoGenerateNext": true,
+  "notes": "Testing if 2026-2031 bills are generated - they should NOT be!"
+}
+
+### Step 6: Verify the fix worked - Check 2026-2031 range is still empty
+GET https://localhost:7299/api/bills/cleanup/date-range/count?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### Step 7: Check what WAS generated (should only be 2024-2025 reasonable dates)
+GET https://localhost:7299/api/bills/auto-generated?confirmed=false
+Authorization: Bearer {{auth_token}}
+
+### ✅ SOLUTION IMPLEMENTED:
+### 1. Deleted all existing 2026-2031 auto-generated bills
+### 2. Modified auto-generation to ONLY create bills up to next year (2025)
+### 3. No more 2026-2031 bills will be generated in the future!
+###
+### The system now limits auto-generation to:
+### - Current year: 2024
+### - Next year: 2025  
+### - NO bills beyond 2025 will be auto-generated

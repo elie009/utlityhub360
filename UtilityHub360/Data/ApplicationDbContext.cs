@@ -23,6 +23,8 @@ namespace UtilityHub360.Data
         public DbSet<UserProfile> UserProfiles { get; set; }
         public DbSet<IncomeSource> IncomeSources { get; set; }
         public DbSet<VariableExpense> VariableExpenses { get; set; }
+        public DbSet<UserOnboarding> UserOnboardings { get; set; }
+        public DbSet<PasswordReset> PasswordResets { get; set; }
         
         // Bill Analytics Tables
         public DbSet<BudgetSetting> BudgetSettings { get; set; }
@@ -274,6 +276,33 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.AlertType);
                 entity.HasIndex(e => e.IsRead);
                 entity.HasIndex(e => e.CreatedAt);
+            });
+
+            // UserOnboarding configuration
+            modelBuilder.Entity<UserOnboarding>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId).IsUnique();
+                entity.HasIndex(e => e.OnboardingCompleted);
+                entity.HasIndex(e => e.CurrentStep);
+            });
+
+            // PasswordReset configuration
+            modelBuilder.Entity<PasswordReset>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.Token).IsUnique();
+                entity.HasIndex(e => e.Email);
+                entity.HasIndex(e => e.ExpiresAt);
+                entity.HasIndex(e => e.IsUsed);
             });
 
             // Seed data

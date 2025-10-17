@@ -1,0 +1,93 @@
+### Delete Auto-Generated Bills from January 2026 to 2031
+### This file specifically handles the user's request to delete auto-generated bills
+### from January 2026 up to 2031 (January 1, 2026 to December 31, 2031)
+
+### Get JWT Token First (replace with your actual credentials)
+POST https://localhost:7299/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "Test123!"
+}
+
+### Step 1: Check how many auto-generated bills exist in the target date range
+### This will show you exactly what will be deleted BEFORE deletion
+GET https://localhost:7299/api/bills/cleanup/date-range/count?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### Step 2: Get a sample of bills in that date range to see what they look like
+### Check bills for January 2026 to see what will be deleted
+GET https://localhost:7299/api/bills/monthly?year=2026&month=1
+Authorization: Bearer {{auth_token}}
+
+### Step 3: Check bills for 2027 to see more examples
+GET https://localhost:7299/api/bills/monthly?year=2027&month=6
+Authorization: Bearer {{auth_token}}
+
+### Step 4: Check bills for 2031 to see the end range
+GET https://localhost:7299/api/bills/monthly?year=2031&month=12
+Authorization: Bearer {{auth_token}}
+
+### Step 5: PERFORM THE DELETION
+### ⚠️ WARNING: This will permanently delete all auto-generated bills 
+### from January 1, 2026 to December 31, 2031
+### Make sure you want to do this before running!
+POST https://localhost:7299/api/bills/cleanup/date-range?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### Step 6: Verify the deletion worked - count should be 0 now
+GET https://localhost:7299/api/bills/cleanup/date-range/count?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### Step 7: Double-check by looking at specific months that should now be empty
+### January 2026 should have no auto-generated bills now
+GET https://localhost:7299/api/bills/monthly?year=2026&month=1
+Authorization: Bearer {{auth_token}}
+
+### Step 8: Check 2027 - should also be empty of auto-generated bills
+GET https://localhost:7299/api/bills/monthly?year=2027&month=6
+Authorization: Bearer {{auth_token}}
+
+### Step 9: Check 2031 - should also be empty of auto-generated bills
+GET https://localhost:7299/api/bills/monthly?year=2031&month=12
+Authorization: Bearer {{auth_token}}
+
+### Step 10: Check that current year bills are still intact
+### This should still show bills from 2024 (current year)
+GET https://localhost:7299/api/bills/auto-generated?confirmed=false
+Authorization: Bearer {{auth_token}}
+
+### Step 11: Check 2025 bills are still intact (if any)
+GET https://localhost:7299/api/bills/monthly?year=2025&month=3
+Authorization: Bearer {{auth_token}}
+
+### === ALTERNATIVE TEST COMMANDS ===
+
+### Test with smaller date ranges first (if you want to be cautious)
+### Delete only 2026 bills first:
+# GET https://localhost:7299/api/bills/cleanup/date-range/count?startDate=2026-01-01&endDate=2026-12-31
+# POST https://localhost:7299/api/bills/cleanup/date-range?startDate=2026-01-01&endDate=2026-12-31
+
+### Delete only 2027-2029 bills:
+# GET https://localhost:7299/api/bills/cleanup/date-range/count?startDate=2027-01-01&endDate=2029-12-31
+# POST https://localhost:7299/api/bills/cleanup/date-range?startDate=2027-01-01&endDate=2029-12-31
+
+### Delete only 2030-2031 bills:
+# GET https://localhost:7299/api/bills/cleanup/date-range/count?startDate=2030-01-01&endDate=2031-12-31
+# POST https://localhost:7299/api/bills/cleanup/date-range?startDate=2030-01-01&endDate=2031-12-31
+
+### === VALIDATION COMMANDS ===
+
+### Check total bills count before and after to see the difference
+GET https://localhost:7299/api/bills?page=1&limit=1000
+Authorization: Bearer {{auth_token}}
+
+### Check specific years to make sure only auto-generated bills were deleted
+### (Manual bills should still exist)
+GET https://localhost:7299/api/bills/monthly?year=2026&month=1
+Authorization: Bearer {{auth_token}}
+
+### Get overall analytics to see the impact
+GET https://localhost:7299/api/bills/analytics/summary
+Authorization: Bearer {{auth_token}}

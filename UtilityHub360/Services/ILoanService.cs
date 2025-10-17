@@ -20,6 +20,17 @@ namespace UtilityHub360.Services
         Task<ApiResponse<PaymentDto>> MakeLoanPaymentAsync(string loanId, CreatePaymentDto payment, string userId);
         Task<ApiResponse<decimal>> GetTotalOutstandingLoanAmountAsync(string userId);
         Task<Loan?> GetLoanWithAccessCheckAsync(string loanId, string userId);
+        
+        // Payment Schedule Management
+        Task<ApiResponse<PaymentScheduleResponseDto>> ExtendLoanTermAsync(string loanId, ExtendLoanTermDto extendDto, string userId);
+        Task<ApiResponse<PaymentScheduleResponseDto>> AddPaymentScheduleAsync(string loanId, AddPaymentScheduleDto addDto, string userId);
+        Task<ApiResponse<PaymentScheduleResponseDto>> AutoAddPaymentScheduleAsync(string loanId, AutoAddPaymentScheduleDto addDto, string userId);
+        Task<ApiResponse<PaymentScheduleResponseDto>> RegeneratePaymentScheduleAsync(string loanId, RegenerateScheduleDto regenerateDto, string userId);
+        Task<ApiResponse<bool>> DeletePaymentScheduleInstallmentAsync(string loanId, int installmentNumber, string userId);
+        Task<ApiResponse<RepaymentScheduleDto>> MarkInstallmentAsPaidAsync(string loanId, int installmentNumber, MarkInstallmentPaidDto paymentDto, string userId);
+        
+        // Simple Schedule Update
+        Task<ApiResponse<RepaymentScheduleDto>> UpdateScheduleSimpleAsync(string loanId, int installmentNumber, SimpleScheduleUpdateDto updateDto, string userId);
     }
 }
 

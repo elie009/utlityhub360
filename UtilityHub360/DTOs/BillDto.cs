@@ -2,6 +2,31 @@ using System.ComponentModel.DataAnnotations;
 
 namespace UtilityHub360.DTOs
 {
+    /// <summary>
+    /// Custom validation attribute to ensure dates are within the current year only
+    /// </summary>
+    public class CurrentYearOnlyAttribute : ValidationAttribute
+    {
+        public override bool IsValid(object? value)
+        {
+            if (value is DateTime date)
+            {
+                var currentYear = DateTime.UtcNow.Year;
+                return date.Year == currentYear;
+            }
+            return true; // Allow null values to be handled by Required attribute
+        }
+
+        public override string FormatErrorMessage(string name)
+        {
+            var currentYear = DateTime.UtcNow.Year;
+            return $"The {name} must be within the current year ({currentYear}). Please select a date in {currentYear}.";
+        }
+    }
+}
+
+namespace UtilityHub360.DTOs
+{
     public class BillDto
     {
         public string Id { get; set; } = string.Empty;
@@ -39,6 +64,7 @@ namespace UtilityHub360.DTOs
         public decimal Amount { get; set; }
 
         [Required]
+        [CurrentYearOnly]
         public DateTime DueDate { get; set; }
 
         [Required]
@@ -69,6 +95,7 @@ namespace UtilityHub360.DTOs
         [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than 0")]
         public decimal? Amount { get; set; }
 
+        [CurrentYearOnly]
         public DateTime? DueDate { get; set; }
 
         [StringLength(20)]
@@ -190,5 +217,29 @@ namespace UtilityHub360.DTOs
         public DateTime? TransactionDate { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+    }
+
+    // Cleanup DTOs
+    public class CleanupResultDto
+    {
+        public int DeletedBillsCount { get; set; }
+        public int DeletedPaymentsCount { get; set; }
+        public int DeletedAlertsCount { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
+    public class OutOfYearBillsCountDto
+    {
+        public int Count { get; set; }
+        public int CurrentYear { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
+    public class DateRangeBillsCountDto
+    {
+        public int Count { get; set; }
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+        public string Message { get; set; } = string.Empty;
     }
 }

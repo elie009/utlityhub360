@@ -1,0 +1,30 @@
+### ⚠️ QUICK DELETE: Auto-Generated Bills from January 2026 to 2031
+### This is the simplified version for your specific request
+
+### Step 1: Login to get your token
+POST https://localhost:7299/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "your-email@example.com",
+  "password": "your-password"
+}
+
+### Step 2: Check how many bills will be deleted (PREVIEW ONLY)
+GET https://localhost:7299/api/bills/cleanup/date-range/count?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### Step 3: 🗑️ DELETE ALL AUTO-GENERATED BILLS FROM JAN 2026 TO DEC 2031
+### ⚠️ WARNING: This will permanently delete ALL auto-generated bills 
+### from January 1, 2026 to December 31, 2031
+POST https://localhost:7299/api/bills/cleanup/date-range?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### Step 4: Verify deletion worked (should show count = 0)
+GET https://localhost:7299/api/bills/cleanup/date-range/count?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### ✅ DONE! 
+### Your auto-generated bills from January 2026 to 2031 are now deleted.
+### Only auto-generated bills were removed - manual bills are safe.
+### Bank balances were properly reversed if any payments existed.

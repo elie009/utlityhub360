@@ -935,6 +935,407 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<object>.ErrorResult($"Failed to get monthly payment total: {ex.Message}"));
             }
         }
+
+        #region Payment Schedule Management Endpoints
+
+        /// <summary>
+        /// Extend loan term by adding additional months to the payment schedule
+        /// </summary>
+        [HttpPost("{loanId}/extend-term")]
+        public async Task<ActionResult<ApiResponse<PaymentScheduleResponseDto>>> ExtendLoanTerm(
+            string loanId, 
+            [FromBody] ExtendLoanTermDto extendDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<PaymentScheduleResponseDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _loanService.ExtendLoanTermAsync(loanId, extendDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<PaymentScheduleResponseDto>.ErrorResult($"Failed to extend loan term: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Add payment schedule with auto installment number (only provide due date and amount)
+        /// </summary>
+        [HttpPost("{loanId}/add-schedule")]
+        public async Task<ActionResult<ApiResponse<PaymentScheduleResponseDto>>> AddPaymentSchedule(
+            string loanId, 
+            [FromBody] AutoAddPaymentScheduleDto addDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<PaymentScheduleResponseDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _loanService.AutoAddPaymentScheduleAsync(loanId, addDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<PaymentScheduleResponseDto>.ErrorResult($"Failed to add payment schedule: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Add specific payment schedule months with manual installment number
+        /// </summary>
+        [HttpPost("{loanId}/add-schedule-manual")]
+        public async Task<ActionResult<ApiResponse<PaymentScheduleResponseDto>>> AddPaymentScheduleManual(
+            string loanId, 
+            [FromBody] AddPaymentScheduleDto addDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<PaymentScheduleResponseDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _loanService.AddPaymentScheduleAsync(loanId, addDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<PaymentScheduleResponseDto>.ErrorResult($"Failed to add payment schedule: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Regenerate the entire payment schedule for a loan (removes existing unpaid installments)
+        /// </summary>
+        [HttpPost("{loanId}/regenerate-schedule")]
+        public async Task<ActionResult<ApiResponse<PaymentScheduleResponseDto>>> RegeneratePaymentSchedule(
+            string loanId, 
+            [FromBody] RegenerateScheduleDto regenerateDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<PaymentScheduleResponseDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _loanService.RegeneratePaymentScheduleAsync(loanId, regenerateDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<PaymentScheduleResponseDto>.ErrorResult($"Failed to regenerate payment schedule: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Delete a specific payment schedule installment (only unpaid ones)
+        /// </summary>
+        [HttpDelete("{loanId}/schedule/{installmentNumber}")]
+        public async Task<ActionResult<ApiResponse<bool>>> DeletePaymentScheduleInstallment(
+            string loanId, 
+            int installmentNumber)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _loanService.DeletePaymentScheduleInstallmentAsync(loanId, installmentNumber, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete payment installment: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Mark a specific payment schedule installment as paid with amount
+        /// </summary>
+        [HttpPost("{loanId}/schedule/{installmentNumber}/mark-paid")]
+        public async Task<ActionResult<ApiResponse<RepaymentScheduleDto>>> MarkInstallmentAsPaid(
+            string loanId,
+            int installmentNumber,
+            [FromBody] MarkInstallmentPaidDto paymentDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<RepaymentScheduleDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<RepaymentScheduleDto>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _loanService.MarkInstallmentAsPaidAsync(loanId, installmentNumber, paymentDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<RepaymentScheduleDto>.ErrorResult($"Failed to mark installment as paid: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Simple update for payment schedule - amount, status, due date, paid date
+        /// </summary>
+        [HttpPatch("{loanId}/schedule/{installmentNumber}")]
+        public async Task<ActionResult<ApiResponse<RepaymentScheduleDto>>> UpdateScheduleSimple(
+            string loanId,
+            int installmentNumber,
+            [FromBody] SimpleScheduleUpdateDto updateDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<RepaymentScheduleDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<RepaymentScheduleDto>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _loanService.UpdateScheduleSimpleAsync(loanId, installmentNumber, updateDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<RepaymentScheduleDto>.ErrorResult($"Failed to update payment schedule: {ex.Message}"));
+            }
+        }
+
+        #endregion
+
+        // ============================================
+        // RepaymentSchedule Cleanup Endpoints
+        // ============================================
+
+        /// <summary>
+        /// EMERGENCY DELETE: Remove all repayment schedules from 2026-2031 immediately
+        /// This specifically targets the RepaymentSchedules table
+        /// </summary>
+        [HttpPost("emergency-delete-repayment-schedules-2026-2031")]
+        public async Task<ActionResult<ApiResponse<string>>> EmergencyDeleteRepaymentSchedules2026to2031()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<string>.ErrorResult("User not authenticated"));
+
+                // Direct database query to find and delete repayment schedules
+                var startDate = new DateTime(2026, 1, 1);
+                var endDate = new DateTime(2031, 12, 31, 23, 59, 59);
+
+                // Find all repayment schedules in this range for user's loans
+                var schedulesToDelete = await _context.RepaymentSchedules
+                    .Where(rs => rs.Loan.UserId == userId && 
+                                rs.DueDate >= startDate && 
+                                rs.DueDate <= endDate)
+                    .Include(rs => rs.Loan)
+                    .ToListAsync();
+
+                if (!schedulesToDelete.Any())
+                {
+                    return Ok(ApiResponse<string>.SuccessResult("No repayment schedules found in 2026-2031 range"));
+                }
+
+                // Group by loan to update loan balances properly
+                var loanGroups = schedulesToDelete.GroupBy(rs => rs.LoanId).ToList();
+                
+                // Update loan remaining balances
+                foreach (var loanGroup in loanGroups)
+                {
+                    var loan = loanGroup.First().Loan;
+                    var deletedSchedules = loanGroup.ToList();
+                    
+                    // Calculate total amount being removed
+                    var totalPrincipalRemoved = deletedSchedules.Sum(rs => rs.PrincipalAmount);
+                    var totalAmountRemoved = deletedSchedules.Sum(rs => rs.TotalAmount);
+                    
+                    // Update loan remaining balance
+                    loan.RemainingBalance -= totalPrincipalRemoved;
+                    if (loan.RemainingBalance < 0) loan.RemainingBalance = 0;
+                    
+                    // Update loan total amount
+                    loan.TotalAmount -= totalAmountRemoved;
+                    
+                    // If remaining balance is 0, mark loan as completed
+                    if (loan.RemainingBalance == 0)
+                    {
+                        loan.Status = "COMPLETED";
+                        loan.CompletedAt = DateTime.UtcNow;
+                    }
+                }
+
+                // Delete the repayment schedules
+                _context.RepaymentSchedules.RemoveRange(schedulesToDelete);
+                await _context.SaveChangesAsync();
+
+                var message = $"REPAYMENT SCHEDULE DELETE COMPLETED: Removed {schedulesToDelete.Count} repayment schedules from 2026-2031, affecting {loanGroups.Count} loan(s)";
+                
+                return Ok(ApiResponse<string>.SuccessResult(message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<string>.ErrorResult($"Emergency delete repayment schedules failed: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get count of repayment schedules with due dates from January 2026 to December 2031
+        /// </summary>
+        [HttpGet("repayment-schedules/count-2026-2031")]
+        public async Task<ActionResult<ApiResponse<RepaymentScheduleCountDto>>> GetRepaymentSchedulesCount2026to2031()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<RepaymentScheduleCountDto>.ErrorResult("User not authenticated"));
+
+                var startDate = new DateTime(2026, 1, 1);
+                var endDate = new DateTime(2031, 12, 31, 23, 59, 59);
+
+                var count = await _context.RepaymentSchedules
+                    .Where(rs => rs.Loan.UserId == userId && 
+                                rs.DueDate >= startDate && 
+                                rs.DueDate <= endDate)
+                    .CountAsync();
+
+                var loanCount = await _context.RepaymentSchedules
+                    .Where(rs => rs.Loan.UserId == userId && 
+                                rs.DueDate >= startDate && 
+                                rs.DueDate <= endDate)
+                    .Select(rs => rs.LoanId)
+                    .Distinct()
+                    .CountAsync();
+
+                var result = new RepaymentScheduleCountDto
+                {
+                    Count = count,
+                    LoansAffected = loanCount,
+                    StartDate = startDate,
+                    EndDate = endDate,
+                    Message = count > 0 
+                        ? $"Found {count} repayment schedules from {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd} affecting {loanCount} loan(s)" 
+                        : $"No repayment schedules found from {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd}"
+                };
+
+                return Ok(ApiResponse<RepaymentScheduleCountDto>.SuccessResult(result));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<RepaymentScheduleCountDto>.ErrorResult($"Failed to get repayment schedules count: {ex.Message}"));
+            }
+        }
     }
 }
 

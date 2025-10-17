@@ -6,6 +6,7 @@ using System.Text;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
 using UtilityHub360.Models;
+using BCrypt.Net;
 
 namespace UtilityHub360.Services
 {
@@ -14,11 +15,13 @@ namespace UtilityHub360.Services
         private readonly ApplicationDbContext _context;
         private readonly IConfiguration _configuration;
         private readonly JwtSettings _jwtSettings;
+        private readonly IEmailService _emailService;
 
-        public AuthService(ApplicationDbContext context, IConfiguration configuration)
+        public AuthService(ApplicationDbContext context, IConfiguration configuration, IEmailService emailService)
         {
             _context = context;
             _configuration = configuration;
+            _emailService = emailService;
             _jwtSettings = _configuration.GetSection("JwtSettings").Get<JwtSettings>() ?? new JwtSettings();
         }
 
@@ -44,6 +47,7 @@ namespace UtilityHub360.Services
                 Email = registerData.Email,
                 Phone = registerData.Phone,
                 Role = "USER",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerData.Password),
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -85,8 +89,11 @@ namespace UtilityHub360.Services
                 throw new UnauthorizedAccessException("Invalid email or password");
             }
 
-            // In a real application, you would verify the password hash here
-            // For now, we'll assume the password is correct
+            // Verify the password
+            if (!BCrypt.Net.BCrypt.Verify(loginCredentials.Password, user.PasswordHash))
+            {
+                throw new UnauthorizedAccessException("Invalid email or password");
+            }
 
             var token = GenerateJwtToken(user);
             var refreshToken = GenerateRefreshToken();
@@ -199,6 +206,103 @@ namespace UtilityHub360.Services
         private string GenerateRefreshToken()
         {
             return Guid.NewGuid().ToString();
+        }
+
+        public async Task<ApiResponse<object>> ForgotPasswordAsync(ForgotPasswordDto forgotPasswordDto)
+        {
+            try
+            {
+                // Check if user exists
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == forgotPasswordDto.Email && u.IsActive);
+
+                if (user == null)
+                {
+                    // For security, don't reveal if email exists or not
+                    return ApiResponse<object>.SuccessResult(new { }, "If the email exists, a password reset link has been sent.");
+                }
+
+                // Generate reset token
+                var resetToken = Guid.NewGuid().ToString();
+                var expiresAt = DateTime.UtcNow.AddHours(1); // Token expires in 1 hour
+
+                // Invalidate any existing reset tokens for this user
+                var existingResets = await _context.PasswordResets
+                    .Where(pr => pr.UserId == user.Id && !pr.IsUsed)
+                    .ToListAsync();
+
+                foreach (var existingReset in existingResets)
+                {
+                    existingReset.IsUsed = true;
+                    existingReset.UsedAt = DateTime.UtcNow;
+                }
+
+                // Create new password reset record
+                var passwordReset = new Entities.PasswordReset
+                {
+                    UserId = user.Id,
+                    Token = resetToken,
+                    Email = user.Email,
+                    CreatedAt = DateTime.UtcNow,
+                    ExpiresAt = expiresAt,
+                    IsUsed = false
+                };
+
+                _context.PasswordResets.Add(passwordReset);
+                await _context.SaveChangesAsync();
+
+                // Send email
+                await _emailService.SendPasswordResetEmailAsync(user.Email, resetToken, user.Name);
+
+                return ApiResponse<object>.SuccessResult(new { }, "If the email exists, a password reset link has been sent.");
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to process password reset request: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<object>> ResetPasswordAsync(ResetPasswordDto resetPasswordDto)
+        {
+            try
+            {
+                // Find the password reset record
+                var passwordReset = await _context.PasswordResets
+                    .FirstOrDefaultAsync(pr => pr.Token == resetPasswordDto.Token && 
+                                             pr.Email == resetPasswordDto.Email && 
+                                             !pr.IsUsed && 
+                                             pr.ExpiresAt > DateTime.UtcNow);
+
+                if (passwordReset == null)
+                {
+                    throw new InvalidOperationException("Invalid or expired reset token.");
+                }
+
+                // Find the user
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == passwordReset.UserId && u.IsActive);
+
+                if (user == null)
+                {
+                    throw new InvalidOperationException("User not found.");
+                }
+
+                // Update user password
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(resetPasswordDto.NewPassword);
+                user.UpdatedAt = DateTime.UtcNow;
+
+                // Mark reset token as used
+                passwordReset.IsUsed = true;
+                passwordReset.UsedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                return ApiResponse<object>.SuccessResult(new { }, "Password has been reset successfully.");
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to reset password: {ex.Message}");
+            }
         }
     }
 }

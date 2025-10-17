@@ -780,6 +780,724 @@ namespace UtilityHub360.Services
             }
             */
         }
+
+        #region Payment Schedule Management
+
+        public async Task<ApiResponse<PaymentScheduleResponseDto>> ExtendLoanTermAsync(string loanId, ExtendLoanTermDto extendDto, string userId)
+        {
+            try
+            {
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Loan not found");
+                }
+
+                if (loan.Status != "ACTIVE" && loan.Status != "APPROVED")
+                {
+                    return ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Can only extend active or approved loans");
+                }
+
+                // Get current payment schedule
+                var currentSchedule = await _context.RepaymentSchedules
+                    .Where(rs => rs.LoanId == loanId)
+                    .OrderBy(rs => rs.InstallmentNumber)
+                    .ToListAsync();
+
+                if (!currentSchedule.Any())
+                {
+                    return ApiResponse<PaymentScheduleResponseDto>.ErrorResult("No existing payment schedule found");
+                }
+
+                // Get the last installment to determine starting point
+                var lastInstallment = currentSchedule.Last();
+                var startingInstallmentNumber = lastInstallment.InstallmentNumber + 1;
+                var firstNewDueDate = lastInstallment.DueDate.AddMonths(1);
+
+                // Use existing monthly payment amount
+                var monthlyPayment = loan.MonthlyPayment;
+
+                // Create new installments for the extension
+                var newSchedules = new List<Entities.RepaymentSchedule>();
+                var monthlyRate = loan.InterestRate / 100 / 12;
+                
+                for (int i = 0; i < extendDto.AdditionalMonths; i++)
+                {
+                    var installmentNumber = startingInstallmentNumber + i;
+                    var dueDate = firstNewDueDate.AddMonths(i);
+
+                    var interestAmount = loan.InterestRate > 0 ? loan.RemainingBalance * monthlyRate : 0;
+                    var principalAmount = monthlyPayment - interestAmount;
+
+                    newSchedules.Add(new Entities.RepaymentSchedule
+                    {
+                        LoanId = loanId,
+                        InstallmentNumber = installmentNumber,
+                        DueDate = dueDate,
+                        PrincipalAmount = Math.Max(0, principalAmount),
+                        InterestAmount = interestAmount,
+                        TotalAmount = monthlyPayment,
+                        Status = "PENDING"
+                    });
+                }
+
+                // Update loan term
+                loan.Term += extendDto.AdditionalMonths;
+                loan.TotalAmount += monthlyPayment * extendDto.AdditionalMonths;
+
+                // Add new schedules to database
+                _context.RepaymentSchedules.AddRange(newSchedules);
+                await _context.SaveChangesAsync();
+
+                // Return updated schedule
+                var updatedSchedule = await _context.RepaymentSchedules
+                    .Where(rs => rs.LoanId == loanId)
+                    .OrderBy(rs => rs.InstallmentNumber)
+                    .ToListAsync();
+
+                var scheduleDtos = updatedSchedule.Select(rs => new RepaymentScheduleDto
+                {
+                    Id = rs.Id,
+                    LoanId = rs.LoanId,
+                    InstallmentNumber = rs.InstallmentNumber,
+                    DueDate = rs.DueDate,
+                    PrincipalAmount = rs.PrincipalAmount,
+                    InterestAmount = rs.InterestAmount,
+                    TotalAmount = rs.TotalAmount,
+                    Status = rs.Status,
+                    PaidAt = rs.PaidAt
+                }).ToList();
+
+                var response = new PaymentScheduleResponseDto
+                {
+                    Schedule = scheduleDtos,
+                    TotalInstallments = scheduleDtos.Count,
+                    TotalAmount = scheduleDtos.Sum(s => s.TotalAmount),
+                    FirstDueDate = scheduleDtos.FirstOrDefault()?.DueDate,
+                    LastDueDate = scheduleDtos.LastOrDefault()?.DueDate,
+                    Message = $"Loan term extended by {extendDto.AdditionalMonths} months. {extendDto.AdditionalMonths} new installments added."
+                };
+
+                return ApiResponse<PaymentScheduleResponseDto>.SuccessResult(response, "Loan term extended successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<PaymentScheduleResponseDto>.ErrorResult($"Failed to extend loan term: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<PaymentScheduleResponseDto>> AddPaymentScheduleAsync(string loanId, AddPaymentScheduleDto addDto, string userId)
+        {
+            try
+            {
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Loan not found");
+                }
+
+                if (loan.Status != "ACTIVE" && loan.Status != "APPROVED")
+                {
+                    return ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Can only add schedules to active or approved loans");
+                }
+
+                // Check if starting installment number conflicts with existing schedules
+                var existingSchedules = await _context.RepaymentSchedules
+                    .Where(rs => rs.LoanId == loanId && 
+                                rs.InstallmentNumber >= addDto.StartingInstallmentNumber && 
+                                rs.InstallmentNumber < addDto.StartingInstallmentNumber + addDto.NumberOfMonths)
+                    .ToListAsync();
+
+                if (existingSchedules.Any())
+                {
+                    return ApiResponse<PaymentScheduleResponseDto>.ErrorResult(
+                        $"Installment numbers {addDto.StartingInstallmentNumber} to {addDto.StartingInstallmentNumber + addDto.NumberOfMonths - 1} already exist");
+                }
+
+                // Create new payment schedules
+                var newSchedules = new List<Entities.RepaymentSchedule>();
+                var monthlyRate = loan.InterestRate / 100 / 12;
+
+                for (int i = 0; i < addDto.NumberOfMonths; i++)
+                {
+                    var installmentNumber = addDto.StartingInstallmentNumber + i;
+                    var dueDate = addDto.FirstDueDate.AddMonths(i);
+                    
+                    var interestAmount = loan.InterestRate > 0 ? loan.RemainingBalance * monthlyRate : 0;
+                    var principalAmount = addDto.MonthlyPayment - interestAmount;
+
+                    newSchedules.Add(new Entities.RepaymentSchedule
+                    {
+                        LoanId = loanId,
+                        InstallmentNumber = installmentNumber,
+                        DueDate = dueDate,
+                        PrincipalAmount = Math.Max(0, principalAmount),
+                        InterestAmount = interestAmount,
+                        TotalAmount = addDto.MonthlyPayment,
+                        Status = "PENDING"
+                    });
+                }
+
+                // Update loan totals
+                loan.TotalAmount += addDto.MonthlyPayment * addDto.NumberOfMonths;
+
+                _context.RepaymentSchedules.AddRange(newSchedules);
+                await _context.SaveChangesAsync();
+
+                // Return new schedules
+                var scheduleDtos = newSchedules.Select(rs => new RepaymentScheduleDto
+                {
+                    Id = rs.Id,
+                    LoanId = rs.LoanId,
+                    InstallmentNumber = rs.InstallmentNumber,
+                    DueDate = rs.DueDate,
+                    PrincipalAmount = rs.PrincipalAmount,
+                    InterestAmount = rs.InterestAmount,
+                    TotalAmount = rs.TotalAmount,
+                    Status = rs.Status,
+                    PaidAt = rs.PaidAt
+                }).ToList();
+
+                var response = new PaymentScheduleResponseDto
+                {
+                    Schedule = scheduleDtos,
+                    TotalInstallments = scheduleDtos.Count,
+                    TotalAmount = scheduleDtos.Sum(s => s.TotalAmount),
+                    FirstDueDate = scheduleDtos.FirstOrDefault()?.DueDate,
+                    LastDueDate = scheduleDtos.LastOrDefault()?.DueDate,
+                    Message = $"{addDto.NumberOfMonths} new payment installments added starting from installment #{addDto.StartingInstallmentNumber}"
+                };
+
+                return ApiResponse<PaymentScheduleResponseDto>.SuccessResult(response, "Payment schedules added successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<PaymentScheduleResponseDto>.ErrorResult($"Failed to add payment schedules: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<PaymentScheduleResponseDto>> AutoAddPaymentScheduleAsync(string loanId, AutoAddPaymentScheduleDto addDto, string userId)
+        {
+            try
+            {
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Loan not found");
+                }
+
+                if (loan.Status != "ACTIVE" && loan.Status != "APPROVED")
+                {
+                    return ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Can only add schedules to active or approved loans");
+                }
+
+                // Automatically find the next available installment number
+                var maxInstallmentNumber = await _context.RepaymentSchedules
+                    .Where(rs => rs.LoanId == loanId)
+                    .MaxAsync(rs => (int?)rs.InstallmentNumber) ?? 0;
+
+                var startingInstallmentNumber = maxInstallmentNumber + 1;
+
+                // Create new payment schedules
+                var newSchedules = new List<Entities.RepaymentSchedule>();
+                var monthlyRate = loan.InterestRate / 100 / 12;
+
+                for (int i = 0; i < addDto.NumberOfMonths; i++)
+                {
+                    var installmentNumber = startingInstallmentNumber + i;
+                    var dueDate = addDto.FirstDueDate.AddMonths(i);
+                    
+                    var interestAmount = loan.InterestRate > 0 ? loan.RemainingBalance * monthlyRate : 0;
+                    var principalAmount = addDto.MonthlyPayment - interestAmount;
+
+                    newSchedules.Add(new Entities.RepaymentSchedule
+                    {
+                        LoanId = loanId,
+                        InstallmentNumber = installmentNumber,
+                        DueDate = dueDate,
+                        PrincipalAmount = Math.Max(0, principalAmount),
+                        InterestAmount = interestAmount,
+                        TotalAmount = addDto.MonthlyPayment,
+                        Status = "PENDING"
+                    });
+                }
+
+                // Update loan totals
+                loan.Term += addDto.NumberOfMonths;
+                loan.TotalAmount += addDto.MonthlyPayment * addDto.NumberOfMonths;
+
+                _context.RepaymentSchedules.AddRange(newSchedules);
+                await _context.SaveChangesAsync();
+
+                // Return new schedules
+                var scheduleDtos = newSchedules.Select(rs => new RepaymentScheduleDto
+                {
+                    Id = rs.Id,
+                    LoanId = rs.LoanId,
+                    InstallmentNumber = rs.InstallmentNumber,
+                    DueDate = rs.DueDate,
+                    PrincipalAmount = rs.PrincipalAmount,
+                    InterestAmount = rs.InterestAmount,
+                    TotalAmount = rs.TotalAmount,
+                    Status = rs.Status,
+                    PaidAt = rs.PaidAt
+                }).ToList();
+
+                var response = new PaymentScheduleResponseDto
+                {
+                    Schedule = scheduleDtos,
+                    TotalInstallments = scheduleDtos.Count,
+                    TotalAmount = scheduleDtos.Sum(s => s.TotalAmount),
+                    FirstDueDate = scheduleDtos.FirstOrDefault()?.DueDate,
+                    LastDueDate = scheduleDtos.LastOrDefault()?.DueDate,
+                    Message = $"{addDto.NumberOfMonths} new payment installment(s) added automatically starting from installment #{startingInstallmentNumber}"
+                };
+
+                return ApiResponse<PaymentScheduleResponseDto>.SuccessResult(response, "Payment schedules added successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<PaymentScheduleResponseDto>.ErrorResult($"Failed to add payment schedules: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<PaymentScheduleResponseDto>> RegeneratePaymentScheduleAsync(string loanId, RegenerateScheduleDto regenerateDto, string userId)
+        {
+            try
+            {
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Loan not found");
+                }
+
+                if (loan.Status != "ACTIVE" && loan.Status != "APPROVED")
+                {
+                    return ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Can only regenerate schedules for active or approved loans");
+                }
+
+                // Check for existing paid installments
+                var paidInstallments = await _context.RepaymentSchedules
+                    .Where(rs => rs.LoanId == loanId && rs.Status == "PAID")
+                    .ToListAsync();
+
+                if (paidInstallments.Any())
+                {
+                    return ApiResponse<PaymentScheduleResponseDto>.ErrorResult("Cannot regenerate schedule with existing paid installments. Consider extending the term instead.");
+                }
+
+                // Delete existing pending schedules
+                var existingSchedules = await _context.RepaymentSchedules
+                    .Where(rs => rs.LoanId == loanId && rs.Status != "PAID")
+                    .ToListAsync();
+
+                _context.RepaymentSchedules.RemoveRange(existingSchedules);
+
+                // Update loan parameters
+                loan.MonthlyPayment = regenerateDto.NewMonthlyPayment;
+                loan.Term = regenerateDto.NewTerm;
+                loan.TotalAmount = regenerateDto.NewMonthlyPayment * regenerateDto.NewTerm;
+
+                // Generate new payment schedule
+                var startDate = regenerateDto.StartDate ?? DateTime.UtcNow;
+                await CreateRepaymentScheduleAsync(loanId, regenerateDto.NewMonthlyPayment, regenerateDto.NewTerm, loan.InterestRate, startDate);
+
+                await _context.SaveChangesAsync();
+
+                // Return new schedule
+                var newSchedule = await _context.RepaymentSchedules
+                    .Where(rs => rs.LoanId == loanId)
+                    .OrderBy(rs => rs.InstallmentNumber)
+                    .ToListAsync();
+
+                var scheduleDtos = newSchedule.Select(rs => new RepaymentScheduleDto
+                {
+                    Id = rs.Id,
+                    LoanId = rs.LoanId,
+                    InstallmentNumber = rs.InstallmentNumber,
+                    DueDate = rs.DueDate,
+                    PrincipalAmount = rs.PrincipalAmount,
+                    InterestAmount = rs.InterestAmount,
+                    TotalAmount = rs.TotalAmount,
+                    Status = rs.Status,
+                    PaidAt = rs.PaidAt
+                }).ToList();
+
+                var response = new PaymentScheduleResponseDto
+                {
+                    Schedule = scheduleDtos,
+                    TotalInstallments = scheduleDtos.Count,
+                    TotalAmount = scheduleDtos.Sum(s => s.TotalAmount),
+                    FirstDueDate = scheduleDtos.FirstOrDefault()?.DueDate,
+                    LastDueDate = scheduleDtos.LastOrDefault()?.DueDate,
+                    Message = $"Payment schedule regenerated with {regenerateDto.NewTerm} installments of ${regenerateDto.NewMonthlyPayment:N2} each"
+                };
+
+                return ApiResponse<PaymentScheduleResponseDto>.SuccessResult(response, "Payment schedule regenerated successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<PaymentScheduleResponseDto>.ErrorResult($"Failed to regenerate payment schedule: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<bool>> DeletePaymentScheduleInstallmentAsync(string loanId, int installmentNumber, string userId)
+        {
+            try
+            {
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return ApiResponse<bool>.ErrorResult("Loan not found");
+                }
+
+                var installment = await _context.RepaymentSchedules
+                    .FirstOrDefaultAsync(rs => rs.LoanId == loanId && rs.InstallmentNumber == installmentNumber);
+
+                if (installment == null)
+                {
+                    return ApiResponse<bool>.ErrorResult("Payment installment not found");
+                }
+
+                if (installment.Status == "PAID")
+                {
+                    return ApiResponse<bool>.ErrorResult("Cannot delete a paid installment");
+                }
+
+                // Update loan totals
+                loan.TotalAmount -= installment.TotalAmount;
+                loan.Term--;
+
+                _context.RepaymentSchedules.Remove(installment);
+                await _context.SaveChangesAsync();
+
+                return ApiResponse<bool>.SuccessResult(true, "Payment installment deleted successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Failed to delete payment installment: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<RepaymentScheduleDto>> MarkInstallmentAsPaidAsync(
+            string loanId, 
+            int installmentNumber, 
+            MarkInstallmentPaidDto paymentDto, 
+            string userId)
+        {
+            try
+            {
+                // Verify loan access
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return ApiResponse<RepaymentScheduleDto>.ErrorResult("Loan not found");
+                }
+
+                // Get the specific installment
+                var installment = await _context.RepaymentSchedules
+                    .FirstOrDefaultAsync(rs => rs.LoanId == loanId && rs.InstallmentNumber == installmentNumber);
+
+                if (installment == null)
+                {
+                    return ApiResponse<RepaymentScheduleDto>.ErrorResult("Installment not found");
+                }
+
+                if (installment.Status == "PAID")
+                {
+                    return ApiResponse<RepaymentScheduleDto>.ErrorResult("Installment is already paid");
+                }
+
+                // Validate payment amount (allow partial payments)
+                if (paymentDto.Amount > installment.TotalAmount)
+                {
+                    return ApiResponse<RepaymentScheduleDto>.ErrorResult(
+                        $"Payment amount ({paymentDto.Amount:C}) cannot exceed installment amount ({installment.TotalAmount:C})");
+                }
+
+                // Mark installment as paid (full payment) or keep pending (partial payment)
+                if (paymentDto.Amount == installment.TotalAmount)
+                {
+                    installment.Status = "PAID";
+                    installment.PaidAt = paymentDto.PaymentDate ?? DateTime.UtcNow;
+                }
+
+                // Create payment record
+                var reference = paymentDto.Reference ?? $"INST-{installmentNumber}-{DateTime.UtcNow:yyyyMMddHHmmss}";
+                var payment = new Entities.Payment
+                {
+                    LoanId = loanId,
+                    UserId = userId,
+                    Amount = paymentDto.Amount,
+                    Method = paymentDto.Method,
+                    Reference = reference,
+                    Status = "COMPLETED",
+                    IsBankTransaction = false,
+                    TransactionType = "INSTALLMENT_PAYMENT",
+                    Description = $"Payment for installment #{installmentNumber} via {paymentDto.Method}" + 
+                                 (string.IsNullOrEmpty(paymentDto.Notes) ? "" : $" - {paymentDto.Notes}"),
+                    ProcessedAt = DateTime.UtcNow,
+                    TransactionDate = paymentDto.PaymentDate ?? DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.Payments.Add(payment);
+
+                // Update loan balance
+                loan.RemainingBalance -= paymentDto.Amount;
+
+                // Ensure remaining balance doesn't go negative
+                if (loan.RemainingBalance < 0)
+                {
+                    loan.RemainingBalance = 0;
+                }
+
+                // Check if loan is completed
+                var remainingInstallments = await _context.RepaymentSchedules
+                    .CountAsync(rs => rs.LoanId == loanId && rs.Status == "PENDING");
+
+                if (remainingInstallments == 0 || loan.RemainingBalance <= 0)
+                {
+                    loan.Status = "COMPLETED";
+                    loan.CompletedAt = DateTime.UtcNow;
+                }
+
+                await _context.SaveChangesAsync();
+
+                // Return updated installment
+                var scheduleDto = new RepaymentScheduleDto
+                {
+                    Id = installment.Id,
+                    LoanId = installment.LoanId,
+                    InstallmentNumber = installment.InstallmentNumber,
+                    DueDate = installment.DueDate,
+                    PrincipalAmount = installment.PrincipalAmount,
+                    InterestAmount = installment.InterestAmount,
+                    TotalAmount = installment.TotalAmount,
+                    Status = installment.Status,
+                    PaidAt = installment.PaidAt
+                };
+
+                return ApiResponse<RepaymentScheduleDto>.SuccessResult(scheduleDto, 
+                    $"Installment #{installmentNumber} marked as {(paymentDto.Amount == installment.TotalAmount ? "fully paid" : "partially paid")} successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<RepaymentScheduleDto>.ErrorResult($"Failed to mark installment as paid: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<RepaymentScheduleDto>> UpdateScheduleSimpleAsync(
+            string loanId, 
+            int installmentNumber, 
+            SimpleScheduleUpdateDto updateDto, 
+            string userId)
+        {
+            try
+            {
+                // Verify loan access
+                var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
+                if (loan == null)
+                {
+                    return ApiResponse<RepaymentScheduleDto>.ErrorResult("Loan not found");
+                }
+
+                // Get the installment
+                var installment = await _context.RepaymentSchedules
+                    .FirstOrDefaultAsync(rs => rs.LoanId == loanId && rs.InstallmentNumber == installmentNumber);
+
+                if (installment == null)
+                {
+                    return ApiResponse<RepaymentScheduleDto>.ErrorResult("Payment installment not found");
+                }
+
+                // Track changes for loan balance update
+                decimal amountDifference = 0;
+                var oldStatus = installment.Status;
+                var oldAmount = installment.TotalAmount;
+
+                // Update Amount if provided
+                if (updateDto.Amount.HasValue && updateDto.Amount.Value != installment.TotalAmount)
+                {
+                    amountDifference = updateDto.Amount.Value - installment.TotalAmount;
+                    
+                    // Update amounts proportionally
+                    var interestRatio = installment.TotalAmount > 0 ? installment.InterestAmount / installment.TotalAmount : 0;
+                    installment.TotalAmount = updateDto.Amount.Value;
+                    installment.InterestAmount = installment.TotalAmount * interestRatio;
+                    installment.PrincipalAmount = installment.TotalAmount - installment.InterestAmount;
+                }
+
+                // Update Status if provided
+                if (!string.IsNullOrEmpty(updateDto.Status))
+                {
+                    var newStatus = updateDto.Status.ToUpper();
+                    installment.Status = newStatus;
+
+                    // If marking as PAID
+                    if (newStatus == "PAID" && oldStatus != "PAID")
+                    {
+                        installment.PaidAt = updateDto.PaidDate ?? DateTime.UtcNow;
+                        
+                        // Create payment record for audit trail
+                        var paymentMethod = updateDto.PaymentMethod ?? "MANUAL_UPDATE";
+                        var paymentReference = updateDto.PaymentReference ?? $"SCHED-{installmentNumber}-{DateTime.UtcNow:yyyyMMddHHmmss}";
+                        
+                        var payment = new Entities.Payment
+                        {
+                            LoanId = loanId,
+                            UserId = userId,
+                            Amount = installment.TotalAmount,
+                            Method = paymentMethod,
+                            Reference = paymentReference,
+                            Status = "COMPLETED",
+                            IsBankTransaction = false,
+                            TransactionType = "SCHEDULE_UPDATE",
+                            Description = $"Installment #{installmentNumber} marked as paid via schedule update" + 
+                                         (string.IsNullOrEmpty(updateDto.Notes) ? "" : $" - {updateDto.Notes}"),
+                            ProcessedAt = installment.PaidAt.Value,
+                            TransactionDate = installment.PaidAt.Value,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+
+                        _context.Payments.Add(payment);
+
+                        // Update loan balance
+                        loan.RemainingBalance -= installment.TotalAmount;
+                        if (loan.RemainingBalance < 0) loan.RemainingBalance = 0;
+                    }
+                    // If marking as PENDING from PAID
+                    else if (newStatus == "PENDING" && oldStatus == "PAID")
+                    {
+                        installment.PaidAt = null;
+                        loan.RemainingBalance += installment.TotalAmount;
+                        
+                        // Note: You might want to remove/reverse the payment record here
+                        // depending on your business requirements
+                    }
+                }
+
+                // Update Due Date if provided
+                if (updateDto.DueDate.HasValue)
+                {
+                    installment.DueDate = updateDto.DueDate.Value;
+                }
+
+                // Update Paid Date if provided (for manual overrides)
+                if (updateDto.PaidDate.HasValue && installment.Status == "PAID")
+                {
+                    installment.PaidAt = updateDto.PaidDate.Value;
+                }
+
+                // Update loan totals if amount changed
+                if (amountDifference != 0)
+                {
+                    loan.TotalAmount += amountDifference;
+                    
+                    // Only adjust remaining balance if not paid
+                    if (installment.Status != "PAID")
+                    {
+                        loan.RemainingBalance += amountDifference;
+                        if (loan.RemainingBalance < 0) loan.RemainingBalance = 0;
+                    }
+                }
+
+                // Check if loan should be completed
+                var remainingInstallments = await _context.RepaymentSchedules
+                    .CountAsync(rs => rs.LoanId == loanId && rs.Status == "PENDING");
+
+                if (remainingInstallments == 0 || loan.RemainingBalance <= 0)
+                {
+                    loan.Status = "COMPLETED";
+                    loan.CompletedAt = DateTime.UtcNow;
+                }
+                else if (loan.Status == "COMPLETED" && remainingInstallments > 0)
+                {
+                    // Reopen loan if there are pending installments
+                    loan.Status = "ACTIVE";
+                    loan.CompletedAt = null;
+                }
+
+                await _context.SaveChangesAsync();
+
+                // Return updated installment
+                var scheduleDto = new RepaymentScheduleDto
+                {
+                    Id = installment.Id,
+                    LoanId = installment.LoanId,
+                    InstallmentNumber = installment.InstallmentNumber,
+                    DueDate = installment.DueDate,
+                    PrincipalAmount = installment.PrincipalAmount,
+                    InterestAmount = installment.InterestAmount,
+                    TotalAmount = installment.TotalAmount,
+                    Status = installment.Status,
+                    PaidAt = installment.PaidAt
+                };
+
+                return ApiResponse<RepaymentScheduleDto>.SuccessResult(scheduleDto, 
+                    "Payment schedule updated successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<RepaymentScheduleDto>.ErrorResult($"Failed to update payment schedule: {ex.Message}");
+            }
+        }
+
+        // Updated CreateRepaymentScheduleAsync with optional start date parameter
+        private async Task CreateRepaymentScheduleAsync(string loanId, decimal monthlyPayment, int term, decimal interestRate, DateTime? startDate = null)
+        {
+            var schedules = new List<Entities.RepaymentSchedule>();
+            var baseDate = startDate ?? DateTime.UtcNow;
+            
+            if (interestRate == 0)
+            {
+                // For 0% interest loans, all payments go to principal
+                for (int i = 1; i <= term; i++)
+                {
+                    schedules.Add(new Entities.RepaymentSchedule
+                    {
+                        LoanId = loanId,
+                        InstallmentNumber = i,
+                        DueDate = baseDate.AddMonths(i),
+                        PrincipalAmount = monthlyPayment,
+                        InterestAmount = 0,
+                        TotalAmount = monthlyPayment,
+                        Status = "PENDING"
+                    });
+                }
+            }
+            else
+            {
+                // For loans with interest, calculate principal and interest portions
+                var monthlyRate = interestRate / 100 / 12;
+                var remainingPrincipal = monthlyPayment * term;
+
+                for (int i = 1; i <= term; i++)
+                {
+                    var interestAmount = remainingPrincipal * monthlyRate;
+                    var principalAmount = monthlyPayment - interestAmount;
+                    remainingPrincipal -= principalAmount;
+
+                    schedules.Add(new Entities.RepaymentSchedule
+                    {
+                        LoanId = loanId,
+                        InstallmentNumber = i,
+                        DueDate = baseDate.AddMonths(i),
+                        PrincipalAmount = principalAmount,
+                        InterestAmount = interestAmount,
+                        TotalAmount = monthlyPayment,
+                        Status = "PENDING"
+                    });
+                }
+            }
+
+            _context.RepaymentSchedules.AddRange(schedules);
+            await _context.SaveChangesAsync();
+        }
+
+        #endregion
     }
 }
 

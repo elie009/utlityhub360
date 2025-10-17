@@ -105,6 +105,8 @@ builder.Services.AddScoped<ISavingsService, SavingsService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IIncomeSourceService, IncomeSourceService>();
 builder.Services.AddScoped<IDisposableAmountService, DisposableAmountService>();
+builder.Services.AddScoped<IOnboardingService, OnboardingService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // Add Background Services
 builder.Services.AddHostedService<BillReminderBackgroundService>();
@@ -127,6 +129,9 @@ if (app.Environment.IsDevelopment())
 }
 
 // Only use HTTPS redirection in production to avoid CORS preflight issues in development
+
+
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();

@@ -11,5 +11,7 @@ namespace UtilityHub360.Services
         Task<UserDto> GetCurrentUserAsync(string userId);
         Task<bool> ValidateTokenAsync(string token);
         Task LogoutAsync(string userId);
+        Task<ApiResponse<object>> ForgotPasswordAsync(ForgotPasswordDto forgotPasswordDto);
+        Task<ApiResponse<object>> ResetPasswordAsync(ResetPasswordDto resetPasswordDto);
     }
 }

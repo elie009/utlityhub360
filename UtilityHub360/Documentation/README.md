@@ -68,10 +68,15 @@ The project is configured to run in Development mode by default with Swagger UI 
 - [Quick Start Guide](./Financial/DASHBOARD_QUICK_START.md) - Get started in 10 minutes
 - [Dashboard Widgets Guide](./Financial/dashboardWidgetsGuide.md) - UI/UX implementation
 
-### Loan System
-- [Loan Due Date Tracking](./Loan/loanDueDateTracking.md) - Due date system
-- [Loan Update Flow](./Loan/loanUpdateFlow.md) - Update workflows
-- [Principal Update Guide](./Loan/principalUpdateGuide.md) - Principal updates
+### Loan System ⭐ **ENHANCED**
+- [Loan Management System](./Loan/README.md) - Complete system overview and documentation hub
+- [Payment Schedule Management](./Loan/PaymentScheduleManagement.md) - ⭐ **NEW** Add, extend, and manage monthly payment schedules
+- [Loan Update Flow](./Loan/loanUpdateFlow.md) - Complete update workflows with smart calculations
+- [Loan Due Date Tracking](./Loan/loanDueDateTracking.md) - Due date system and reminders
+- [Principal Update Guide](./Loan/principalUpdateGuide.md) - Principal update functionality
+- [Monthly Payment Totals](./Loan/loanMonthlyPaymentTotal.md) - Total payment obligations
+- [Frontend Update Guide](./Loan/frontendLoanUpdateGuide.md) - Frontend implementation
+- [Quick Reference](./Loan/loanUpdateQuickReference.md) - Quick API lookup
 
 ### Bank Accounts
 - [Bank Account Documentation](./BankAccount/bankAccountDocumentation.md) - Bank account management
@@ -92,9 +97,10 @@ The project is configured to run in Development mode by default with Swagger UI 
 - **Role-based Access Control** - User and Admin roles
 
 ### Financial Management
-- **Loan Management** - Application, approval, repayment scheduling
-- **Bill Management** - Recurring bills, utilities, subscriptions
-- **Payment Processing** - Multiple payment methods
+- **Loan Management** - Application, approval, flexible repayment scheduling ⭐ **ENHANCED**
+- **Payment Schedule Management** - ⭐ **NEW** Add, extend, and regenerate monthly payment schedules
+- **Bill Management** - Recurring bills, utilities, subscriptions with analytics
+- **Payment Processing** - Multiple payment methods with tracking
 - **Bank Account Integration** - Track accounts and transactions
 - **Savings Management** - Savings accounts and goals
 - **Income Tracking** - Multiple income sources
@@ -128,7 +134,23 @@ For questions or issues, please refer to the documentation files in this folder 
 
 ## 🎯 What's New in Latest Release
 
-### Financial Dashboard & Disposable Amount System (October 2025) ⭐ LATEST
+### Loan Payment Schedule Management System (October 2025) ⭐ **LATEST**
+Complete monthly payment schedule flexibility for loan management:
+
+- ✨ **Extend Loan Terms** - Add additional months to existing loans with ease
+- ✨ **Add Custom Payment Schedules** - Insert specific monthly installments anywhere
+- ✨ **Regenerate Payment Schedules** - Completely rebuild schedules with new terms
+- ✨ **Delete Payment Installments** - Remove specific unpaid installments safely
+- 🔧 **Smart Schedule Management** - Automatic interest calculations and conflict prevention
+- 📅 **Flexible Due Dates** - Custom payment dates and amounts for any scenario
+- 🔐 **Secure Access Control** - Users manage own loans, admins manage all
+- 📚 **Comprehensive Documentation** - Complete guides and API references
+
+Perfect for financial hardship situations, loan restructuring, and payment flexibility.
+
+See [Payment Schedule Management Documentation](./Loan/PaymentScheduleManagement.md) for complete details.
+
+### Financial Dashboard & Disposable Amount System (October 2025)
 A complete financial health tracking system with disposable amount calculation:
 
 - **New Entity**: VariableExpense for tracking all discretionary spending
@@ -161,5 +183,5 @@ See [Variable Monthly Billing Flow](./Billing/variableMonthlyBillingFlow.md) for
 
 ---
 
-**Last Updated**: October 11, 2025  
-**Version**: 2.1.0
+**Last Updated**: October 12, 2025  
+**Version**: 2.2.0 - Added Loan Payment Schedule Management System

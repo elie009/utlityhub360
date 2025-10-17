@@ -1,0 +1,30 @@
+### 🚨 EMERGENCY DELETE - Direct Removal of 2026-2031 Bills
+### This is a direct, simple method to delete those persistent bills
+
+### Step 1: Login (replace with your actual credentials)
+POST https://localhost:7299/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "your-email@example.com",
+  "password": "your-password"
+}
+
+### Step 2: 🗑️ EMERGENCY DELETE - Direct removal of 2026-2031 auto-generated bills
+### This bypasses the complex logic and directly deletes the bills from database
+POST https://localhost:7299/api/bills/emergency-delete-2026-2031
+Authorization: Bearer {{auth_token}}
+
+### Step 3: Verify they're gone by checking specific months
+GET https://localhost:7299/api/bills/monthly?year=2026&month=1
+Authorization: Bearer {{auth_token}}
+
+### Step 4: Check another year to confirm
+GET https://localhost:7299/api/bills/monthly?year=2031&month=12
+Authorization: Bearer {{auth_token}}
+
+### Step 5: Check if any auto-generated bills exist in 2026-2031 range
+GET https://localhost:7299/api/bills/cleanup/date-range/count?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### ✅ This should completely remove all 2026-2031 auto-generated bills from your database

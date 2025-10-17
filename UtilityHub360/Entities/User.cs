@@ -24,6 +24,10 @@ namespace UtilityHub360.Entities
         [StringLength(20)]
         public string Role { get; set; } = "USER"; // USER, ADMIN
 
+        [Required]
+        [StringLength(255)]
+        public string PasswordHash { get; set; } = string.Empty;
+
         public bool IsActive { get; set; } = true;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
