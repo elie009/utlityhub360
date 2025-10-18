@@ -587,10 +587,13 @@ namespace UtilityHub360.Services
                     var openAIResponse = JsonSerializer.Deserialize<OpenAIResponse>(responseContent);
                     var aiMessage = openAIResponse?.choices?.FirstOrDefault()?.message?.content ?? "I apologize, but I couldn't generate a proper response.";
 
+                    // Format the message for better readability
+                    var formattedMessage = FormatMessage(aiMessage);
+
                     return new ChatResponseDto
                     {
-                        Message = aiMessage,
-                        SuggestedActions = ExtractSuggestedActions(aiMessage),
+                        Message = formattedMessage,
+                        SuggestedActions = ExtractSuggestedActions(formattedMessage),
                         TokensUsed = openAIResponse.usage?.total_tokens ?? 0
                     };
                 }
@@ -615,6 +618,63 @@ namespace UtilityHub360.Services
                     TokensUsed = 0
                 };
             }
+        }
+
+        private string FormatMessage(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+                return message;
+
+            // Split by common sentence endings and list markers
+            var sentences = message.Split(new[] { ". ", "! ", "? ", ".\n", "!\n", "?\n" }, StringSplitOptions.None);
+            var formattedLines = new List<string>();
+
+            foreach (var sentence in sentences)
+            {
+                if (string.IsNullOrWhiteSpace(sentence))
+                    continue;
+
+                var trimmedSentence = sentence.Trim();
+                
+                // Add proper ending punctuation if missing
+                if (!trimmedSentence.EndsWith(".") && !trimmedSentence.EndsWith("!") && !trimmedSentence.EndsWith("?"))
+                {
+                    trimmedSentence += ".";
+                }
+
+                // Handle numbered lists (1., 2., etc.)
+                if (System.Text.RegularExpressions.Regex.IsMatch(trimmedSentence, @"^\d+\.\s"))
+                {
+                    formattedLines.Add($"\n{trimmedSentence}");
+                }
+                // Handle bullet points (-, *, •)
+                else if (trimmedSentence.StartsWith("- ") || trimmedSentence.StartsWith("* ") || trimmedSentence.StartsWith("• "))
+                {
+                    formattedLines.Add($"\n{trimmedSentence}");
+                }
+                // Handle bold text (**text**)
+                else if (trimmedSentence.Contains("**"))
+                {
+                    formattedLines.Add($"\n{trimmedSentence}");
+                }
+                // Regular sentences
+                else
+                {
+                    formattedLines.Add(trimmedSentence);
+                }
+            }
+
+            // Join with proper spacing
+            var result = string.Join(" ", formattedLines);
+            
+            // Clean up multiple newlines and spaces
+            result = System.Text.RegularExpressions.Regex.Replace(result, @"\n\s*\n", "\n\n");
+            result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+", " ");
+            
+            // Ensure proper spacing around newlines
+            result = result.Replace("\n ", "\n").Replace(" \n", "\n");
+            
+            return result.Trim();
         }
 
         private List<string> ExtractSuggestedActions(string message)
