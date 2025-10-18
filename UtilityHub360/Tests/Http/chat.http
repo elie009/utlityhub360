@@ -1,0 +1,180 @@
+### Chat API Tests for UtilityHub360
+### Make sure to replace the JWT token with a valid one from login
+
+@baseUrl = http://localhost:5000
+@token = YOUR_JWT_TOKEN_HERE
+
+### 1. Send a message to AI chat
+POST {{baseUrl}}/api/chat/message
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": "Hello! Can you help me understand my current financial situation?",
+  "includeTransactionContext": true
+}
+
+### 2. Send a message to AI chat without context
+POST {{baseUrl}}/api/chat/message
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": "What are some general budgeting tips?",
+  "includeTransactionContext": false
+}
+
+### 3. Send a message to continue existing conversation
+POST {{baseUrl}}/api/chat/message
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": "Can you generate a report of my expenses?",
+  "conversationId": "CONVERSATION_ID_HERE",
+  "includeTransactionContext": true
+}
+
+### 4. Get all conversations for user
+GET {{baseUrl}}/api/chat/conversations?page=1&limit=10
+Authorization: Bearer {{token}}
+
+### 5. Get conversation history with messages
+GET {{baseUrl}}/api/chat/conversations/CONVERSATION_ID_HERE/messages
+Authorization: Bearer {{token}}
+
+### 6. Create a new conversation
+POST {{baseUrl}}/api/chat/conversations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Financial Planning Discussion"
+}
+
+### 7. Delete a conversation
+DELETE {{baseUrl}}/api/chat/conversations/CONVERSATION_ID_HERE
+Authorization: Bearer {{token}}
+
+### 8. Generate a financial report (PDF)
+POST {{baseUrl}}/api/chat/generate-report
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "reportType": "financial_summary",
+  "format": "pdf"
+}
+
+### 9. Generate a financial report (Excel)
+POST {{baseUrl}}/api/chat/generate-report
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "reportType": "expense_analysis",
+  "format": "excel"
+}
+
+### 10. Get bill reminders
+GET {{baseUrl}}/api/chat/bill-reminders
+Authorization: Bearer {{token}}
+
+### 11. Get budget suggestions
+GET {{baseUrl}}/api/chat/budget-suggestions
+Authorization: Bearer {{token}}
+
+### 12. Get financial context
+GET {{baseUrl}}/api/chat/financial-context
+Authorization: Bearer {{token}}
+
+### 13. Ask about specific bills
+POST {{baseUrl}}/api/chat/message
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": "What bills do I have coming up this week?",
+  "includeTransactionContext": true
+}
+
+### 14. Ask about loan status
+POST {{baseUrl}}/api/chat/message
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": "Can you tell me about my current loans and their status?",
+  "includeTransactionContext": true
+}
+
+### 15. Ask for savings advice
+POST {{baseUrl}}/api/chat/message
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": "How can I improve my savings? What should I focus on?",
+  "includeTransactionContext": true
+}
+
+### 16. Ask about spending patterns
+POST {{baseUrl}}/api/chat/message
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": "Analyze my spending patterns from the last 30 days and give me recommendations",
+  "includeTransactionContext": true
+}
+
+### 17. Test rate limiting (send multiple requests quickly)
+POST {{baseUrl}}/api/chat/message
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": "Test message 1"
+}
+
+###
+
+POST {{baseUrl}}/api/chat/message
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": "Test message 2"
+}
+
+###
+
+POST {{baseUrl}}/api/chat/message
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": "Test message 3"
+}
+
+### 18. Test error handling - empty message
+POST {{baseUrl}}/api/chat/message
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": ""
+}
+
+### 19. Test error handling - unauthorized request
+POST {{baseUrl}}/api/chat/message
+Content-Type: application/json
+
+{
+  "message": "This should fail without token"
+}
+
+### 20. Test error handling - invalid conversation ID
+GET {{baseUrl}}/api/chat/conversations/invalid-id/messages
+Authorization: Bearer {{token}}
+

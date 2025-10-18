@@ -30,6 +30,10 @@ namespace UtilityHub360.Data
         public DbSet<BudgetSetting> BudgetSettings { get; set; }
         public DbSet<BillAnalyticsCache> BillAnalyticsCaches { get; set; }
         public DbSet<BillAlert> BillAlerts { get; set; }
+        
+        // Chat Support Tables
+        public DbSet<ChatConversation> ChatConversations { get; set; }
+        public DbSet<ChatMessage> ChatMessages { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -303,6 +307,39 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.Email);
                 entity.HasIndex(e => e.ExpiresAt);
                 entity.HasIndex(e => e.IsUsed);
+            });
+
+            // ChatConversation configuration
+            modelBuilder.Entity<ChatConversation>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany(p => p.ChatConversations)
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => e.LastMessageAt);
+                entity.HasIndex(e => e.StartedAt);
+            });
+
+            // ChatMessage configuration
+            modelBuilder.Entity<ChatMessage>(entity =>
+            {
+                entity.HasOne(d => d.Conversation)
+                    .WithMany(p => p.Messages)
+                    .HasForeignKey(d => d.ConversationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.User)
+                    .WithMany(p => p.ChatMessages)
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(e => e.ConversationId);
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.Role);
+                entity.HasIndex(e => e.Timestamp);
             });
 
             // Seed data

@@ -39,6 +39,8 @@ namespace UtilityHub360.Entities
         public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
         public virtual ICollection<Notification> Notifications { get; set; } = new List<Notification>();
         public virtual ICollection<LoanApplication> LoanApplications { get; set; } = new List<LoanApplication>();
+        public virtual ICollection<ChatConversation> ChatConversations { get; set; } = new List<ChatConversation>();
+        public virtual ICollection<ChatMessage> ChatMessages { get; set; } = new List<ChatMessage>();
     }
 }
 

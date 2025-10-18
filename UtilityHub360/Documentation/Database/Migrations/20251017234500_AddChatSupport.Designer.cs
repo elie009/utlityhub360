@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using UtilityHub360.Data;
 
@@ -11,9 +12,11 @@ using UtilityHub360.Data;
 namespace UtilityHub360.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251017234500_AddChatSupport")]
+    partial class AddChatSupport
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -452,104 +455,6 @@ namespace UtilityHub360.Migrations
                         .IsUnique();
 
                     b.ToTable("BudgetSettings");
-                });
-
-            modelBuilder.Entity("UtilityHub360.Entities.ChatConversation", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime>("LastMessageAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("StartedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<int>("TotalMessages")
-                        .HasColumnType("int");
-
-                    b.Property<int>("TotalTokensUsed")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("LastMessageAt");
-
-                    b.HasIndex("StartedAt");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("ChatConversations");
-                });
-
-            modelBuilder.Entity("UtilityHub360.Entities.ChatMessage", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ConversationId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Metadata")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Role")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("TokensUsed")
-                        .HasColumnType("int");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ConversationId");
-
-                    b.HasIndex("Role");
-
-                    b.HasIndex("Timestamp");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("ChatMessages");
                 });
 
             modelBuilder.Entity("UtilityHub360.Entities.IncomeSource", b =>
@@ -1178,14 +1083,14 @@ namespace UtilityHub360.Migrations
                         new
                         {
                             Id = "admin-001",
-                            CreatedAt = new DateTime(2025, 10, 18, 8, 19, 53, 825, DateTimeKind.Utc).AddTicks(5023),
+                            CreatedAt = new DateTime(2025, 10, 17, 23, 44, 58, 305, DateTimeKind.Utc).AddTicks(7004),
                             Email = "admin@utilityhub360.com",
                             IsActive = true,
                             Name = "System Administrator",
                             PasswordHash = "",
                             Phone = "+1234567890",
                             Role = "ADMIN",
-                            UpdatedAt = new DateTime(2025, 10, 18, 8, 19, 53, 825, DateTimeKind.Utc).AddTicks(5024)
+                            UpdatedAt = new DateTime(2025, 10, 17, 23, 44, 58, 305, DateTimeKind.Utc).AddTicks(7005)
                         });
                 });
 
@@ -1480,36 +1385,6 @@ namespace UtilityHub360.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("UtilityHub360.Entities.ChatConversation", b =>
-                {
-                    b.HasOne("UtilityHub360.Entities.User", "User")
-                        .WithMany("ChatConversations")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("UtilityHub360.Entities.ChatMessage", b =>
-                {
-                    b.HasOne("UtilityHub360.Entities.ChatConversation", "Conversation")
-                        .WithMany("Messages")
-                        .HasForeignKey("ConversationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("UtilityHub360.Entities.User", "User")
-                        .WithMany("ChatMessages")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.Navigation("Conversation");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("UtilityHub360.Entities.IncomeSource", b =>
                 {
                     b.HasOne("UtilityHub360.Entities.User", "User")
@@ -1687,11 +1562,6 @@ namespace UtilityHub360.Migrations
                     b.Navigation("Transactions");
                 });
 
-            modelBuilder.Entity("UtilityHub360.Entities.ChatConversation", b =>
-                {
-                    b.Navigation("Messages");
-                });
-
             modelBuilder.Entity("UtilityHub360.Entities.Loan", b =>
                 {
                     b.Navigation("Payments");
@@ -1706,10 +1576,6 @@ namespace UtilityHub360.Migrations
 
             modelBuilder.Entity("UtilityHub360.Entities.User", b =>
                 {
-                    b.Navigation("ChatConversations");
-
-                    b.Navigation("ChatMessages");
-
                     b.Navigation("LoanApplications");
 
                     b.Navigation("Loans");
