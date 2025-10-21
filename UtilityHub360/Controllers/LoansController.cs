@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Cors;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using UtilityHub360.Data;
@@ -12,6 +13,7 @@ namespace UtilityHub360.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
+    [EnableCors("AllowAll")]
     public class LoansController : ControllerBase
     {
         private readonly ILoanService _loanService;
@@ -44,10 +46,10 @@ namespace UtilityHub360.Controllers
                 if (!ModelState.IsValid)
                 {
                     var errors = ModelState
-                        .Where(x => x.Value.Errors.Count > 0)
+                        .Where(x => x.Value?.Errors.Count > 0)
                         .ToDictionary(
                             kvp => kvp.Key,
-                            kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+                            kvp => kvp.Value?.Errors.Select(e => e.ErrorMessage).ToArray() ?? new string[0]
                         );
 
                     return Ok(new
@@ -1336,6 +1338,59 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<RepaymentScheduleCountDto>.ErrorResult($"Failed to get repayment schedules count: {ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// Debug endpoint to check loan details and permissions
+        /// </summary>
+        [HttpGet("{loanId}/debug")]
+        public async Task<ActionResult<object>> DebugLoan(string loanId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+                
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(new { error = "User not authenticated" });
+                }
+
+                // Get loan directly from database
+                var loan = await _context.Loans.FindAsync(loanId);
+                
+                if (loan == null)
+                {
+                    return NotFound(new { error = "Loan not found" });
+                }
+
+                // Check access permissions
+                var canAccess = userRole == "ADMIN" || loan.UserId == userId;
+                var canDelete = canAccess && (loan.Status == "PENDING" || loan.Status == "REJECTED");
+
+                return Ok(new
+                {
+                    loanId = loan.Id,
+                    userId = loan.UserId,
+                    currentUserId = userId,
+                    currentUserRole = userRole,
+                    loanStatus = loan.Status,
+                    canAccess = canAccess,
+                    canDelete = canDelete,
+                    loanDetails = new
+                    {
+                        principal = loan.Principal,
+                        purpose = loan.Purpose,
+                        appliedAt = loan.AppliedAt,
+                        status = loan.Status
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = $"Debug failed: {ex.Message}" });
+            }
+        }
+
     }
 }
 

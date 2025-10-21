@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using UtilityHub360.DTOs;
@@ -9,6 +10,7 @@ namespace UtilityHub360.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [EnableCors("AllowAll")]
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;

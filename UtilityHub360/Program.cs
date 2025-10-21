@@ -5,6 +5,7 @@ using System.Text;
 using UtilityHub360.Data;
 using UtilityHub360.Services;
 using UtilityHub360.Models;
+using Microsoft.AspNetCore.Cors;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -52,18 +53,21 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Add CORS - Fixed configuration
+// Add CORS - Allow specific origins with credentials
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowFrontend", policy =>
+    options.AddPolicy("AllowAll", policy =>
     {
         policy.WithOrigins(
-                "http://localhost:3000", 
+                "https://www.utilityhub360.com",
+                "https://utilityhub360.com",
+                "https://api.utilityhub360.com",
+                "https://wh1479740.ispot.cc",
+                "http://wh1479740.ispot.cc",
+                "http://localhost:3000",
                 "https://localhost:3000",
                 "http://localhost:5000",
-                "https://localhost:5000",
-                "https://wh1479740.ispot.cc",
-                "http://wh1479740.ispot.cc"
+                "https://localhost:5000"
               )
               .AllowAnyHeader()
               .AllowAnyMethod()
@@ -72,7 +76,14 @@ builder.Services.AddCors(options =>
 });
 
 // Add JWT Authentication
-var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>() ?? new JwtSettings();
+var jwtSettings = new JwtSettings
+{
+    SecretKey = builder.Configuration["JwtSettings:SecretKey"] ?? "YourSuperSecretKeyThatIsAtLeast32CharactersLong!",
+    Issuer = builder.Configuration["JwtSettings:Issuer"] ?? "UtilityHub360",
+    Audience = builder.Configuration["JwtSettings:Audience"] ?? "UtilityHub360Users",
+    ExpirationMinutes = int.Parse(builder.Configuration["JwtSettings:ExpirationMinutes"] ?? "60")
+};
+
 builder.Services.AddSingleton(jwtSettings);
 
 // Add OpenAI Settings
@@ -85,7 +96,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(jwtSettings.SecretKey)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.SecretKey)),
             ValidateIssuer = true,
             ValidIssuer = jwtSettings.Issuer,
             ValidateAudience = true,
@@ -140,21 +151,32 @@ if (app.Environment.IsDevelopment())
 
 
 
-if (!app.Environment.IsDevelopment())
-{
-    app.UseHttpsRedirection();
-}
+// Configure CORS - must be before UseAuthentication and UseAuthorization
+app.UseCors("AllowAll");
 
-// Add CORS middleware - must be before UseAuthentication and UseAuthorization
-app.UseCors("AllowFrontend");
+// Disable HTTPS redirection completely for local development
+// app.UseHttpsRedirection(); // Commented out to prevent any HTTPS redirects
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
+
 // Add a simple welcome endpoint
 app.MapGet("/", () => "UtilityHub360 API is running! Visit /swagger for API documentation");
+
+// Add a simple CORS test endpoint
+app.MapGet("/test-cors", (HttpContext context) => 
+{
+    var origin = context.Request.Headers["Origin"].FirstOrDefault();
+    return new { 
+        message = "CORS Test", 
+        origin = origin,
+        timestamp = DateTime.UtcNow,
+        environment = app.Environment.EnvironmentName
+    };
+});
 
 // Add health check endpoint
 app.MapGet("/health", (ApplicationDbContext db) => 

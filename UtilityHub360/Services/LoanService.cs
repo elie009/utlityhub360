@@ -17,20 +17,32 @@ namespace UtilityHub360.Services
 
         public async Task<Loan?> GetLoanWithAccessCheckAsync(string loanId, string userId)
         {
+            Console.WriteLine($"[ACCESS DEBUG] Checking access for loan: {loanId}, user: {userId}");
+            
             // First, check if the user is admin
             var user = await _context.Users.FindAsync(userId);
             var isAdmin = user?.Role == "ADMIN";
+            
+            Console.WriteLine($"[ACCESS DEBUG] User role: {user?.Role}, IsAdmin: {isAdmin}");
 
             if (isAdmin)
             {
                 // Admin can access any loan
-                return await _context.Loans.FindAsync(loanId);
+                var loan = await _context.Loans.FindAsync(loanId);
+                Console.WriteLine($"[ACCESS DEBUG] Admin access - Loan found: {loan != null}");
+                return loan;
             }
             else
             {
                 // Regular users can only access their own loans
-                return await _context.Loans
+                var loan = await _context.Loans
                     .FirstOrDefaultAsync(l => l.Id == loanId && l.UserId == userId);
+                Console.WriteLine($"[ACCESS DEBUG] User access - Loan found: {loan != null}");
+                if (loan != null)
+                {
+                    Console.WriteLine($"[ACCESS DEBUG] Loan owner: {loan.UserId}");
+                }
+                return loan;
             }
         }
 
@@ -511,17 +523,26 @@ namespace UtilityHub360.Services
         {
             try
             {
+                Console.WriteLine($"[DELETE DEBUG] Attempting to delete loan: {loanId}");
+                Console.WriteLine($"[DELETE DEBUG] User ID: {userId}");
+                
                 var loan = await GetLoanWithAccessCheckAsync(loanId, userId);
                 if (loan == null)
                 {
+                    Console.WriteLine($"[DELETE DEBUG] Loan not found or access denied");
                     return ApiResponse<bool>.ErrorResult("Loan not found");
                 }
 
+                Console.WriteLine($"[DELETE DEBUG] Loan found - Status: {loan.Status}, Owner: {loan.UserId}");
+                
                 // Check if loan can be deleted based on status
                 if (loan.Status == "ACTIVE" || loan.Status == "COMPLETED")
                 {
+                    Console.WriteLine($"[DELETE DEBUG] Cannot delete - Status: {loan.Status}");
                     return ApiResponse<bool>.ErrorResult("Cannot delete active or completed loans");
                 }
+
+                Console.WriteLine($"[DELETE DEBUG] Proceeding with deletion...");
 
                 // Payment check removed - deletion will automatically clean up all related payments
                 // This allows deletion of PENDING, CANCELLED, and REJECTED loans with their payment history
@@ -546,6 +567,8 @@ namespace UtilityHub360.Services
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"[DELETE DEBUG] Exception: {ex.Message}");
+                Console.WriteLine($"[DELETE DEBUG] Stack trace: {ex.StackTrace}");
                 return ApiResponse<bool>.ErrorResult($"Failed to delete loan: {ex.Message}");
             }
         }

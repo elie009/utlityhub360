@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Cors;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using UtilityHub360.Data;
@@ -12,6 +13,7 @@ namespace UtilityHub360.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
+    [EnableCors("AllowAll")]
     public class BillsController : ControllerBase
     {
         private readonly IBillService _billService;

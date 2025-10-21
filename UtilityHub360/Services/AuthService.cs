@@ -17,12 +17,12 @@ namespace UtilityHub360.Services
         private readonly JwtSettings _jwtSettings;
         private readonly IEmailService _emailService;
 
-        public AuthService(ApplicationDbContext context, IConfiguration configuration, IEmailService emailService)
+        public AuthService(ApplicationDbContext context, IConfiguration configuration, IEmailService emailService, JwtSettings jwtSettings)
         {
             _context = context;
             _configuration = configuration;
             _emailService = emailService;
-            _jwtSettings = _configuration.GetSection("JwtSettings").Get<JwtSettings>() ?? new JwtSettings();
+            _jwtSettings = jwtSettings;
         }
 
         public async Task<ApiResponse<AuthResponseDto>> RegisterAsync(RegisterDataDto registerData)
@@ -150,7 +150,7 @@ namespace UtilityHub360.Services
             try
             {
                 var tokenHandler = new JwtSecurityTokenHandler();
-                var key = Encoding.ASCII.GetBytes(_jwtSettings.SecretKey);
+                var key = Encoding.UTF8.GetBytes(_jwtSettings.SecretKey);
 
                 tokenHandler.ValidateToken(token, new TokenValidationParameters
                 {
@@ -182,7 +182,7 @@ namespace UtilityHub360.Services
         private string GenerateJwtToken(Entities.User user)
         {
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes(_jwtSettings.SecretKey);
+            var key = Encoding.UTF8.GetBytes(_jwtSettings.SecretKey); 
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {
