@@ -44,6 +44,7 @@ namespace UtilityHub360.Services
                     Industry = createProfileDto.Industry,
                     Location = createProfileDto.Location,
                     Notes = createProfileDto.Notes,
+                    PreferredCurrency = createProfileDto.PreferredCurrency ?? "USD",
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -126,6 +127,8 @@ namespace UtilityHub360.Services
                     userProfile.Location = updateProfileDto.Location;
                 if (!string.IsNullOrEmpty(updateProfileDto.Notes))
                     userProfile.Notes = updateProfileDto.Notes;
+                if (!string.IsNullOrEmpty(updateProfileDto.PreferredCurrency))
+                    userProfile.PreferredCurrency = updateProfileDto.PreferredCurrency;
 
                 userProfile.UpdatedAt = DateTime.UtcNow;
 
@@ -565,6 +568,32 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<UserProfileDto>> UpdatePreferredCurrencyAsync(string currency, string userId)
+        {
+            try
+            {
+                var userProfile = await _context.UserProfiles
+                    .FirstOrDefaultAsync(up => up.UserId == userId);
+
+                if (userProfile == null)
+                {
+                    return ApiResponse<UserProfileDto>.ErrorResult("User profile not found");
+                }
+
+                userProfile.PreferredCurrency = currency;
+                userProfile.UpdatedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                var userProfileDto = await MapToUserProfileDto(userProfile);
+                return ApiResponse<UserProfileDto>.SuccessResult(userProfileDto, "Preferred currency updated successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<UserProfileDto>.ErrorResult($"Failed to update preferred currency: {ex.Message}");
+            }
+        }
+
         // Helper method to map UserProfile to UserProfileDto
         private async Task<UserProfileDto> MapToUserProfileDto(UserProfile userProfile)
         {
@@ -592,6 +621,7 @@ namespace UtilityHub360.Services
                 Industry = userProfile.Industry,
                 Location = userProfile.Location,
                 Notes = userProfile.Notes,
+                PreferredCurrency = userProfile.PreferredCurrency,
                 IsActive = userProfile.IsActive,
                 CreatedAt = userProfile.CreatedAt,
                 UpdatedAt = userProfile.UpdatedAt,

@@ -89,6 +89,16 @@ namespace UtilityHub360.Entities
 
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+        // Soft Delete Properties
+        public bool IsDeleted { get; set; } = false;
+        public DateTime? DeletedAt { get; set; }
+        
+        [StringLength(450)]
+        public string? DeletedBy { get; set; }
+        
+        [StringLength(500)]
+        public string? DeleteReason { get; set; }
+
         // Navigation properties
         [ForeignKey("LoanId")]
         public virtual Loan? Loan { get; set; }

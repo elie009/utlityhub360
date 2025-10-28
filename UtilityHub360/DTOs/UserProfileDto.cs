@@ -41,6 +41,10 @@ namespace UtilityHub360.DTOs
         [StringLength(500, ErrorMessage = "Notes cannot exceed 500 characters")]
         public string? Notes { get; set; }
 
+        // Currency Preference
+        [StringLength(10, ErrorMessage = "Currency code cannot exceed 10 characters")]
+        public string? PreferredCurrency { get; set; } = "USD";
+
         // Generalized Income Sources
         public List<CreateIncomeSourceDto>? IncomeSources { get; set; }
     }
@@ -83,6 +87,10 @@ namespace UtilityHub360.DTOs
 
         [StringLength(500, ErrorMessage = "Notes cannot exceed 500 characters")]
         public string? Notes { get; set; }
+
+        // Currency Preference
+        [StringLength(10, ErrorMessage = "Currency code cannot exceed 10 characters")]
+        public string? PreferredCurrency { get; set; }
     }
 
     public class UserProfileDto
@@ -108,6 +116,9 @@ namespace UtilityHub360.DTOs
         public string? Industry { get; set; }
         public string? Location { get; set; }
         public string? Notes { get; set; }
+
+        // Currency Preference
+        public string PreferredCurrency { get; set; } = "USD";
 
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }

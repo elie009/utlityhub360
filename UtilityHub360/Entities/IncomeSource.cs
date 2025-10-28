@@ -41,6 +41,16 @@ namespace UtilityHub360.Entities
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+        // Soft Delete Properties
+        public bool IsDeleted { get; set; } = false;
+        public DateTime? DeletedAt { get; set; }
+        
+        [StringLength(450)]
+        public string? DeletedBy { get; set; }
+        
+        [StringLength(500)]
+        public string? DeleteReason { get; set; }
+
         // Navigation property
         [ForeignKey("UserId")]
         public virtual User User { get; set; } = null!;

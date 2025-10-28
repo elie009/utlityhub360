@@ -63,6 +63,16 @@ namespace UtilityHub360.Entities
         [Column(TypeName = "decimal(18,2)")]
         public decimal BalanceAfterTransaction { get; set; }
 
+        // Soft Delete Properties
+        public bool IsDeleted { get; set; } = false;
+        public DateTime? DeletedAt { get; set; }
+        
+        [StringLength(450)]
+        public string? DeletedBy { get; set; }
+        
+        [StringLength(500)]
+        public string? DeleteReason { get; set; }
+
         // Navigation properties
         [ForeignKey("BankAccountId")]
         public virtual BankAccount BankAccount { get; set; } = null!;

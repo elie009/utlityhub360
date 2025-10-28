@@ -37,5 +37,6 @@ namespace UtilityHub360.Services
         Task<ApiResponse<List<UserProfileDto>>> GetAllUserProfilesAsync(int page = 1, int limit = 50);
         Task<ApiResponse<List<UserProfileDto>>> GetProfilesByIncomeRangeAsync(decimal minIncome, decimal maxIncome, int page = 1, int limit = 50);
         Task<ApiResponse<List<UserProfileDto>>> GetProfilesByEmploymentTypeAsync(string employmentType, int page = 1, int limit = 50);
+        Task<ApiResponse<UserProfileDto>> UpdatePreferredCurrencyAsync(string currency, string userId);
     }
 }

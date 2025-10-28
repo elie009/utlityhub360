@@ -63,6 +63,16 @@ namespace UtilityHub360.Entities
         [StringLength(450)]
         public string? ParentBillId { get; set; } // Links auto-generated bills to their parent
 
+        // Soft Delete Properties
+        public bool IsDeleted { get; set; } = false;
+        public DateTime? DeletedAt { get; set; }
+        
+        [StringLength(450)]
+        public string? DeletedBy { get; set; } // User who deleted it
+        
+        [StringLength(500)]
+        public string? DeleteReason { get; set; } // Why it was deleted/voided
+
         // Navigation property
         [ForeignKey("UserId")]
         public virtual User User { get; set; } = null!;

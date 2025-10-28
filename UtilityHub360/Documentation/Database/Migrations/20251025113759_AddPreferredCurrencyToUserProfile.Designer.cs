@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using UtilityHub360.Data;
 
@@ -11,9 +12,11 @@ using UtilityHub360.Data;
 namespace UtilityHub360.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251025113759_AddPreferredCurrencyToUserProfile")]
+    partial class AddPreferredCurrencyToUserProfile
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1178,14 +1181,14 @@ namespace UtilityHub360.Migrations
                         new
                         {
                             Id = "admin-001",
-                            CreatedAt = new DateTime(2025, 10, 28, 16, 1, 45, 213, DateTimeKind.Utc).AddTicks(3151),
+                            CreatedAt = new DateTime(2025, 10, 25, 11, 37, 57, 524, DateTimeKind.Utc).AddTicks(3323),
                             Email = "admin@utilityhub360.com",
                             IsActive = true,
                             Name = "System Administrator",
                             PasswordHash = "",
                             Phone = "+1234567890",
                             Role = "ADMIN",
-                            UpdatedAt = new DateTime(2025, 10, 28, 16, 1, 45, 213, DateTimeKind.Utc).AddTicks(3152)
+                            UpdatedAt = new DateTime(2025, 10, 25, 11, 37, 57, 524, DateTimeKind.Utc).AddTicks(3323)
                         });
                 });
 
@@ -1310,11 +1313,6 @@ namespace UtilityHub360.Migrations
                     b.Property<string>("Notes")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("PreferredCurrency")
-                        .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("nvarchar(10)");
 
                     b.Property<decimal?>("TaxRate")
                         .HasColumnType("decimal(5,2)");

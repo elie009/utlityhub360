@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using UtilityHub360.DTOs;
 using UtilityHub360.Models;
@@ -348,6 +349,34 @@ namespace UtilityHub360.Controllers
             }
         }
 
+        /// <summary>
+        /// Update preferred currency
+        /// </summary>
+        [HttpPut("currency")]
+        public async Task<ActionResult<ApiResponse<UserProfileDto>>> UpdatePreferredCurrency([FromBody] UpdateCurrencyDto updateCurrencyDto)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _userProfileService.UpdatePreferredCurrencyAsync(updateCurrencyDto.Currency, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<UserProfileDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<UserProfileDto>.ErrorResult($"Failed to update preferred currency: {ex.Message}"));
+            }
+        }
+
         // Analytics and Reporting
 
         /// <summary>
@@ -556,5 +585,12 @@ namespace UtilityHub360.Controllers
         public string? EmploymentType { get; set; }
         public string? Industry { get; set; }
         public string? Location { get; set; }
+    }
+
+    public class UpdateCurrencyDto
+    {
+        [Required]
+        [StringLength(10, ErrorMessage = "Currency code cannot exceed 10 characters")]
+        public string Currency { get; set; } = string.Empty;
     }
 }

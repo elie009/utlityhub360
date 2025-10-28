@@ -49,6 +49,10 @@ namespace UtilityHub360.Entities
         [StringLength(100)]
         public string? Location { get; set; }
 
+        // Currency Preference
+        [StringLength(10)]
+        public string PreferredCurrency { get; set; } = "USD";
+
         public bool IsActive { get; set; } = true;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
