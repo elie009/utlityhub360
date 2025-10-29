@@ -94,6 +94,20 @@ BEGIN
     PRINT 'Soft delete columns already exist in SavingsTransactions table';
 END
 
+-- Add soft delete columns to BankAccounts table
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[BankAccounts]') AND name = 'IsDeleted')
+BEGIN
+    ALTER TABLE [BankAccounts] ADD [IsDeleted] bit NOT NULL DEFAULT 0;
+    ALTER TABLE [BankAccounts] ADD [DeletedAt] datetime2 NULL;
+    ALTER TABLE [BankAccounts] ADD [DeletedBy] nvarchar(450) NULL;
+    ALTER TABLE [BankAccounts] ADD [DeleteReason] nvarchar(500) NULL;
+    PRINT 'Added soft delete columns to BankAccounts table';
+END
+ELSE
+BEGIN
+    PRINT 'Soft delete columns already exist in BankAccounts table';
+END
+
 -- Update migration history
 IF NOT EXISTS (SELECT * FROM [__EFMigrationsHistory] WHERE [MigrationId] = N'20251028160148_AddSoftDeleteToTransactions')
 BEGIN
@@ -115,5 +129,5 @@ WHERE [Id] = N'admin-001';
 COMMIT TRANSACTION;
 
 PRINT 'Soft delete migration completed successfully!';
-PRINT 'Tables updated: Bills, Payments, BankTransactions, IncomeSources, VariableExpenses, SavingsTransactions';
+PRINT 'Tables updated: Bills, Payments, BankTransactions, IncomeSources, VariableExpenses, SavingsTransactions, BankAccounts';
 

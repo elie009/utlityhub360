@@ -19,6 +19,7 @@ namespace UtilityHub360.Services
         private readonly IMemoryCache _cache;
         private readonly OpenAISettings _openAISettings;
         private readonly ILogger<ChatService> _logger;
+        private readonly IDocumentationSearchService _documentationSearchService;
         private readonly Dictionary<string, List<DateTime>> _rateLimitTracker = new();
 
         public ChatService(
@@ -29,7 +30,8 @@ namespace UtilityHub360.Services
             ISavingsService savingsService,
             IMemoryCache cache,
             OpenAISettings openAISettings,
-            ILogger<ChatService> logger)
+            ILogger<ChatService> logger,
+            IDocumentationSearchService documentationSearchService)
         {
             _context = context;
             _disposableAmountService = disposableAmountService;
@@ -39,6 +41,7 @@ namespace UtilityHub360.Services
             _cache = cache;
             _openAISettings = openAISettings;
             _logger = logger;
+            _documentationSearchService = documentationSearchService;
         }
 
         public async Task<ApiResponse<ChatResponseDto>> SendMessageAsync(ChatMessageDto messageDto, string userId)
@@ -552,6 +555,13 @@ namespace UtilityHub360.Services
                     new { role = "system", content = _openAISettings.SystemPrompt }
                 };
 
+                // Add documentation context for application-related questions
+                var documentationContext = await _documentationSearchService.GetDocumentationContextAsync(userMessage);
+                if (!string.IsNullOrEmpty(documentationContext))
+                {
+                    messages.Add(new { role = "system", content = documentationContext });
+                }
+
                 // Add conversation history
                 foreach (var msg in conversationHistory.TakeLast(_openAISettings.MaxConversationHistory))
                 {
@@ -625,55 +635,105 @@ namespace UtilityHub360.Services
             if (string.IsNullOrEmpty(message))
                 return message;
 
-            // Split by common sentence endings and list markers
-            var sentences = message.Split(new[] { ". ", "! ", "? ", ".\n", "!\n", "?\n" }, StringSplitOptions.None);
-            var formattedLines = new List<string>();
-
-            foreach (var sentence in sentences)
+            // First, normalize existing line breaks
+            message = message.Replace("\r\n", "\n").Replace("\r", "\n");
+            
+            var lines = new List<string>();
+            var paragraphs = message.Split(new[] { "\n\n" }, StringSplitOptions.None);
+            
+            foreach (var paragraph in paragraphs)
             {
-                if (string.IsNullOrWhiteSpace(sentence))
+                if (string.IsNullOrWhiteSpace(paragraph))
                     continue;
-
-                var trimmedSentence = sentence.Trim();
+                    
+                var trimmed = paragraph.Trim();
                 
-                // Add proper ending punctuation if missing
-                if (!trimmedSentence.EndsWith(".") && !trimmedSentence.EndsWith("!") && !trimmedSentence.EndsWith("?"))
+                // Check if it's a heading (starts with #)
+                if (trimmed.StartsWith("#"))
                 {
-                    trimmedSentence += ".";
+                    lines.Add("");  // Add blank line before heading
+                    lines.Add(trimmed);
+                    lines.Add("");  // Add blank line after heading
+                    continue;
                 }
-
-                // Handle numbered lists (1., 2., etc.)
-                if (System.Text.RegularExpressions.Regex.IsMatch(trimmedSentence, @"^\d+\.\s"))
+                
+                // Check if it's a list item
+                if (System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^(\d+\.|-|\*|•)\s"))
                 {
-                    formattedLines.Add($"\n{trimmedSentence}");
+                    // Split list into individual items
+                    var listLines = trimmed.Split('\n');
+                    foreach (var item in listLines)
+                    {
+                        if (!string.IsNullOrWhiteSpace(item))
+                        {
+                            lines.Add(item.Trim());
+                        }
+                    }
+                    lines.Add("");  // Blank line after list
+                    continue;
                 }
-                // Handle bullet points (-, *, •)
-                else if (trimmedSentence.StartsWith("- ") || trimmedSentence.StartsWith("* ") || trimmedSentence.StartsWith("• "))
+                
+                // Check if it contains bullet points or numbered lists inline
+                if (trimmed.Contains("\n-") || trimmed.Contains("\n*") || 
+                    System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"\n\d+\."))
                 {
-                    formattedLines.Add($"\n{trimmedSentence}");
+                    var parts = trimmed.Split('\n');
+                    foreach (var part in parts)
+                    {
+                        var cleanPart = part.Trim();
+                        if (!string.IsNullOrWhiteSpace(cleanPart))
+                        {
+                            lines.Add(cleanPart);
+                        }
+                    }
+                    lines.Add("");  // Blank line after list
+                    continue;
                 }
-                // Handle bold text (**text**)
-                else if (trimmedSentence.Contains("**"))
+                
+                // Check for bold/emphasis markers
+                if (trimmed.Contains("**"))
                 {
-                    formattedLines.Add($"\n{trimmedSentence}");
+                    lines.Add("");
+                    lines.Add(trimmed);
+                    lines.Add("");
+                    continue;
                 }
-                // Regular sentences
-                else
+                
+                // Regular paragraph - break long sentences
+                var sentences = System.Text.RegularExpressions.Regex.Split(trimmed, @"(?<=[.!?])\s+");
+                var currentParagraph = new StringBuilder();
+                
+                foreach (var sentence in sentences)
                 {
-                    formattedLines.Add(trimmedSentence);
+                    if (string.IsNullOrWhiteSpace(sentence))
+                        continue;
+                        
+                    currentParagraph.Append(sentence);
+                    currentParagraph.Append(" ");
+                    
+                    // Add line break after every 2-3 sentences for readability
+                    if (currentParagraph.Length > 150)
+                    {
+                        lines.Add(currentParagraph.ToString().Trim());
+                        currentParagraph.Clear();
+                    }
                 }
+                
+                if (currentParagraph.Length > 0)
+                {
+                    lines.Add(currentParagraph.ToString().Trim());
+                }
+                
+                lines.Add("");  // Blank line after paragraph
             }
-
-            // Join with proper spacing
-            var result = string.Join(" ", formattedLines);
             
-            // Clean up multiple newlines and spaces
-            result = System.Text.RegularExpressions.Regex.Replace(result, @"\n\s*\n", "\n\n");
-            result = System.Text.RegularExpressions.Regex.Replace(result, @"\s+", " ");
+            // Join with newlines and clean up
+            var result = string.Join("\n", lines);
             
-            // Ensure proper spacing around newlines
-            result = result.Replace("\n ", "\n").Replace(" \n", "\n");
+            // Clean up excessive blank lines (max 2 in a row)
+            result = System.Text.RegularExpressions.Regex.Replace(result, @"\n{3,}", "\n\n");
             
+            // Trim leading/trailing whitespace
             return result.Trim();
         }
 
@@ -704,6 +764,26 @@ namespace UtilityHub360.Services
             }
 
             return actions;
+        }
+
+        public async Task<ApiResponse<string>> SearchDocumentationAsync(string query)
+        {
+            try
+            {
+                var context = await _documentationSearchService.GetDocumentationContextAsync(query);
+                
+                if (string.IsNullOrEmpty(context))
+                {
+                    return ApiResponse<string>.ErrorResult("No relevant documentation found for your query.");
+                }
+
+                return ApiResponse<string>.SuccessResult(context, "Documentation retrieved successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error searching documentation for query: {query}");
+                return ApiResponse<string>.ErrorResult($"Failed to search documentation: {ex.Message}");
+            }
         }
     }
 

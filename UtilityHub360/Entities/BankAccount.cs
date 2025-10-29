@@ -66,6 +66,16 @@ namespace UtilityHub360.Entities
         [StringLength(100)]
         public string? SwiftCode { get; set; } // For international transfers
 
+        // Soft Delete Properties
+        public bool IsDeleted { get; set; } = false;
+        public DateTime? DeletedAt { get; set; }
+        
+        [StringLength(450)]
+        public string? DeletedBy { get; set; }
+        
+        [StringLength(500)]
+        public string? DeleteReason { get; set; }
+
         // Navigation properties
         [ForeignKey("UserId")]
         public virtual User User { get; set; } = null!;

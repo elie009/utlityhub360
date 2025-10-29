@@ -1,4 +1,4 @@
-# Disposable Amount Feature - Implementation Summary
+﻿# Disposable Amount Feature - Implementation Summary
 
 ## Overview
 The Disposable Amount feature has been successfully implemented to help users track their financial health by calculating money remaining after all expenses (fixed and variable) are deducted from income.
@@ -178,7 +178,7 @@ Response:
     "netDisposableAmount": 7000,
     "insights": [
       "Your disposable income increased by 10.5% compared to the previous period.",
-      "Your highest spending category is FOOD at ₱5,000 (33.3% of variable expenses)."
+      "Your highest spending category is FOOD at $5,000 (33.3% of variable expenses)."
     ],
     "comparison": {
       "previousPeriodDisposableAmount": 13500,

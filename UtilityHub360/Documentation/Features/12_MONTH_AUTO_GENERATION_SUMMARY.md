@@ -1,4 +1,4 @@
-# Auto-Generation Feature for Remaining Months - Implementation Summary
+﻿# Auto-Generation Feature for Remaining Months - Implementation Summary
 
 ## 🎉 Feature Completed Successfully!
 
@@ -109,9 +109,9 @@ POST /api/bills
 ```
 
 **Result:** System creates bills for remaining months of 2025 only:
-- October 2025: ₱3,050 (original)
-- November 2025: ₱3,050 (auto-generated)
-- December 2025: ₱3,050 (auto-generated)
+- October 2025: $3,050 (original)
+- November 2025: $3,050 (auto-generated)
+- December 2025: $3,050 (auto-generated)
 - **Note:** Bills are NOT generated for next year (2026) to maintain yearly budget boundaries
 
 **Step 2: Get Bills for a Month**

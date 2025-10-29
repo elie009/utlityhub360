@@ -1,4 +1,4 @@
-# Bill Auto-Generation Update - Version 2.3.0
+﻿# Bill Auto-Generation Update - Version 2.3.0
 
 ## 📅 Date: October 11, 2025
 
@@ -97,9 +97,9 @@ POST /api/bills
 ```
 
 **Result:**
-- ✅ October 2025: ₱3,050 (original)
-- ✅ November 2025: ₱3,050 (auto-generated)
-- ✅ December 2025: ₱3,050 (auto-generated)
+- ✅ October 2025: $3,050 (original)
+- ✅ November 2025: $3,050 (auto-generated)
+- ✅ December 2025: $3,050 (auto-generated)
 - ❌ January 2026: Not created (use will create manually in 2026)
 
 ### Example 2: Creating Bill in January 2025
@@ -119,8 +119,8 @@ POST /api/bills
 ```
 
 **Result:**
-- ✅ January 2025: ₱1,200 (original)
-- ✅ February 2025 through December 2025: ₱1,200 each (auto-generated)
+- ✅ January 2025: $1,200 (original)
+- ✅ February 2025 through December 2025: $1,200 each (auto-generated)
 - ❌ January 2026: Not created
 
 ### Example 3: Creating Bill in December 2025
@@ -140,7 +140,7 @@ POST /api/bills
 ```
 
 **Result:**
-- ✅ December 2025: ₱1,699 (original)
+- ✅ December 2025: $1,699 (original)
 - ❌ No auto-generated bills (last month of the year)
 - User will create 2026 bills in January 2026
 

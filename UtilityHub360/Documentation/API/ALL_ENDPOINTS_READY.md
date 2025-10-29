@@ -1,4 +1,4 @@
-# ✅ ALL ENDPOINTS ARE NOW WORKING!
+﻿# ✅ ALL ENDPOINTS ARE NOW WORKING!
 
 ## 🎉 Application Successfully Restarted
 
@@ -86,7 +86,7 @@ Authorization: Bearer {your_token}
     "percentageUsed": 84.0,
     "status": "on_track",
     "alert": false,
-    "message": "You're on track. ₱800.00 remaining of your ₱5,000.00 budget."
+    "message": "You're on track. $800.00 remaining of your $5,000.00 budget."
   }
 }
 ```

@@ -1,4 +1,4 @@
-# ✅ Endpoint Verification - Budget Status
+﻿# ✅ Endpoint Verification - Budget Status
 
 ## 🎯 Your Endpoint
 
@@ -85,7 +85,7 @@ GET http://localhost:5000/api/bills/budgets/status?provider=Mother+Allowance&bil
     "percentageUsed": 84.0,
     "status": "on_track",
     "alert": false,
-    "message": "You're on track. ₱800.00 remaining of your ₱5,000.00 budget."
+    "message": "You're on track. $800.00 remaining of your $5,000.00 budget."
   }
 }
 ```
@@ -104,7 +104,7 @@ GET http://localhost:5000/api/bills/budgets/status?provider=Mother+Allowance&bil
     "percentageUsed": 0.0,
     "status": "on_track",
     "alert": false,
-    "message": "You're on track. ₱5,000.00 remaining of your ₱5,000.00 budget."
+    "message": "You're on track. $5,000.00 remaining of your $5,000.00 budget."
   }
 }
 ```
@@ -264,9 +264,9 @@ function BudgetStatusWidget({ provider, billType, authToken }) {
       </div>
       
       <div className="budget-amounts">
-        <span className="current">₱{status.currentBill.toFixed(2)}</span>
+        <span className="current">${status.currentBill.toFixed(2)}</span>
         <span className="separator">/</span>
-        <span className="total">₱{status.monthlyBudget.toFixed(2)}</span>
+        <span className="total">${status.monthlyBudget.toFixed(2)}</span>
       </div>
       
       <p className={`status-message ${status.status}`}>
@@ -274,7 +274,7 @@ function BudgetStatusWidget({ provider, billType, authToken }) {
       </p>
       
       <div className="budget-details">
-        <div>Remaining: ₱{status.remaining.toFixed(2)}</div>
+        <div>Remaining: ${status.remaining.toFixed(2)}</div>
         <div>Used: {status.percentageUsed.toFixed(1)}%</div>
       </div>
     </div>

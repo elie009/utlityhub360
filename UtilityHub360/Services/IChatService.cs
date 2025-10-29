@@ -15,6 +15,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<List<string>>> GetBillRemindersAsync(string userId);
         Task<ApiResponse<List<string>>> GetBudgetSuggestionsAsync(string userId);
         Task<bool> IsRateLimitedAsync(string userId);
+        Task<ApiResponse<string>> SearchDocumentationAsync(string query);
     }
 }
 

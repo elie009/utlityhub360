@@ -1,4 +1,4 @@
-# 💰 Simple Financial Summary API
+﻿# 💰 Simple Financial Summary API
 
 ## The Simplest Way to Get Remaining Amount!
 
@@ -42,7 +42,7 @@ Where:
 
 ### Your Data from Database:
 
-| Item | Source | Amount (₱) |
+| Item | Source | Amount ($) |
 |------|--------|-----------|
 | Total Income | IncomeSources table | 45,000 |
 | Total Bills | Bills table (this month) | 15,000 |
@@ -52,28 +52,28 @@ Where:
 ### Calculation:
 
 ```
-Step 1: Total Income                 = ₱45,000
-Step 2: Total Expenses (Bills+Loans) = ₱15,000 + ₱8,000 = ₱23,000
-Step 3: Total Savings                = ₱5,000
+Step 1: Total Income                 = $45,000
+Step 2: Total Expenses (Bills+Loans) = $15,000 + $8,000 = $23,000
+Step 3: Total Savings                = $5,000
 
-Remaining Amount = 45,000 - 23,000 - 5,000 = ₱17,000
+Remaining Amount = 45,000 - 23,000 - 5,000 = $17,000
 ```
 
 ```
 ╔═══════════════════════════════════════╗
 ║  CALCULATION BREAKDOWN                ║
 ╠═══════════════════════════════════════╣
-║  Total Income:            ₱45,000    ║
+║  Total Income:            $45,000    ║
 ║                                       ║
-║  Total Bills:            -₱15,000    ║
-║  Total Loans:             -₱8,000    ║
+║  Total Bills:            -$15,000    ║
+║  Total Loans:             -$8,000    ║
 ║  ─────────────────────────────────    ║
-║  Total Expenses:         -₱23,000    ║
+║  Total Expenses:         -$23,000    ║
 ║                                       ║
-║  Total Savings:           -₱5,000    ║
+║  Total Savings:           -$5,000    ║
 ║                                       ║
 ║  ═══════════════════════════════════  ║
-║  💰 REMAINING AMOUNT:     ₱17,000    ║
+║  💰 REMAINING AMOUNT:     $17,000    ║
 ║  ═══════════════════════════════════  ║
 ║                                       ║
 ║  As % of Income:            37.78%   ║
@@ -81,7 +81,7 @@ Remaining Amount = 45,000 - 23,000 - 5,000 = ₱17,000
 ╚═══════════════════════════════════════╝
 ```
 
-**✅ Your Remaining Amount = ₱17,000**
+**✅ Your Remaining Amount = $17,000**
 
 ---
 
@@ -165,7 +165,7 @@ const getRemaining = async () => {
   });
   const { data } = await response.json();
   
-  console.log(`Remaining: ₱${data.remainingAmount}`);
+  console.log(`Remaining: $${data.remainingAmount}`);
   console.log(`Status: ${data.financialStatus}`);
 };
 ```
@@ -200,13 +200,13 @@ const FinancialSummary = () => {
   return (
     <div className={`status-${summary.financialStatus.toLowerCase()}`}>
       <h2>Remaining Amount</h2>
-      <h1>₱{summary.remainingAmount.toLocaleString()}</h1>
+      <h1>${summary.remainingAmount.toLocaleString()}</h1>
       <p>{summary.remainingPercentage.toFixed(1)}% of income</p>
       
       <div className="breakdown">
-        <div>Income: ₱{summary.totalIncome.toLocaleString()}</div>
-        <div>Expenses: -₱{summary.totalExpenses.toLocaleString()}</div>
-        <div>Savings: -₱{summary.totalSavings.toLocaleString()}</div>
+        <div>Income: ${summary.totalIncome.toLocaleString()}</div>
+        <div>Expenses: -${summary.totalExpenses.toLocaleString()}</div>
+        <div>Savings: -${summary.totalSavings.toLocaleString()}</div>
       </div>
       
       <span className="badge">{summary.financialStatus}</span>

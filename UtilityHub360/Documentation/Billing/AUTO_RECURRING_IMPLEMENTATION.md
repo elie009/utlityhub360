@@ -1,4 +1,4 @@
-# 🤖 Auto-Recurring Bills - Implementation Summary
+﻿# 🤖 Auto-Recurring Bills - Implementation Summary
 
 ## ✅ Feature Complete!
 
@@ -158,7 +158,7 @@ Every 6 Hours:
     └── Logs activity
     ↓
 3. User Gets Notification:
-    ├── "Your Nov Meralco bill estimated at ₱2,989"
+    ├── "Your Nov Meralco bill estimated at $2,989"
     └── Can confirm or update anytime
 ```
 
@@ -201,7 +201,7 @@ Every 6 Hours:
 ### Month 1 (October - Setup):
 ```
 User: Creates Meralco bill
-      Amount: ₱3,050
+      Amount: $3,050
       Auto-Generate: ✅ Enabled
 
 System: Saves bill
@@ -214,14 +214,14 @@ Time: 2 minutes
 ```
 Background Service (6:00 AM):
 ├── Checks: November Meralco bill exists? → No
-├── Calculates forecast: ₱2,989 (weighted avg)
+├── Calculates forecast: $2,989 (weighted avg)
 ├── Creates November bill
-└── Sends notification: "Nov bill estimated at ₱2,989"
+└── Sends notification: "Nov bill estimated at $2,989"
 
 User (receives notification):
 ├── Opens app
-├── Sees: "Meralco - Nov 2025: ₱2,989 (estimated)"
-├── Actual bill arrives: ₱3,100
+├── Sees: "Meralco - Nov 2025: $2,989 (estimated)"
+├── Actual bill arrives: $3,100
 └── Updates: PUT /confirm-amount { amount: 3100 }
 
 Time: 30 seconds
@@ -231,14 +231,14 @@ Time: 30 seconds
 ```
 Background Service (6:00 AM):
 ├── Checks: December Meralco bill exists? → No
-├── Calculates forecast: ₱3,030 (uses confirmed Nov amount)
+├── Calculates forecast: $3,030 (uses confirmed Nov amount)
 ├── Creates December bill
-└── Sends notification: "Dec bill estimated at ₱3,030"
+└── Sends notification: "Dec bill estimated at $3,030"
 
 User (receives notification):
 ├── Opens app
-├── Sees: "Meralco - Dec 2025: ₱3,030 (estimated)"
-├── Actual bill arrives: ₱3,030 (exact match!)
+├── Sees: "Meralco - Dec 2025: $3,030 (estimated)"
+├── Actual bill arrives: $3,030 (exact match!)
 └── Clicks "Confirm" → Done!
 
 Time: 1 second! ⚡

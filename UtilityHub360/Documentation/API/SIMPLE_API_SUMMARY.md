@@ -1,4 +1,4 @@
-# ✅ Simple Disposable Amount API - Ready to Use!
+﻿# ✅ Simple Disposable Amount API - Ready to Use!
 
 ## 🎯 You Now Have ONE Simple API!
 
@@ -87,12 +87,12 @@ Authorization: Bearer {your-token}
 
 ```
 Your Data:
-├─ Total Income (from IncomeSources):     ₱45,000
-├─ Total Bills (from Bills table):       -₱15,000
-├─ Total Loans (monthly payments):        -₱8,000
-├─ Total Savings (deposits this month):   -₱5,000
+├─ Total Income (from IncomeSources):     $45,000
+├─ Total Bills (from Bills table):       -$15,000
+├─ Total Loans (monthly payments):        -$8,000
+├─ Total Savings (deposits this month):   -$5,000
 └─ ═══════════════════════════════════════════════
-   REMAINING AMOUNT:                       ₱17,000
+   REMAINING AMOUNT:                       $17,000
 
    Remaining % of Income:                   37.78%
    Status:                                  HEALTHY ✅
@@ -123,7 +123,7 @@ const getRemaining = async () => {
   });
   const { data } = await response.json();
   
-  console.log(`Remaining: ₱${data.remainingAmount}`);
+  console.log(`Remaining: $${data.remainingAmount}`);
   console.log(`Status: ${data.financialStatus}`);
 };
 ```
@@ -158,7 +158,7 @@ const FinancialSummary = () => {
   return (
     <div className={`status-${summary.financialStatus.toLowerCase()}`}>
       <h2>Remaining Amount</h2>
-      <h1>₱{summary.remainingAmount.toLocaleString()}</h1>
+      <h1>${summary.remainingAmount.toLocaleString()}</h1>
       <p>{summary.remainingPercentage.toFixed(1)}% of income</p>
       <span className="badge">{summary.financialStatus}</span>
     </div>
@@ -239,20 +239,20 @@ const FinancialSummary = () => {
   <div className="breakdown">
     <div className="line">
       <span>Income:</span>
-      <span>₱{totalIncome}</span>
+      <span>${totalIncome}</span>
     </div>
     <div className="line expenses">
       <span>Bills & Loans:</span>
-      <span>-₱{totalExpenses}</span>
+      <span>-${totalExpenses}</span>
     </div>
     <div className="line savings">
       <span>Savings:</span>
-      <span>-₱{totalSavings}</span>
+      <span>-${totalSavings}</span>
     </div>
     <div className="line total">
       <span>Remaining:</span>
       <span className={statusClass}>
-        ₱{remainingAmount}
+        ${remainingAmount}
       </span>
     </div>
   </div>

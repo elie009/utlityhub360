@@ -1,4 +1,4 @@
-# Variable Monthly Billing - API Quick Start Guide
+﻿# Variable Monthly Billing - API Quick Start Guide
 
 ## 🚀 Quick Start for Frontend Developers
 
@@ -316,16 +316,16 @@ function BillHistory({ provider, billType, authToken }) {
       
       {/* Display Analytics */}
       <div className="analytics">
-        <p>Average (Simple): ₱{data.analytics.averageSimple.toFixed(2)}</p>
-        <p>Average (Weighted): ₱{data.analytics.averageWeighted.toFixed(2)}</p>
+        <p>Average (Simple): ${data.analytics.averageSimple.toFixed(2)}</p>
+        <p>Average (Weighted): ${data.analytics.averageWeighted.toFixed(2)}</p>
         <p>Trend: {data.analytics.trend}</p>
-        <p>Total Spent: ₱{data.analytics.totalSpent.toFixed(2)}</p>
+        <p>Total Spent: ${data.analytics.totalSpent.toFixed(2)}</p>
       </div>
 
       {/* Display Forecast */}
       <div className="forecast">
         <h3>Next Month Forecast</h3>
-        <p>Estimated: ₱{data.forecast.estimatedAmount.toFixed(2)}</p>
+        <p>Estimated: ${data.forecast.estimatedAmount.toFixed(2)}</p>
         <p>Confidence: {data.forecast.confidence}</p>
         <p>{data.forecast.recommendation}</p>
       </div>
@@ -343,7 +343,7 @@ function BillHistory({ provider, billType, authToken }) {
           {data.bills.map(bill => (
             <tr key={bill.id}>
               <td>{new Date(bill.createdAt).toLocaleDateString()}</td>
-              <td>₱{bill.amount.toFixed(2)}</td>
+              <td>${bill.amount.toFixed(2)}</td>
               <td>{bill.status}</td>
             </tr>
           ))}
@@ -399,7 +399,7 @@ function BudgetStatus({ provider, billType, authToken }) {
           }}
         />
       </div>
-      <p>₱{status.currentBill.toFixed(2)} / ₱{status.monthlyBudget.toFixed(2)}</p>
+      <p>${status.currentBill.toFixed(2)} / ${status.monthlyBudget.toFixed(2)}</p>
       <p className={`status ${status.status}`}>{status.message}</p>
     </div>
   );

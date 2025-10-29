@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
@@ -472,7 +472,7 @@ namespace UtilityHub360.Services
                 
                 if (savingsIncrease > 0)
                 {
-                    insights.Add($"Reducing your variable expenses by 15% (₱{potentialSavings:N2}) can increase your savings by {savingsIncrease:F1}%.");
+                    insights.Add($"Reducing your variable expenses by 15% (${potentialSavings:N2}) can increase your savings by {savingsIncrease:F1}%.");
                 }
             }
 
@@ -480,14 +480,14 @@ namespace UtilityHub360.Services
             var topCategory = current.VariableExpensesBreakdown.OrderByDescending(v => v.TotalAmount).FirstOrDefault();
             if (topCategory != null && current.TotalVariableExpenses > 0)
             {
-                insights.Add($"Your highest spending category is {topCategory.Category} at ₱{topCategory.TotalAmount:N2} ({topCategory.Percentage:F1}% of variable expenses).");
+                insights.Add($"Your highest spending category is {topCategory.Category} at ${topCategory.TotalAmount:N2} ({topCategory.Percentage:F1}% of variable expenses).");
             }
 
             // Savings goal recommendation
             if (current.DisposableAmount > 0)
             {
                 var recommendedSavings = current.DisposableAmount * 0.20m; // 20% of disposable
-                insights.Add($"Consider saving at least ₱{recommendedSavings:N2} per month (20% of your disposable income) to build your financial cushion.");
+                insights.Add($"Consider saving at least ${recommendedSavings:N2} per month (20% of your disposable income) to build your financial cushion.");
             }
 
             // Loan payment insight

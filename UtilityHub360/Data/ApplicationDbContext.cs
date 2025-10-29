@@ -111,6 +111,13 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.TransactionDate);
                 entity.HasIndex(e => e.IsBankTransaction);
                 entity.HasIndex(e => e.BankAccountId);
+
+                // Temporary: Ignore soft delete properties until migration is applied
+                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
+                entity.Ignore(e => e.IsDeleted);
+                entity.Ignore(e => e.DeletedAt);
+                entity.Ignore(e => e.DeletedBy);
+                entity.Ignore(e => e.DeleteReason);
             });
 
 
@@ -139,6 +146,13 @@ namespace UtilityHub360.Data
                     .WithMany()
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+
+                // Temporary: Ignore soft delete properties until migration is applied
+                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
+                entity.Ignore(e => e.IsDeleted);
+                entity.Ignore(e => e.DeletedAt);
+                entity.Ignore(e => e.DeletedBy);
+                entity.Ignore(e => e.DeleteReason);
             });
 
             // BankAccount configuration
@@ -151,6 +165,13 @@ namespace UtilityHub360.Data
 
                 entity.HasIndex(e => new { e.UserId, e.AccountName }).IsUnique();
                 entity.HasIndex(e => new { e.UserId, e.AccountNumber }).IsUnique();
+
+                // Temporary: Ignore soft delete properties until migration is applied
+                // TODO: Remove these Ignore() calls after running add_bankaccount_softdelete.sql
+                entity.Ignore(e => e.IsDeleted);
+                entity.Ignore(e => e.DeletedAt);
+                entity.Ignore(e => e.DeletedBy);
+                entity.Ignore(e => e.DeleteReason);
             });
 
             // BankTransaction configuration
@@ -168,6 +189,13 @@ namespace UtilityHub360.Data
 
                 entity.HasIndex(e => e.ExternalTransactionId);
                 entity.HasIndex(e => e.TransactionDate);
+
+                // Temporary: Ignore soft delete properties until migration is applied
+                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
+                entity.Ignore(e => e.IsDeleted);
+                entity.Ignore(e => e.DeletedAt);
+                entity.Ignore(e => e.DeletedBy);
+                entity.Ignore(e => e.DeleteReason);
             });
 
             // SavingsAccount configuration
@@ -179,6 +207,13 @@ namespace UtilityHub360.Data
                     .OnDelete(DeleteBehavior.Cascade);
 
                 entity.HasIndex(e => new { e.UserId, e.AccountName }).IsUnique();
+
+                // Temporary: Ignore soft delete properties until migration is applied
+                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
+                entity.Ignore(e => e.IsDeleted);
+                entity.Ignore(e => e.DeletedAt);
+                entity.Ignore(e => e.DeletedBy);
+                entity.Ignore(e => e.DeleteReason);
             });
 
             // SavingsTransaction configuration
@@ -195,6 +230,13 @@ namespace UtilityHub360.Data
                     .OnDelete(DeleteBehavior.NoAction);
 
                 entity.HasIndex(e => e.TransactionDate);
+
+                // Temporary: Ignore soft delete properties until migration is applied
+                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
+                entity.Ignore(e => e.IsDeleted);
+                entity.Ignore(e => e.DeletedAt);
+                entity.Ignore(e => e.DeletedBy);
+                entity.Ignore(e => e.DeleteReason);
             });
 
             // UserProfile configuration
@@ -208,6 +250,10 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.UserId).IsUnique();
                 entity.HasIndex(e => e.Industry);
                 entity.HasIndex(e => e.EmploymentType);
+
+                // Temporary: Ignore PreferredCurrency until migration is applied
+                // TODO: Remove this Ignore() call after running migration AddPreferredCurrencyColumn
+                entity.Ignore(e => e.PreferredCurrency);
             });
 
             // IncomeSource configuration
@@ -223,6 +269,13 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.Frequency);
                 entity.HasIndex(e => e.IsActive);
                 entity.HasIndex(e => new { e.UserId, e.Name }).IsUnique();
+
+                // Temporary: Ignore soft delete properties until migration is applied
+                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
+                entity.Ignore(e => e.IsDeleted);
+                entity.Ignore(e => e.DeletedAt);
+                entity.Ignore(e => e.DeletedBy);
+                entity.Ignore(e => e.DeleteReason);
             });
 
             // VariableExpense configuration
@@ -237,6 +290,13 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.Category);
                 entity.HasIndex(e => e.ExpenseDate);
                 entity.HasIndex(e => new { e.UserId, e.ExpenseDate, e.Category });
+
+                // Temporary: Ignore soft delete properties until migration is applied
+                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
+                entity.Ignore(e => e.IsDeleted);
+                entity.Ignore(e => e.DeletedAt);
+                entity.Ignore(e => e.DeletedBy);
+                entity.Ignore(e => e.DeleteReason);
             });
 
             // BudgetSetting configuration

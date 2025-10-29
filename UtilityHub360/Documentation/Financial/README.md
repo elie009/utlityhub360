@@ -1,4 +1,4 @@
-# 💰 Financial Dashboard & Disposable Amount — Documentation Hub
+﻿# 💰 Financial Dashboard & Disposable Amount — Documentation Hub
 
 Welcome to the complete documentation for the Financial Dashboard and Disposable Amount tracking feature!
 
@@ -197,7 +197,7 @@ const Dashboard = () => {
 
   return (
     <div>
-      <h1>Disposable Amount: ₱{data?.disposableAmount}</h1>
+      <h1>Disposable Amount: ${data?.disposableAmount}</h1>
       {/* Add more components */}
     </div>
   );
@@ -223,8 +223,8 @@ const Dashboard = () => {
     "disposablePercentage": 28.07,
     "insights": [
       "Your disposable income increased by 12.5% compared to the previous period.",
-      "Your highest spending category is GROCERIES at ₱8,500 (44.7% of variable expenses).",
-      "Consider saving at least ₱3,900 per month (20% of your disposable income)."
+      "Your highest spending category is GROCERIES at $8,500 (44.7% of variable expenses).",
+      "Consider saving at least $3,900 per month (20% of your disposable income)."
     ],
     "comparison": {
       "previousPeriodDisposableAmount": 17350.00,
@@ -265,19 +265,19 @@ const testAPI = async () => {
 
 ### Scenario 1: Young Professional
 - **Age:** 25
-- **Income:** ₱35,000/month
-- **Disposable:** ₱15,000 (43%)
+- **Income:** $35,000/month
+- **Disposable:** $15,000 (43%)
 - **Goal:** Build emergency fund
 
 ### Scenario 2: Family with Kids
 - **Size:** Family of 4
-- **Income:** ₱80,000/month
-- **Disposable:** ₱9,000 (11%)
+- **Income:** $80,000/month
+- **Disposable:** $9,000 (11%)
 - **Goal:** Optimize expenses
 
 ### Scenario 3: Freelancer
-- **Income:** ₱40,000 - ₱80,000/month (variable)
-- **Disposable:** ₱21,000 (36% average)
+- **Income:** $40,000 - $80,000/month (variable)
+- **Disposable:** $21,000 (36% average)
 - **Goal:** Smooth income fluctuations
 
 **See [Complete Flow Guide](./disposableAmountFlow.md#-use-cases--scenarios) for detailed scenarios.**

@@ -1,4 +1,4 @@
-# 🎯 Budget Status Endpoint - Complete Test Guide
+﻿# 🎯 Budget Status Endpoint - Complete Test Guide
 
 ## ✅ Good News: The Endpoint IS Working!
 
@@ -105,7 +105,7 @@ return result.Success ? Ok(result) : NotFound(result);
     "percentageUsed": 0.0,
     "status": "on_track",
     "alert": false,
-    "message": "You're on track. ₱5,000.00 remaining of your ₱5,000.00 budget."
+    "message": "You're on track. $5,000.00 remaining of your $5,000.00 budget."
   }
 }
 ```
@@ -177,9 +177,9 @@ async function setupAndTestBudget() {
     console.log('\n✅ BUDGET STATUS SUCCESS!');
     console.log('═══════════════════════════════════');
     console.log('Provider:', statusResult.data.provider);
-    console.log('Monthly Budget: ₱' + statusResult.data.monthlyBudget.toFixed(2));
-    console.log('Current Bill: ₱' + statusResult.data.currentBill.toFixed(2));
-    console.log('Remaining: ₱' + statusResult.data.remaining.toFixed(2));
+    console.log('Monthly Budget: $' + statusResult.data.monthlyBudget.toFixed(2));
+    console.log('Current Bill: $' + statusResult.data.currentBill.toFixed(2));
+    console.log('Remaining: $' + statusResult.data.remaining.toFixed(2));
     console.log('Percentage Used:', statusResult.data.percentageUsed.toFixed(1) + '%');
     console.log('Status:', statusResult.data.status);
     console.log('Message:', statusResult.data.message);

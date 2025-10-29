@@ -1,4 +1,4 @@
-# 💰 Disposable Amount & Financial Dashboard — Complete Flow
+﻿# 💰 Disposable Amount & Financial Dashboard — Complete Flow
 
 ## 📌 Document Overview
 
@@ -95,21 +95,21 @@ Where:
 
 ### Step 1 — List Your Monthly Income
 
-| Source | Amount (₱) |
+| Source | Amount ($) |
 |--------|-----------|
 | Salary | 45,000 |
 | Freelance | 5,000 |
 | **Total Income** | **50,000** |
 
 ```
-Total Income = 45,000 + 5,000 = ₱50,000
+Total Income = 45,000 + 5,000 = $50,000
 ```
 
 ---
 
 ### Step 2 — List Your Fixed Expenses
 
-| Fixed Expense | Amount (₱) |
+| Fixed Expense | Amount ($) |
 |---------------|-----------|
 | Rent | 12,000 |
 | Loan Payment | 4,000 |
@@ -118,7 +118,7 @@ Total Income = 45,000 + 5,000 = ₱50,000
 | **Total Fixed Expenses** | **19,500** |
 
 ```
-Total Fixed = ₱19,500
+Total Fixed = $19,500
 ```
 
 ---
@@ -127,7 +127,7 @@ Total Fixed = ₱19,500
 
 **(Use weekly → monthly conversion for accuracy)**
 
-| Variable Expense | Weekly Avg (₱) | Monthly Estimate (×4.33) | Monthly Total (₱) |
+| Variable Expense | Weekly Avg ($) | Monthly Estimate (×4.33) | Monthly Total ($) |
 |------------------|---------------|-------------------------|------------------|
 | Groceries | 1,800 | 1,800 × 4.33 | 7,794 |
 | Transportation | 700 | 700 × 4.33 | 3,031 |
@@ -150,22 +150,22 @@ Weekly Amount × 4.33 = Monthly Amount
 
 ```
 Disposable Amount = 50,000 - (19,500 + 12,990)
-Disposable Amount = 50,000 - 32,490 = ₱17,510
+Disposable Amount = 50,000 - 32,490 = $17,510
 ```
 
 ```
 ╔═══════════════════════════════════════╗
 ║  CALCULATION BREAKDOWN                ║
 ╠═══════════════════════════════════════╣
-║  Total Income:            ₱50,000    ║
+║  Total Income:            $50,000    ║
 ║                                       ║
-║  Fixed Expenses:         -₱19,500    ║
-║  Variable Expenses:      -₱12,990    ║
+║  Fixed Expenses:         -$19,500    ║
+║  Variable Expenses:      -$12,990    ║
 ║  ─────────────────────────────────    ║
-║  Total Expenses:         -₱32,490    ║
+║  Total Expenses:         -$32,490    ║
 ║                                       ║
 ║  ═══════════════════════════════════  ║
-║  💰 DISPOSABLE AMOUNT:    ₱17,510    ║
+║  💰 DISPOSABLE AMOUNT:    $17,510    ║
 ║  ═══════════════════════════════════  ║
 ║                                       ║
 ║  As % of Income:            35.02%   ║
@@ -173,9 +173,9 @@ Disposable Amount = 50,000 - 32,490 = ₱17,510
 ╚═══════════════════════════════════════╝
 ```
 
-**✅ Your Disposable Amount = ₱17,510**
+**✅ Your Disposable Amount = $17,510**
 
-This means you have **₱17,510** left after all obligations — for savings, emergency funds, or investments.
+This means you have **$17,510** left after all obligations — for savings, emergency funds, or investments.
 
 ---
 
@@ -189,31 +189,31 @@ Net Disposable = Disposable Amount - (Target Savings + Investment)
 
 ### Example:
 
-- **Target Savings** = ₱5,000
-- **Investment** = ₱2,000
+- **Target Savings** = $5,000
+- **Investment** = $2,000
 
 ```
-Net Disposable = 17,510 - (5,000 + 2,000) = ₱10,510
+Net Disposable = 17,510 - (5,000 + 2,000) = $10,510
 ```
 
 ```
 ╔═══════════════════════════════════════╗
 ║  NET DISPOSABLE CALCULATION           ║
 ╠═══════════════════════════════════════╣
-║  Disposable Amount:       ₱17,510    ║
+║  Disposable Amount:       $17,510    ║
 ║                                       ║
-║  Target Savings:          -₱5,000    ║
-║  Investment:              -₱2,000    ║
+║  Target Savings:          -$5,000    ║
+║  Investment:              -$2,000    ║
 ║  ─────────────────────────────────    ║
-║  Allocations:             -₱7,000    ║
+║  Allocations:             -$7,000    ║
 ║                                       ║
 ║  ═══════════════════════════════════  ║
-║  💵 NET FREE CASH:        ₱10,510    ║
+║  💵 NET FREE CASH:        $10,510    ║
 ║  ═══════════════════════════════════  ║
 ╚═══════════════════════════════════════╝
 ```
 
-**✅ ₱10,510 is your free-to-use cash**
+**✅ $10,510 is your free-to-use cash**
 
 ---
 
@@ -381,9 +381,9 @@ When you call the full disposable amount API, you get detailed breakdowns:
     // INSIGHTS
     "insights": [
       "Your disposable income increased by 12.5% compared to the previous period.",
-      "Your highest spending category is GROCERIES at ₱7,794 (60% of variable expenses).",
-      "Consider saving at least ₱3,500 per month (20% of your disposable income).",
-      "Reducing your variable expenses by 15% (₱1,949) can increase your savings by 19%."
+      "Your highest spending category is GROCERIES at $7,794 (60% of variable expenses).",
+      "Consider saving at least $3,500 per month (20% of your disposable income).",
+      "Reducing your variable expenses by 15% ($1,949) can increase your savings by 19%."
     ],
     
     // COMPARISON
@@ -524,30 +524,30 @@ graph TD
 
 **Profile:**
 - Age: 25
-- Income: ₱35,000/month
+- Income: $35,000/month
 - Living with parents (no rent)
 - Just graduated
 
 **Setup:**
 ```
-Income: ₱35,000
+Income: $35,000
 Fixed Expenses:
-  - Mobile plan: ₱999
-  - Contributions at home: ₱5,000
-  - Transportation: ₱3,000
-  Total: ₱8,999
+  - Mobile plan: $999
+  - Contributions at home: $5,000
+  - Transportation: $3,000
+  Total: $8,999
 
 Variable Expenses (typical):
-  - Food: ₱6,000
-  - Entertainment: ₱3,000
-  - Shopping: ₱2,000
-  Total: ₱11,000
+  - Food: $6,000
+  - Entertainment: $3,000
+  - Shopping: $2,000
+  Total: $11,000
 
-Disposable Amount: ₱15,001 (43% of income)
+Disposable Amount: $15,001 (43% of income)
 ```
 
 **Recommended Actions:**
-✅ Save 50% of disposable (₱7,500)  
+✅ Save 50% of disposable ($7,500)  
 ✅ Build 6-month emergency fund  
 ✅ Start investing the rest
 
@@ -555,63 +555,63 @@ Disposable Amount: ₱15,001 (43% of income)
 
 **Profile:**
 - Family of 4
-- Combined income: ₱80,000/month
+- Combined income: $80,000/month
 - Renting apartment
 - 2 kids in school
 
 **Setup:**
 ```
-Income: ₱80,000
+Income: $80,000
 Fixed Expenses:
-  - Rent: ₱15,000
-  - Utilities: ₱5,000
-  - School tuition: ₱8,000
-  - Insurance: ₱3,000
-  - Car loan: ₱12,000
-  Total: ₱43,000
+  - Rent: $15,000
+  - Utilities: $5,000
+  - School tuition: $8,000
+  - Insurance: $3,000
+  - Car loan: $12,000
+  Total: $43,000
 
 Variable Expenses (typical):
-  - Groceries: ₱15,000
-  - Transportation/Gas: ₱5,000
-  - Kids activities: ₱3,000
-  - Healthcare: ₱2,000
-  - Miscellaneous: ₱3,000
-  Total: ₱28,000
+  - Groceries: $15,000
+  - Transportation/Gas: $5,000
+  - Kids activities: $3,000
+  - Healthcare: $2,000
+  - Miscellaneous: $3,000
+  Total: $28,000
 
-Disposable Amount: ₱9,000 (11% of income)
+Disposable Amount: $9,000 (11% of income)
 ```
 
 **Insights Generated:**
 ⚠️ "Disposable amount is 11% of income - consider reviewing expenses"  
-💡 "Reducing variable expenses by 15% would save ₱4,200/month"  
+💡 "Reducing variable expenses by 15% would save $4,200/month"  
 📊 "Your highest spending category is GROCERIES"
 
 ### Scenario 3: Freelancer with Variable Income
 
 **Profile:**
 - Freelance developer
-- Income varies: ₱40,000 - ₱80,000/month
+- Income varies: $40,000 - $80,000/month
 - Works from home
 
 **Setup:**
 ```
-Income (3-month average): ₱58,000
+Income (3-month average): $58,000
 Fixed Expenses:
-  - Rent: ₱10,000
-  - Utilities: ₱3,500
-  - Internet (faster): ₱2,499
-  - Professional insurance: ₱2,000
-  Total: ₱17,999
+  - Rent: $10,000
+  - Utilities: $3,500
+  - Internet (faster): $2,499
+  - Professional insurance: $2,000
+  Total: $17,999
 
 Variable Expenses (typical):
-  - Food/Groceries: ₱10,000
-  - Coworking space: ₱3,000
-  - Equipment/Software: ₱2,000
-  - Transportation: ₱2,000
-  - Entertainment: ₱2,000
-  Total: ₱19,000
+  - Food/Groceries: $10,000
+  - Coworking space: $3,000
+  - Equipment/Software: $2,000
+  - Transportation: $2,000
+  - Entertainment: $2,000
+  Total: $19,000
 
-Disposable Amount: ₱21,001 (36% of income)
+Disposable Amount: $21,001 (36% of income)
 ```
 
 **Strategy:**
@@ -640,27 +640,27 @@ The system generates intelligent insights based on your financial data:
 
 ### 3. Savings Potential
 ```
-💡 "Reducing your variable expenses by 15% (₱2,850) can increase your savings by 18.5%."
-💡 "You could save an extra ₱1,500/month by reducing FOOD expenses by 20%."
+💡 "Reducing your variable expenses by 15% ($2,850) can increase your savings by 18.5%."
+💡 "You could save an extra $1,500/month by reducing FOOD expenses by 20%."
 ```
 
 ### 4. Category Insights
 ```
-📊 "Your highest spending category is GROCERIES at ₱8,500 (45% of variable expenses)."
+📊 "Your highest spending category is GROCERIES at $8,500 (45% of variable expenses)."
 📊 "TRANSPORTATION costs increased by 23% compared to last month."
 ```
 
 ### 5. Savings Recommendations
 ```
-💰 "Consider saving at least ₱3,900 per month (20% of your disposable income) to build your financial cushion."
-💰 "At your current rate, you'll reach your ₱50,000 savings goal in 6.4 months."
+💰 "Consider saving at least $3,900 per month (20% of your disposable income) to build your financial cushion."
+💰 "At your current rate, you'll reach your $50,000 savings goal in 6.4 months."
 ```
 
 ### 6. Health Indicators
 ```
 ✅ "Your disposable amount is 28% of income - this is healthy!"
 ⚠️ "Warning: Disposable amount is only 8% of income. Review expenses."
-🚨 "Alert: Your expenses exceed income by ₱2,500. Immediate action needed."
+🚨 "Alert: Your expenses exceed income by $2,500. Immediate action needed."
 ```
 
 ---
@@ -673,7 +673,7 @@ The system generates intelligent insights based on your financial data:
 ╔══════════════════════════════════════════════════╗
 ║  💰 DISPOSABLE AMOUNT                            ║
 ║                                                  ║
-║              ₱19,511                             ║
+║              $19,511                             ║
 ║                                                  ║
 ║  28.1% of income        ↑ 12.5% vs last month  ║
 ║                                                  ║
@@ -688,21 +688,21 @@ The system generates intelligent insights based on your financial data:
 ```
 Income & Expenses Overview (October 2025)
 
-₱70K ├─────────────────────────────────
-     │ ████████████ Income: ₱69,510
-₱60K ├─────────────────────────────────
+$70K ├─────────────────────────────────
+     │ ████████████ Income: $69,510
+$60K ├─────────────────────────────────
      │
-₱50K ├─────────────────────────────────
-     │ ████████ Fixed: ₱30,999
-₱40K ├─────────────────────────────────
+$50K ├─────────────────────────────────
+     │ ████████ Fixed: $30,999
+$40K ├─────────────────────────────────
      │
-₱30K ├─────────────────────────────────
-     │ ████ Variable: ₱19,000
-₱20K ├─────────────────────────────────
+$30K ├─────────────────────────────────
+     │ ████ Variable: $19,000
+$20K ├─────────────────────────────────
      │
-₱10K ├─────────────────────────────────
-     │ ▓▓ Disposable: ₱19,511
-  ₱0 └─────────────────────────────────
+$10K ├─────────────────────────────────
+     │ ▓▓ Disposable: $19,511
+  $0 └─────────────────────────────────
 ```
 
 **API:** `GET /api/Dashboard/financial-summary`
@@ -712,11 +712,11 @@ Income & Expenses Overview (October 2025)
 ```
 Variable Expenses by Category
 
-    GROCERIES        ████████████████ 45% (₱8,500)
-  TRANSPORTATION     ████████         22% (₱4,200)
-      FOOD           ███████          20% (₱3,800)
- ENTERTAINMENT       ███               8% (₱1,500)
-    SHOPPING         ██                5% (₱1,000)
+    GROCERIES        ████████████████ 45% ($8,500)
+  TRANSPORTATION     ████████         22% ($4,200)
+      FOOD           ███████          20% ($3,800)
+ ENTERTAINMENT       ███               8% ($1,500)
+    SHOPPING         ██                5% ($1,000)
 ```
 
 **API:** `GET /api/VariableExpenses/statistics/by-category`
@@ -726,15 +726,15 @@ Variable Expenses by Category
 ```
 Disposable Amount Trend (Last 6 Months)
 
-₱22K ├─────────────────────────────────
+$22K ├─────────────────────────────────
      │              ●
-₱20K ├──────●───────┼───────●─────────
+$20K ├──────●───────┼───────●─────────
      │      ┆       ┆       ┆
-₱18K ├──●───┼───────┼───────┼─────────
+$18K ├──●───┼───────┼───────┼─────────
      │  ┆   ┆       ┆       ┆
-₱16K ├──┼───┼───●───┼───────┼─────────
+$16K ├──┼───┼───●───┼───────┼─────────
      │  ┆   ┆   ┆   ┆       ┆
-₱14K └──┴───┴───┴───┴───────┴─────────
+$14K └──┴───┴───┴───┴───────┴─────────
     May Jun Jul Aug Sep     Oct
 ```
 
@@ -751,13 +751,13 @@ Disposable Amount Trend (Last 6 Months)
 ║    compared to last month                      ║
 ║                                                ║
 ║ 📊 Your highest spending category is          ║
-║    GROCERIES at ₱8,500 (45%)                  ║
+║    GROCERIES at $8,500 (45%)                  ║
 ║                                                ║
-║ 💰 Consider saving at least ₱3,900 per month  ║
+║ 💰 Consider saving at least $3,900 per month  ║
 ║    (20% of disposable income)                  ║
 ║                                                ║
 ║ 💡 Reducing variable expenses by 15%          ║
-║    (₱2,850) can boost savings by 18.5%        ║
+║    ($2,850) can boost savings by 18.5%        ║
 ║                                                ║
 ╚════════════════════════════════════════════════╝
 ```
@@ -769,7 +769,7 @@ Disposable Amount Trend (Last 6 Months)
 ```
 ╔═══════════════╦═══════════════╦═══════════════╗
 ║ Average Income║ Avg. Expenses ║ Avg. Disposable
-║   ₱67,245     ║   ₱48,330     ║    ₱18,915    ║
+║   $67,245     ║   $48,330     ║    $18,915    ║
 ╠═══════════════╬═══════════════╬═══════════════╣
 ║ Active Loans  ║ Pending Bills ║ Top Category  ║
 ║      2        ║      4        ║   GROCERIES   ║
@@ -935,7 +935,7 @@ if (categoryPercentage > 50) {
 if (currentSavings >= targetSavings) {
   sendNotification({
     title: "🎉 Goal Achieved!",
-    body: "You've reached your ₱20,000 savings goal!",
+    body: "You've reached your $20,000 savings goal!",
     action: "CELEBRATE"
   });
 }
@@ -948,7 +948,7 @@ if (currentSavings >= targetSavings) {
 ┌──────────────────────────┐
 │  💰 October 2025         │
 │                          │
-│  Disposable: ₱19,511    │
+│  Disposable: $19,511    │
 │  ↑ 12.5%                │
 │                          │
 │  [View Details →]        │
@@ -977,14 +977,14 @@ Expected Response:
 
 ### Test Case 2: Negative Disposable Amount
 ```http
-Income: ₱30,000
-Expenses: ₱35,000
+Income: $30,000
+Expenses: $35,000
 
 Expected Response:
 {
   "disposableAmount": -5000,
   "insights": [
-    "🚨 Alert: Your expenses exceed income by ₱5,000",
+    "🚨 Alert: Your expenses exceed income by $5,000",
     "Immediate action needed to balance your budget"
   ]
 }

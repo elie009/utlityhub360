@@ -1,4 +1,4 @@
-# 💰 Disposable Amount Flow - UX Summary for Frontend Development
+﻿# 💰 Disposable Amount Flow - UX Summary for Frontend Development
 
 ## 🎯 Executive Summary
 
@@ -77,19 +77,19 @@ The **Disposable Amount Flow** is a comprehensive financial management feature t
 
 #### **Young Professionals (25-35)**
 - **Profile**: Entry to mid-level professionals
-- **Income**: ₱30,000 - ₱60,000/month
+- **Income**: $30,000 - $60,000/month
 - **Pain Points**: Starting to build financial habits, need guidance
 - **UX Needs**: Simple, educational interface with clear explanations
 
 #### **Families with Children (30-45)**
 - **Profile**: Married couples with kids
-- **Income**: ₱60,000 - ₱120,000/month combined
+- **Income**: $60,000 - $120,000/month combined
 - **Pain Points**: Complex expenses, need to track multiple categories
 - **UX Needs**: Comprehensive dashboard, family-friendly interface
 
 #### **Freelancers/Self-Employed (25-50)**
 - **Profile**: Variable income, irregular cash flow
-- **Income**: ₱40,000 - ₱100,000/month (variable)
+- **Income**: $40,000 - $100,000/month (variable)
 - **Pain Points**: Income unpredictability, need for better planning
 - **UX Needs**: Flexible income tracking, trend analysis, forecasting
 
@@ -198,7 +198,7 @@ The **Disposable Amount Flow** is a comprehensive financial management feature t
 ```
 ┌─────────────────────────────────────────┐
 │  💰 DISPOSABLE AMOUNT (Hero Card)      │
-│  ₱19,511 (35% of income) ↑ 12.5%      │
+│  $19,511 (35% of income) ↑ 12.5%      │
 ├─────────────────────────────────────────┤
 │  Quick Actions:                         │
 │  [Add Expense] [View Bills] [Set Goal]  │
@@ -208,7 +208,7 @@ The **Disposable Amount Flow** is a comprehensive financial management feature t
 ├─────────────────────────────────────────┤
 │  💡 Insights & Recommendations          │
 │  • Your disposable income increased...  │
-│  • Consider saving ₱3,900/month...      │
+│  • Consider saving $3,900/month...      │
 └─────────────────────────────────────────┘
 ```
 
@@ -243,7 +243,7 @@ Quick Entry → Category Selection → Amount Input → Save
 ╔══════════════════════════════════════════════╗
 ║  💰 DISPOSABLE AMOUNT                        ║
 ║                                              ║
-║              ₱19,511                         ║
+║              $19,511                         ║
 ║                                              ║
 ║  35.02% of income        ↑ 12.5% vs last    ║
 ║                                              ║
@@ -255,16 +255,16 @@ Quick Entry → Category Selection → Amount Input → Save
 ```
 Variable Expenses by Category
 
-GROCERIES        ████████████████ 45% (₱8,500)
-TRANSPORTATION   ████████         22% (₱4,200)
-FOOD             ███████          20% (₱3,800)
-ENTERTAINMENT    ███               8% (₱1,500)
-SHOPPING         ██                5% (₱1,000)
+GROCERIES        ████████████████ 45% ($8,500)
+TRANSPORTATION   ████████         22% ($4,200)
+FOOD             ███████          20% ($3,800)
+ENTERTAINMENT    ███               8% ($1,500)
+SHOPPING         ██                5% ($1,000)
 ```
 
 #### **Plain Language Explanations**
 - **Instead of**: "Disposable amount decreased by 8.3%"
-- **Say**: "You have ₱1,500 less spending money this month"
+- **Say**: "You have $1,500 less spending money this month"
 - **Instead of**: "Variable expense ratio: 42.3%"
 - **Say**: "Your flexible expenses are quite high - consider reviewing discretionary spending"
 
@@ -276,7 +276,7 @@ SHOPPING         ██                5% (₱1,000)
 ### **Data Readability Features**
 
 #### **Formatting Standards**
-- **Currency**: Always show ₱ symbol, use commas for thousands
+- **Currency**: Always show $ symbol, use commas for thousands
 - **Percentages**: Show with % symbol, use one decimal place
 - **Dates**: Use consistent format (MMM DD, YYYY)
 - **Numbers**: Use appropriate decimal places (2 for currency, 1 for percentages)

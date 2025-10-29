@@ -298,6 +298,35 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<ChatContextDto>.ErrorResult($"Failed to get financial context: {ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// Search documentation for specific topics
+        /// </summary>
+        [HttpGet("search-documentation")]
+        public async Task<ActionResult<ApiResponse<string>>> SearchDocumentation([FromQuery] string query)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(query))
+                {
+                    return BadRequest(ApiResponse<string>.ErrorResult("Query cannot be empty"));
+                }
+
+                var result = await _chatService.SearchDocumentationAsync(query);
+                
+                if (result.Success)
+                {
+                    return Ok(result);
+                }
+                
+                return NotFound(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in SearchDocumentation endpoint");
+                return BadRequest(ApiResponse<string>.ErrorResult($"Failed to search documentation: {ex.Message}"));
+            }
+        }
     }
 
     public class GenerateReportDto

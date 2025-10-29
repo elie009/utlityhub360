@@ -1,0 +1,176 @@
+### ============================================
+### Chat AI Assistant API Tests
+### ============================================
+### NOTE: Replace {{token}} with your actual JWT token
+### Get token from: POST http://localhost:5000/api/auth/login
+### ============================================
+
+@baseUrl = http://localhost:5000
+@token = YOUR_JWT_TOKEN_HERE
+
+### ============================================
+### 1. LOGIN FIRST (Copy token from response)
+### ============================================
+
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "Password123!"
+}
+
+### ============================================
+### 2. SEND MESSAGE - Application Question
+### ============================================
+
+POST {{baseUrl}}/api/chat/message
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "message": "How do I create a recurring bill in the API?",
+  "conversationId": null,
+  "includeTransactionContext": false
+}
+
+### ============================================
+### 3. SEND MESSAGE - Financial Question
+### ============================================
+
+POST {{baseUrl}}/api/chat/message
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "message": "What bills do I have coming up this week?",
+  "conversationId": null,
+  "includeTransactionContext": true
+}
+
+### ============================================
+### 4. SEND MESSAGE - General Financial Advice
+### ============================================
+
+POST {{baseUrl}}/api/chat/message
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "message": "How can I improve my savings this month?",
+  "conversationId": null,
+  "includeTransactionContext": true
+}
+
+### ============================================
+### 5. SEARCH DOCUMENTATION DIRECTLY
+### ============================================
+
+GET {{baseUrl}}/api/chat/search-documentation?query=loan API endpoints
+Authorization: Bearer {{token}}
+
+### ============================================
+### 6. SEARCH DOCUMENTATION - Soft Delete
+### ============================================
+
+GET {{baseUrl}}/api/chat/search-documentation?query=soft delete implementation
+Authorization: Bearer {{token}}
+
+### ============================================
+### 7. SEARCH DOCUMENTATION - Bill Management
+### ============================================
+
+GET {{baseUrl}}/api/chat/search-documentation?query=recurring bills
+Authorization: Bearer {{token}}
+
+### ============================================
+### 8. CREATE NEW CONVERSATION
+### ============================================
+
+POST {{baseUrl}}/api/chat/conversations
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Financial Planning Discussion"
+}
+
+### ============================================
+### 9. GET ALL CONVERSATIONS
+### ============================================
+
+GET {{baseUrl}}/api/chat/conversations?page=1&limit=10
+Authorization: Bearer {{token}}
+
+### ============================================
+### 10. GET CONVERSATION HISTORY
+### Replace {conversationId} with actual ID
+### ============================================
+
+GET {{baseUrl}}/api/chat/conversations/{conversationId}/messages
+Authorization: Bearer {{token}}
+
+### ============================================
+### 11. GET FINANCIAL CONTEXT
+### ============================================
+
+GET {{baseUrl}}/api/chat/financial-context
+Authorization: Bearer {{token}}
+
+### ============================================
+### 12. GET BILL REMINDERS
+### ============================================
+
+GET {{baseUrl}}/api/chat/bill-reminders
+Authorization: Bearer {{token}}
+
+### ============================================
+### 13. GET BUDGET SUGGESTIONS
+### ============================================
+
+GET {{baseUrl}}/api/chat/budget-suggestions
+Authorization: Bearer {{token}}
+
+### ============================================
+### 14. DELETE CONVERSATION
+### Replace {conversationId} with actual ID
+### ============================================
+
+DELETE {{baseUrl}}/api/chat/conversations/{conversationId}
+Authorization: Bearer {{token}}
+
+### ============================================
+### 15. GENERATE REPORT (Placeholder)
+### ============================================
+
+POST {{baseUrl}}/api/chat/generate-report
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "reportType": "financial_summary",
+  "format": "pdf"
+}
+
+### ============================================
+### TEST QUESTIONS - Copy these for testing
+### ============================================
+
+# Application Questions (includeTransactionContext: false)
+# - "How do I create a loan?"
+# - "What API endpoints are available for bills?"
+# - "How does soft delete work?"
+# - "What's the difference between fixed and variable bills?"
+# - "How do I update a loan payment schedule?"
+
+# Financial Questions (includeTransactionContext: true)
+# - "What bills do I have coming up?"
+# - "How much disposable income do I have?"
+# - "Should I pay off my loan early?"
+# - "What's my total debt?"
+# - "How can I save more money this month?"
+
+### ============================================
+### END OF TESTS
+### ============================================
+

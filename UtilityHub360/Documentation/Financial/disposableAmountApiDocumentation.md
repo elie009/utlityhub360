@@ -1,4 +1,4 @@
-# 🔌 Disposable Amount & Financial Dashboard — API Documentation
+﻿# 🔌 Disposable Amount & Financial Dashboard — API Documentation
 
 ## 📖 Complete API Reference
 
@@ -118,9 +118,9 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     
     "insights": [
       "Your disposable income increased by 12.5% compared to the previous period.",
-      "Your highest spending category is GROCERIES at ₱8,500 (44.7% of variable expenses).",
-      "Consider saving at least ₱3,900 per month (20% of your disposable income) to build your financial cushion.",
-      "Reducing your variable expenses by 15% (₱2,850) can increase your savings by 24.8%."
+      "Your highest spending category is GROCERIES at $8,500 (44.7% of variable expenses).",
+      "Consider saving at least $3,900 per month (20% of your disposable income) to build your financial cushion.",
+      "Reducing your variable expenses by 15% ($2,850) can increase your savings by 24.8%."
     ],
     
     "comparison": {
@@ -1106,10 +1106,10 @@ client = FinancialDashboardClient(
 )
 
 disposable = client.get_current_disposable_amount(5000, 3000)
-print(f"Disposable Amount: ₱{disposable['disposableAmount']:,.2f}")
+print(f"Disposable Amount: ${disposable['disposableAmount']:,.2f}")
 
 summary = client.get_financial_summary()
-print(f"Monthly Income: ₱{summary['currentMonth']['totalIncome']:,.2f}")
+print(f"Monthly Income: ${summary['currentMonth']['totalIncome']:,.2f}")
 
 new_expense = client.create_variable_expense({
     'description': 'Grocery shopping',

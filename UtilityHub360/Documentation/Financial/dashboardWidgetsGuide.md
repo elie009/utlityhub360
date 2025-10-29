@@ -1,4 +1,4 @@
-# 🎨 Financial Dashboard Widgets — Complete UI/UX Guide
+﻿# 🎨 Financial Dashboard Widgets — Complete UI/UX Guide
 
 ## Build Beautiful Dashboard Components
 
@@ -524,7 +524,7 @@ const IncomeVsExpensesWidget = ({
       tooltip: {
         callbacks: {
           label: function(context) {
-            return `${context.dataset.label}: ₱${context.parsed.y.toLocaleString()}`;
+            return `${context.dataset.label}: $${context.parsed.y.toLocaleString()}`;
           }
         }
       }
@@ -534,7 +534,7 @@ const IncomeVsExpensesWidget = ({
         beginAtZero: true,
         ticks: {
           callback: function(value) {
-            return '₱' + value.toLocaleString();
+            return '$' + value.toLocaleString();
           }
         }
       }
@@ -555,7 +555,7 @@ const IncomeVsExpensesWidget = ({
         <div className="stat-item">
           <span className="stat-label">Total Expenses:</span>
           <span className="stat-value">
-            ₱{(fixedExpenses + variableExpenses).toLocaleString()}
+            ${(fixedExpenses + variableExpenses).toLocaleString()}
           </span>
         </div>
         <div className="stat-item">
@@ -635,7 +635,7 @@ const ExpenseBreakdownWidget = ({ expenses }) => {
             const expense = expenses[context.dataIndex];
             return [
               `${context.label}`,
-              `Amount: ₱${expense.totalAmount.toLocaleString()}`,
+              `Amount: $${expense.totalAmount.toLocaleString()}`,
               `Count: ${expense.count} transactions`,
               `Percentage: ${expense.percentage.toFixed(1)}%`
             ];
@@ -663,7 +663,7 @@ const ExpenseBreakdownWidget = ({ expenses }) => {
               <span className="category-name">{expense.category}</span>
             </div>
             <div className="detail-values">
-              <span className="amount">₱{expense.totalAmount.toLocaleString()}</span>
+              <span className="amount">${expense.totalAmount.toLocaleString()}</span>
               <span className="percentage">{expense.percentage.toFixed(1)}%</span>
             </div>
           </div>
@@ -812,7 +812,7 @@ const MonthlyTrendWidget = ({ monthlyData }) => {
       tooltip: {
         callbacks: {
           label: function(context) {
-            return `${context.dataset.label}: ₱${context.parsed.y.toLocaleString()}`;
+            return `${context.dataset.label}: $${context.parsed.y.toLocaleString()}`;
           }
         }
       }
@@ -822,7 +822,7 @@ const MonthlyTrendWidget = ({ monthlyData }) => {
         beginAtZero: true,
         ticks: {
           callback: function(value) {
-            return '₱' + (value / 1000) + 'k';
+            return '$' + (value / 1000) + 'k';
           }
         }
       }
@@ -1010,7 +1010,7 @@ const QuickStatsWidget = ({ stats }) => {
 
   const formatValue = (value, format) => {
     if (format === 'currency') {
-      return '₱' + Math.round(value).toLocaleString();
+      return '$' + Math.round(value).toLocaleString();
     }
     if (format === 'number') {
       return value;

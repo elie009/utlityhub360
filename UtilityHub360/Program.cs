@@ -111,6 +111,9 @@ builder.Services.AddAuthorization();
 // Add Memory Cache
 builder.Services.AddMemoryCache();
 
+// Add Response Caching
+builder.Services.AddResponseCaching();
+
 // Add Services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ILoanService, LoanService>();
@@ -125,7 +128,9 @@ builder.Services.AddScoped<IIncomeSourceService, IncomeSourceService>();
 builder.Services.AddScoped<IDisposableAmountService, DisposableAmountService>();
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddSingleton<IDocumentationSearchService, DocumentationSearchService>();
 builder.Services.AddScoped<IChatService, ChatService>();
+builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 
 // Add Background Services
 builder.Services.AddHostedService<BillReminderBackgroundService>();
@@ -156,6 +161,9 @@ app.UseCors("AllowAll");
 
 // Disable HTTPS redirection completely for local development
 // app.UseHttpsRedirection(); // Commented out to prevent any HTTPS redirects
+
+// Add Response Caching Middleware
+app.UseResponseCaching();
 
 app.UseAuthentication();
 app.UseAuthorization();

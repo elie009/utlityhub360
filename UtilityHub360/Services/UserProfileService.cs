@@ -44,7 +44,8 @@ namespace UtilityHub360.Services
                     Industry = createProfileDto.Industry,
                     Location = createProfileDto.Location,
                     Notes = createProfileDto.Notes,
-                    PreferredCurrency = createProfileDto.PreferredCurrency ?? "USD",
+                    // TODO: Uncomment after running migration AddPreferredCurrencyColumn
+                    // PreferredCurrency = createProfileDto.PreferredCurrency ?? "USD",
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -127,8 +128,9 @@ namespace UtilityHub360.Services
                     userProfile.Location = updateProfileDto.Location;
                 if (!string.IsNullOrEmpty(updateProfileDto.Notes))
                     userProfile.Notes = updateProfileDto.Notes;
-                if (!string.IsNullOrEmpty(updateProfileDto.PreferredCurrency))
-                    userProfile.PreferredCurrency = updateProfileDto.PreferredCurrency;
+                // TODO: Uncomment after running migration AddPreferredCurrencyColumn
+                // if (!string.IsNullOrEmpty(updateProfileDto.PreferredCurrency))
+                //     userProfile.PreferredCurrency = updateProfileDto.PreferredCurrency;
 
                 userProfile.UpdatedAt = DateTime.UtcNow;
 
@@ -580,13 +582,15 @@ namespace UtilityHub360.Services
                     return ApiResponse<UserProfileDto>.ErrorResult("User profile not found");
                 }
 
-                userProfile.PreferredCurrency = currency;
-                userProfile.UpdatedAt = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-
-                var userProfileDto = await MapToUserProfileDto(userProfile);
-                return ApiResponse<UserProfileDto>.SuccessResult(userProfileDto, "Preferred currency updated successfully");
+                // TODO: Uncomment after running migration AddPreferredCurrencyColumn
+                // userProfile.PreferredCurrency = currency;
+                // userProfile.UpdatedAt = DateTime.UtcNow;
+                // await _context.SaveChangesAsync();
+                // var userProfileDto = await MapToUserProfileDto(userProfile);
+                // return ApiResponse<UserProfileDto>.SuccessResult(userProfileDto, "Preferred currency updated successfully");
+                
+                // For now, just return error (until migration is applied)
+                return ApiResponse<UserProfileDto>.ErrorResult("PreferredCurrency update is temporarily disabled. Please run the AddPreferredCurrencyColumn migration first.");
             }
             catch (Exception ex)
             {

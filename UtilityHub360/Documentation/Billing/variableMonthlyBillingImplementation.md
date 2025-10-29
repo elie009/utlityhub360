@@ -1,4 +1,4 @@
-# Variable Monthly Billing - Implementation Summary
+﻿# Variable Monthly Billing - Implementation Summary
 
 ## 📋 Overview
 
@@ -173,13 +173,13 @@ This document provides a technical summary of the Variable Monthly Billing featu
 ### 1. Simple Average
 ```csharp
 Average = Sum of last N bills / N
-Example: (3200 + 2870 + 2640) / 3 = ₱2,903.33
+Example: (3200 + 2870 + 2640) / 3 = $2,903.33
 ```
 
 ### 2. Weighted Average
 ```csharp
 Weighted = (Most Recent × 0.5) + (Middle × 0.3) + (Oldest × 0.2)
-Example: (3200 × 0.5) + (2870 × 0.3) + (2640 × 0.2) = ₱2,989
+Example: (3200 × 0.5) + (2870 × 0.3) + (2640 × 0.2) = $2,989
 ```
 
 ### 3. Seasonal Average
@@ -311,7 +311,7 @@ Authorization: Bearer {token}
     "percentageUsed": 101.7,
     "status": "over_budget",
     "alert": true,
-    "message": "You exceeded your budget by ₱50"
+    "message": "You exceeded your budget by $50"
   }
 }
 ```

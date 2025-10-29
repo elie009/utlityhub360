@@ -1,4 +1,4 @@
-# 🚀 Disposable Amount API — Quick Reference
+﻿# 🚀 Disposable Amount API — Quick Reference
 
 ## One Simple Endpoint for Everything!
 
@@ -42,7 +42,7 @@ Authorization: Bearer {your-jwt-token}
     
     "insights": [
       "Your disposable income increased by 12.5% compared to the previous period.",
-      "Your highest spending category is GROCERIES at ₱8,500 (44.7%)"
+      "Your highest spending category is GROCERIES at $8,500 (44.7%)"
     ],
     
     "comparison": {
@@ -198,9 +198,9 @@ GET /api/Dashboard/disposable-amount/user456?year=2025&month=10
     // INSIGHTS
     "insights": [
       "Your disposable income increased by 12.5% compared to the previous period.",
-      "Your highest spending category is GROCERIES at ₱8,500 (44.7% of variable expenses).",
-      "Consider saving at least ₱3,900 per month (20% of your disposable income).",
-      "Reducing your variable expenses by 15% (₱2,850) can increase your savings by 24.8%."
+      "Your highest spending category is GROCERIES at $8,500 (44.7% of variable expenses).",
+      "Consider saving at least $3,900 per month (20% of your disposable income).",
+      "Reducing your variable expenses by 15% ($2,850) can increase your savings by 24.8%."
     ],
     
     // COMPARISON

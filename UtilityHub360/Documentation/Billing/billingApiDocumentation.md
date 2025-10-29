@@ -1,4 +1,4 @@
-# Billing Management API Documentation
+﻿# Billing Management API Documentation
 
 ## 📋 Overview
 
@@ -739,7 +739,7 @@ GET /api/bills/analytics/history?provider=Meralco&billType=utility&months=6
       "calculationMethod": "weighted",
       "confidence": "medium",
       "estimatedForMonth": "2025-11-01T00:00:00Z",
-      "recommendation": "Based on historical patterns, expect around ₱2,989.00 for next month."
+      "recommendation": "Based on historical patterns, expect around $2,989.00 for next month."
     },
     "totalCount": 6
   },
@@ -811,7 +811,7 @@ GET /api/bills/analytics/forecast?provider=Meralco&billType=utility&method=weigh
     "calculationMethod": "weighted",
     "confidence": "medium",
     "estimatedForMonth": "2025-11-01T00:00:00Z",
-    "recommendation": "Based on historical patterns, expect around ₱2,989.00 for next month."
+    "recommendation": "Based on historical patterns, expect around $2,989.00 for next month."
   },
   "errors": []
 }
@@ -1093,7 +1093,7 @@ GET /api/bills/budgets/status?provider=Meralco&billType=utility
     "percentageUsed": 101.7,
     "status": "over_budget",
     "alert": true,
-    "message": "You exceeded your budget by ₱50"
+    "message": "You exceeded your budget by $50"
   },
   "errors": []
 }
@@ -1135,7 +1135,7 @@ GET /api/bills/alerts?isRead=false&limit=10
       "alertType": "due_date",
       "severity": "warning",
       "title": "Payment Reminder",
-      "message": "Your Meralco bill of ₱3,050 is due in 3 days (Oct 10)",
+      "message": "Your Meralco bill of $3,050 is due in 3 days (Oct 10)",
       "billId": "bill-123",
       "provider": "Meralco",
       "amount": 3050.00,
@@ -1148,7 +1148,7 @@ GET /api/bills/alerts?isRead=false&limit=10
       "alertType": "budget_exceeded",
       "severity": "error",
       "title": "Budget Alert",
-      "message": "You exceeded your budget by ₱50",
+      "message": "You exceeded your budget by $50",
       "billId": "bill-123",
       "provider": "Meralco",
       "amount": 3050.00,
@@ -1632,9 +1632,9 @@ Content-Type: application/json
 ```
 
 **Result:** System creates 12 bills (one for each month) automatically!
-- October 2025: ₱3,050 (original)
-- November 2025: ₱3,050 (auto-generated)
-- December 2025: ₱3,050 (auto-generated)
+- October 2025: $3,050 (original)
+- November 2025: $3,050 (auto-generated)
+- December 2025: $3,050 (auto-generated)
 - ... all months through September 2026
 
 **Step 2: Review Monthly Bills**

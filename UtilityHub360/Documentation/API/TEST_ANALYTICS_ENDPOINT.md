@@ -1,4 +1,4 @@
-# ✅ Analytics Endpoint - Ready to Test!
+﻿# ✅ Analytics Endpoint - Ready to Test!
 
 ## 🎉 Application Restarted Successfully!
 
@@ -120,7 +120,7 @@ console.log(result);
       "calculationMethod": "weighted",
       "confidence": "high",
       "estimatedForMonth": "2025-11-01T00:00:00Z",
-      "recommendation": "Based on historical patterns, expect around ₱1,475.00 for next month."
+      "recommendation": "Based on historical patterns, expect around $1,475.00 for next month."
     },
     "totalCount": 12
   },

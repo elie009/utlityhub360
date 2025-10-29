@@ -1,4 +1,4 @@
-# 🎯 Complete Financial Summary API Guide
+﻿# 🎯 Complete Financial Summary API Guide
 
 ## You Have 2 Simple APIs to Choose From!
 
@@ -129,20 +129,20 @@ Disposable Amount = Total Income - (Fixed Expenses + Variable Expenses)
 ### Simple Summary (Option 1)
 ```
 Example:
-├── Income:        ₱45,000
-├── Bills:        -₱15,000
-├── Loans:         -₱8,000
-├── Savings:       -₱5,000
-└── Remaining:     ₱17,000 (37.78%)
+├── Income:        $45,000
+├── Bills:        -$15,000
+├── Loans:         -$8,000
+├── Savings:       -$5,000
+└── Remaining:     $17,000 (37.78%)
 ```
 
 ### Complete Disposable (Option 2)
 ```
 Example:
-├── Income:                ₱50,000
-├── Fixed Expenses:       -₱19,500
-├── Variable Expenses:    -₱12,990
-└── Disposable:            ₱17,510 (35.02%)
+├── Income:                $50,000
+├── Fixed Expenses:       -$19,500
+├── Variable Expenses:    -$12,990
+└── Disposable:            $17,510 (35.02%)
 ```
 
 ---
@@ -153,10 +153,10 @@ Example:
 ```javascript
 const { data } = await axios.get('/api/Dashboard/summary');
 
-console.log(`Remaining: ₱${data.data.remainingAmount}`);
-console.log(`Income: ₱${data.data.totalIncome}`);
-console.log(`Expenses: ₱${data.data.totalExpenses}`);
-console.log(`Savings: ₱${data.data.totalSavings}`);
+console.log(`Remaining: $${data.data.remainingAmount}`);
+console.log(`Income: $${data.data.totalIncome}`);
+console.log(`Expenses: $${data.data.totalExpenses}`);
+console.log(`Savings: $${data.data.totalSavings}`);
 console.log(`Status: ${data.data.financialStatus}`);
 ```
 
@@ -164,9 +164,9 @@ console.log(`Status: ${data.data.financialStatus}`);
 ```javascript
 const { data } = await axios.get('/api/Dashboard/disposable-amount');
 
-console.log(`Disposable: ₱${data.data.disposableAmount}`);
-console.log(`Fixed: ₱${data.data.totalFixedExpenses}`);
-console.log(`Variable: ₱${data.data.totalVariableExpenses}`);
+console.log(`Disposable: $${data.data.disposableAmount}`);
+console.log(`Fixed: $${data.data.totalFixedExpenses}`);
+console.log(`Variable: $${data.data.totalVariableExpenses}`);
 console.log(`Top Category: ${data.data.variableExpensesBreakdown[0].category}`);
 console.log(`Insights: ${data.data.insights.join(', ')}`);
 ```
@@ -191,21 +191,21 @@ const SimpleRemainingCard = () => {
   return (
     <div className={`card status-${data.financialStatus.toLowerCase()}`}>
       <h3>💰 Remaining Amount</h3>
-      <h1>₱{data.remainingAmount.toLocaleString()}</h1>
+      <h1>${data.remainingAmount.toLocaleString()}</h1>
       <p>{data.remainingPercentage.toFixed(1)}% of income</p>
       
       <div className="breakdown">
         <div className="item">
           <span>Income:</span>
-          <span>₱{data.totalIncome.toLocaleString()}</span>
+          <span>${data.totalIncome.toLocaleString()}</span>
         </div>
         <div className="item expense">
           <span>Expenses:</span>
-          <span>-₱{data.totalExpenses.toLocaleString()}</span>
+          <span>-${data.totalExpenses.toLocaleString()}</span>
         </div>
         <div className="item saving">
           <span>Savings:</span>
-          <span>-₱{data.totalSavings.toLocaleString()}</span>
+          <span>-${data.totalSavings.toLocaleString()}</span>
         </div>
       </div>
       
@@ -233,28 +233,28 @@ const CompleteDisposableCard = () => {
   return (
     <div className="detailed-card">
       <h2>💰 Disposable Amount</h2>
-      <h1>₱{data.disposableAmount.toLocaleString()}</h1>
+      <h1>${data.disposableAmount.toLocaleString()}</h1>
       
       {/* Breakdown */}
       <div className="sections">
         <div>
           <h4>Income</h4>
-          <p>₱{data.totalIncome.toLocaleString()}</p>
+          <p>${data.totalIncome.toLocaleString()}</p>
         </div>
         <div>
           <h4>Fixed</h4>
-          <p>₱{data.totalFixedExpenses.toLocaleString()}</p>
+          <p>${data.totalFixedExpenses.toLocaleString()}</p>
         </div>
         <div>
           <h4>Variable</h4>
-          <p>₱{data.totalVariableExpenses.toLocaleString()}</p>
+          <p>${data.totalVariableExpenses.toLocaleString()}</p>
         </div>
       </div>
       
       {/* Top Expense Category */}
       <div className="top-category">
         <p>Top Spending: {data.variableExpensesBreakdown[0]?.category}</p>
-        <p>₱{data.variableExpensesBreakdown[0]?.totalAmount}</p>
+        <p>${data.variableExpensesBreakdown[0]?.totalAmount}</p>
       </div>
       
       {/* Insights */}

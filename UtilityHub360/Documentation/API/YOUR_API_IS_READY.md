@@ -1,4 +1,4 @@
-# 🎉 Your Simple API is Ready!
+﻿# 🎉 Your Simple API is Ready!
 
 ## ✅ ONE SIMPLE ENDPOINT
 
@@ -24,28 +24,28 @@ Remaining Amount = Total Income - Total Expenses - Total Savings
 ║  YOUR FINANCIAL SUMMARY (October 2025)            ║
 ╠═══════════════════════════════════════════════════╣
 ║                                                   ║
-║  📈 Total Income (from DB)        ₱45,000.00     ║
+║  📈 Total Income (from DB)        $45,000.00     ║
 ║     ├─ Income sources: 2                         ║
 ║     └─ From: IncomeSources table                 ║
 ║                                                   ║
-║  📄 Total Bills (from DB)        -₱15,000.00     ║
+║  📄 Total Bills (from DB)        -$15,000.00     ║
 ║     ├─ Bills this month: 5                       ║
 ║     └─ From: Bills table                         ║
 ║                                                   ║
-║  💳 Total Loans (from DB)         -₱8,000.00     ║
+║  💳 Total Loans (from DB)         -$8,000.00     ║
 ║     ├─ Active loans: 2                           ║
 ║     └─ From: Loans table (monthly payment)       ║
 ║                                                   ║
 ║  ─────────────────────────────────────────────   ║
-║  Total Expenses (Bills + Loans)  -₱23,000.00     ║
+║  Total Expenses (Bills + Loans)  -$23,000.00     ║
 ║                                                   ║
-║  💰 Total Savings (from DB)       -₱5,000.00     ║
+║  💰 Total Savings (from DB)       -$5,000.00     ║
 ║     ├─ Savings accounts: 1                       ║
 ║     └─ From: SavingsTransactions table           ║
 ║                                                   ║
 ║  ═════════════════════════════════════════════   ║
 ║                                                   ║
-║  💵 REMAINING AMOUNT               ₱17,000.00    ║
+║  💵 REMAINING AMOUNT               $17,000.00    ║
 ║                                                   ║
 ║  📊 Percentage of Income:            37.78%      ║
 ║  ✅ Status:                          HEALTHY      ║
@@ -59,7 +59,7 @@ Remaining Amount = Total Income - Total Expenses - Total Savings
 
 ### From Your Database:
 
-| Item | Table | Amount (₱) |
+| Item | Table | Amount ($) |
 |------|-------|-----------|
 | Income | IncomeSources | 45,000 |
 | Bills | Bills | 15,000 |
@@ -69,11 +69,11 @@ Remaining Amount = Total Income - Total Expenses - Total Savings
 ### Math:
 
 ```
-Step 1: Total Income             = ₱45,000
-Step 2: Total Expenses           = ₱15,000 + ₱8,000 = ₱23,000
-Step 3: Total Savings            = ₱5,000
+Step 1: Total Income             = $45,000
+Step 2: Total Expenses           = $15,000 + $8,000 = $23,000
+Step 3: Total Savings            = $5,000
 
-Remaining = 45,000 - 23,000 - 5,000 = ₱17,000
+Remaining = 45,000 - 23,000 - 5,000 = $17,000
 ```
 
 ---
@@ -159,12 +159,12 @@ decimal remainingAmount = totalIncome - totalExpenses - totalSavings;
 const { data } = await axios.get('/api/Dashboard/summary');
 
 // Use it!
-console.log(`You have ₱${data.data.remainingAmount} left!`);
+console.log(`You have $${data.data.remainingAmount} left!`);
 console.log(`Status: ${data.data.financialStatus}`);
 
 // Display it!
 <div>
-  <h1>₱{data.data.remainingAmount.toLocaleString()}</h1>
+  <h1>${data.data.remainingAmount.toLocaleString()}</h1>
   <span className={data.data.financialStatus.toLowerCase()}>
     {data.data.financialStatus}
   </span>

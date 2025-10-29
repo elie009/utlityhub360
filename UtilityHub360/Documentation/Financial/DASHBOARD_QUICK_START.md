@@ -1,4 +1,4 @@
-# 🚀 Financial Dashboard — Quick Start Guide
+﻿# 🚀 Financial Dashboard — Quick Start Guide
 
 ## Get Your Dashboard Running in 10 Minutes!
 
@@ -501,7 +501,7 @@ const ExpenseBreakdownChart = ({ data }) => {
             const label = context.label || '';
             const value = context.parsed || 0;
             const percentage = data[context.dataIndex].percentage;
-            return `${label}: ₱${value.toFixed(2)} (${percentage.toFixed(1)}%)`;
+            return `${label}: $${value.toFixed(2)} (${percentage.toFixed(1)}%)`;
           }
         }
       }
@@ -559,7 +559,7 @@ const MobileDashboard = () => {
         <div className="mobile-card">
           <div className="card-icon">💰</div>
           <div className="card-title">Disposable Amount</div>
-          <div className="card-value">₱{summary.disposableAmount.toLocaleString()}</div>
+          <div className="card-value">${summary.disposableAmount.toLocaleString()}</div>
           <div className="card-subtitle">
             {summary.disposablePercentage.toFixed(1)}% of income
           </div>
@@ -569,7 +569,7 @@ const MobileDashboard = () => {
         <div className="mobile-card">
           <div className="card-icon">📈</div>
           <div className="card-title">Total Income</div>
-          <div className="card-value">₱{summary.totalIncome.toLocaleString()}</div>
+          <div className="card-value">${summary.totalIncome.toLocaleString()}</div>
           <div className="card-subtitle">This month</div>
         </div>
 
@@ -578,7 +578,7 @@ const MobileDashboard = () => {
           <div className="card-icon">💳</div>
           <div className="card-title">Total Expenses</div>
           <div className="card-value">
-            ₱{(summary.totalFixedExpenses + summary.totalVariableExpenses).toLocaleString()}
+            ${(summary.totalFixedExpenses + summary.totalVariableExpenses).toLocaleString()}
           </div>
           <div className="card-subtitle">
             Fixed + Variable
