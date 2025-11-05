@@ -34,6 +34,7 @@ namespace UtilityHub360.Controllers
             try
             {
                 var userId = GetUserId();
+                Console.WriteLine($"[CONTROLLER DEBUG] GetFullReport called - Authenticated UserId: {userId}");
                 var result = await _reportService.GenerateFullReportAsync(userId, query);
 
                 if (!result.Success)

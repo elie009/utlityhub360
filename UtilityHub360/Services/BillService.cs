@@ -521,7 +521,7 @@ namespace UtilityHub360.Services
             }
         }
 
-        public async Task<ApiResponse<BillDto>> MarkBillAsPaidAsync(string billId, string userId, string? notes)
+        public async Task<ApiResponse<BillDto>> MarkBillAsPaidAsync(string billId, string userId, string? notes, string? bankAccountId = null)
         {
             try
             {
@@ -533,6 +533,42 @@ namespace UtilityHub360.Services
                     return ApiResponse<BillDto>.ErrorResult("Bill not found");
                 }
 
+                if (bill.Status == "PAID")
+                {
+                    return ApiResponse<BillDto>.ErrorResult("Bill is already paid");
+                }
+
+                // Determine which bank account to use
+                Entities.BankAccount? bankAccount = null;
+                string? accountIdToUse = bankAccountId;
+
+                // If bankAccountId is not provided, try to get user's first active bank account
+                if (string.IsNullOrEmpty(accountIdToUse))
+                {
+                    bankAccount = await _context.BankAccounts
+                        .Where(ba => ba.UserId == userId && ba.IsActive)
+                        .OrderByDescending(ba => ba.CurrentBalance) // Use account with highest balance first
+                        .FirstOrDefaultAsync();
+
+                    if (bankAccount != null)
+                    {
+                        accountIdToUse = bankAccount.Id;
+                        Console.WriteLine($"DEBUG: Auto-selected bank account: {bankAccount.Id} ({bankAccount.AccountName})");
+                    }
+                }
+                else
+                {
+                    // Validate the provided bank account
+                    bankAccount = await _context.BankAccounts
+                        .FirstOrDefaultAsync(ba => ba.Id == accountIdToUse && ba.UserId == userId && ba.IsActive);
+
+                    if (bankAccount == null)
+                    {
+                        return ApiResponse<BillDto>.ErrorResult("Bank account not found, inactive, or does not belong to user");
+                    }
+                }
+
+                // Update bill status
                 bill.Status = "PAID";
                 bill.PaidAt = DateTime.UtcNow;
                 bill.UpdatedAt = DateTime.UtcNow;
@@ -542,13 +578,88 @@ namespace UtilityHub360.Services
                     bill.Notes = notes;
                 }
 
+                // Create payment transaction if bank account is available
+                if (bankAccount != null && !string.IsNullOrEmpty(accountIdToUse))
+                {
+                    // Check if a payment transaction already exists for this bill
+                    var existingPayment = await _context.Payments
+                        .FirstOrDefaultAsync(p => p.BillId == billId && p.Status == "COMPLETED");
+
+                    if (existingPayment == null)
+                    {
+                        // Generate a reference number for the payment
+                        var paymentReference = $"BILL_PAID_{billId.Substring(0, 8)}_{DateTime.UtcNow:yyyyMMddHHmmss}";
+
+                        // Create payment transaction record
+                        var bankTransaction = new Entities.Payment
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            BillId = billId,
+                            BankAccountId = accountIdToUse,
+                            UserId = userId,
+                            Amount = bill.Amount,
+                            Method = "BANK_TRANSFER",
+                            Reference = paymentReference,
+                            Status = "COMPLETED",
+                            IsBankTransaction = true, // This is a bank transaction
+                            TransactionType = "DEBIT",
+                            Description = $"Bill payment - {bill.BillName}",
+                            Category = "BILL_PAYMENT",
+                            ExternalTransactionId = $"BILL_PAY_{billId}",
+                            Notes = notes,
+                            ProcessedAt = DateTime.UtcNow,
+                            TransactionDate = DateTime.UtcNow,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+
+                        _context.Payments.Add(bankTransaction);
+                        Console.WriteLine($"DEBUG: Created payment transaction for bill {billId}. Payment ID: {bankTransaction.Id}");
+
+                        // Update bank account balance (debit - money going out)
+                        bankAccount.CurrentBalance -= bill.Amount;
+                        var newBalance = bankAccount.CurrentBalance;
+                        bankAccount.UpdatedAt = DateTime.UtcNow;
+
+                        // Set balance after transaction
+                        bankTransaction.BalanceAfterTransaction = newBalance;
+
+                        // Also create BankTransaction record
+                        var bankTxnRecord = new Entities.BankTransaction
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            BankAccountId = accountIdToUse,
+                            UserId = userId,
+                            Amount = bill.Amount,
+                            TransactionType = "DEBIT",
+                            Description = $"Bill payment - {bill.BillName}",
+                            Category = "BILL_PAYMENT",
+                            ReferenceNumber = paymentReference,
+                            ExternalTransactionId = $"BILL_PAY_{billId}",
+                            BalanceAfterTransaction = newBalance,
+                            TransactionDate = DateTime.UtcNow,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+
+                        _context.BankTransactions.Add(bankTxnRecord);
+                        Console.WriteLine($"DEBUG: Created BankTransaction record for bill payment. Transaction ID: {bankTxnRecord.Id}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"DEBUG: Payment transaction already exists for bill {billId}. Skipping transaction creation.");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"DEBUG: No bank account available. Bill marked as paid without transaction record.");
+                }
+
                 await _context.SaveChangesAsync();
 
                 var billDto = MapToBillDto(bill);
 
-
-
-                return ApiResponse<BillDto>.SuccessResult(billDto, "Bill marked as paid");
+                return ApiResponse<BillDto>.SuccessResult(billDto, "Bill marked as paid" + (bankAccount != null ? " and transaction recorded" : " (no bank account linked)"));
             }
             catch (Exception ex)
             {

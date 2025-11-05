@@ -251,8 +251,8 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.Industry);
                 entity.HasIndex(e => e.EmploymentType);
 
-                // Temporary: Ignore PreferredCurrency until migration is applied
-                // TODO: Remove this Ignore() call after running migration AddPreferredCurrencyColumn
+                // TODO: Remove this Ignore() call after running add_preferred_currency_column.sql
+                // Temporarily ignoring PreferredCurrency until the column is added to the database
                 entity.Ignore(e => e.PreferredCurrency);
             });
 
@@ -270,12 +270,7 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.IsActive);
                 entity.HasIndex(e => new { e.UserId, e.Name }).IsUnique();
 
-                // Temporary: Ignore soft delete properties until migration is applied
-                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
-                entity.Ignore(e => e.IsDeleted);
-                entity.Ignore(e => e.DeletedAt);
-                entity.Ignore(e => e.DeletedBy);
-                entity.Ignore(e => e.DeleteReason);
+                // Soft delete columns are now available in the database after migration
             });
 
             // VariableExpense configuration

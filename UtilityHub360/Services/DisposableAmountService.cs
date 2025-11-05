@@ -139,6 +139,42 @@ namespace UtilityHub360.Services
                 dto.NetDisposableAmount = dto.DisposableAmount - totalAllocations;
             }
 
+            // Calculate Actual Spending from Transactions
+            var actualSpending = await CalculateActualSpendingAsync(userId, startDate, endDate);
+            dto.ActualSpending = actualSpending;
+            
+            // Calculate Spending Percentages
+            if (dto.DisposableAmount > 0)
+            {
+                if (actualSpending > dto.DisposableAmount)
+                {
+                    // Spending exceeded disposable amount
+                    dto.IsExceeded = true;
+                    dto.SpendingPercentage = 100;
+                    dto.RemainingPercentage = 0;
+                    dto.ExceededPercentage = ((actualSpending - dto.DisposableAmount) / dto.DisposableAmount) * 100;
+                    dto.RemainingDisposableAmount = 0;
+                }
+                else
+                {
+                    // Spending is within disposable amount
+                    dto.IsExceeded = false;
+                    dto.SpendingPercentage = (actualSpending / dto.DisposableAmount) * 100;
+                    dto.RemainingPercentage = ((dto.DisposableAmount - actualSpending) / dto.DisposableAmount) * 100;
+                    dto.ExceededPercentage = null;
+                    dto.RemainingDisposableAmount = dto.DisposableAmount - actualSpending;
+                }
+            }
+            else
+            {
+                // No disposable amount available
+                dto.IsExceeded = actualSpending > 0;
+                dto.SpendingPercentage = 0;
+                dto.RemainingPercentage = 0;
+                dto.ExceededPercentage = actualSpending > 0 ? 100 : null;
+                dto.RemainingDisposableAmount = 0;
+            }
+
             // Get comparison data (previous period) - only if not already calculating comparison
             var previousStartDate = startDate.AddMonths(-1);
             var previousEndDate = endDate.AddMonths(-1);
@@ -418,14 +454,48 @@ namespace UtilityHub360.Services
 
         private decimal CalculatePeriodIncome(List<Entities.IncomeSource> incomes, DateTime startDate, DateTime endDate)
         {
-            var monthsInPeriod = CalculateMonthsInPeriod(startDate, endDate);
-            return incomes.Sum(i => i.MonthlyAmount * monthsInPeriod);
+            // Check if this is a full calendar month (e.g., Oct 1 - Oct 31)
+            var isFullCalendarMonth = IsFullCalendarMonth(startDate, endDate);
+            
+            if (isFullCalendarMonth)
+            {
+                // For a full calendar month, monthly income is fixed regardless of days in the month
+                // Use MonthlyAmount directly without any multiplier
+                return incomes.Sum(i => i.MonthlyAmount);
+            }
+            else
+            {
+                // For partial months or periods spanning multiple months, use proportional calculation
+                var monthsInPeriod = CalculateMonthsInPeriod(startDate, endDate);
+                return incomes.Sum(i => i.MonthlyAmount * monthsInPeriod);
+            }
+        }
+
+        private bool IsFullCalendarMonth(DateTime startDate, DateTime endDate)
+        {
+            // Check if startDate is the first day of a month and endDate is the last day of the same month
+            return startDate.Day == 1 && 
+                   endDate == startDate.AddMonths(1).AddDays(-1);
         }
 
         private decimal CalculateMonthsInPeriod(DateTime startDate, DateTime endDate)
         {
             var days = (endDate - startDate).Days + 1;
             return days / 30.0m; // Approximate months
+        }
+
+        private async Task<decimal> CalculateActualSpendingAsync(string userId, DateTime startDate, DateTime endDate)
+        {
+            // Get all DEBIT transactions (actual spending) from Payments table for the period
+            var debitTransactions = await _context.Payments
+                .Where(p => p.UserId == userId && 
+                           p.IsBankTransaction &&
+                           p.TransactionType == "DEBIT" &&
+                           p.TransactionDate >= startDate && 
+                           p.TransactionDate <= endDate)
+                .SumAsync(p => p.Amount);
+
+            return debitTransactions;
         }
 
         private string DeterminePeriod(DateTime startDate, DateTime endDate)
@@ -497,6 +567,19 @@ namespace UtilityHub360.Services
                 if (loanPercentage > 30)
                 {
                     insights.Add($"Your loan payments represent {loanPercentage:F1}% of your income. This is quite high - consider strategies to reduce debt.");
+                }
+            }
+
+            // Spending status insight
+            if (current.DisposableAmount > 0)
+            {
+                if (current.IsExceeded && current.ExceededPercentage.HasValue)
+                {
+                    insights.Add($"⚠️ You've exceeded your disposable amount by {current.ExceededPercentage.Value:F1}%. Current spending: ${current.ActualSpending:N2} vs Available: ${current.DisposableAmount:N2}.");
+                }
+                else if (current.RemainingPercentage > 0)
+                {
+                    insights.Add($"✅ You have {current.RemainingPercentage:F1}% of your disposable amount remaining ({current.RemainingDisposableAmount:C} out of {current.DisposableAmount:C}).");
                 }
             }
 

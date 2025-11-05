@@ -389,39 +389,153 @@
 }
 ```
 
-### 31. GET `/api/savings`
+## 💰 Savings Endpoints (`/api/Savings`)
+
+### 31. GET `/api/Savings/accounts`
 **Description:** Get all savings accounts for current user
 **Authentication:** Required
 **Headers:** `Authorization: Bearer <token>`
 
-### 32. GET `/api/savings/{accountId}`
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "savings-account-id",
+      "accountName": "Emergency Fund",
+      "savingsType": "EMERGENCY",
+      "targetAmount": 10000.00,
+      "currentBalance": 2500.00,
+      "currency": "USD",
+      "progressPercentage": 25.0,
+      "remainingAmount": 7500.00,
+      "daysRemaining": 180,
+      "monthlyTarget": 416.67
+    }
+  ]
+}
+```
+
+### 32. POST `/api/Savings/accounts`
+**Description:** Create a new savings account
+**Authentication:** Required
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "accountName": "Emergency Fund",
+  "savingsType": "EMERGENCY",
+  "targetAmount": 10000.00,
+  "description": "6 months emergency savings",
+  "goal": "Build emergency fund for unexpected expenses",
+  "targetDate": "2024-12-31T00:00:00Z",
+  "currency": "USD"
+}
+```
+
+### 33. GET `/api/Savings/accounts/{savingsAccountId}`
 **Description:** Get savings account details
 **Authentication:** Required
 **Headers:** `Authorization: Bearer <token>`
 
-### 33. POST `/api/savings/{accountId}/deposit`
-**Description:** Make a deposit to savings account
+### 34. PUT `/api/Savings/accounts/{savingsAccountId}`
+**Description:** Update savings account
+**Authentication:** Required
+**Headers:** `Authorization: Bearer <token>`
+
+### 35. DELETE `/api/Savings/accounts/{savingsAccountId}`
+**Description:** Delete savings account (only if no transactions exist)
+**Authentication:** Required
+**Headers:** `Authorization: Bearer <token>`
+
+### 36. POST `/api/Savings/transactions`
+**Description:** Create a savings transaction (deposit or withdrawal)
 **Authentication:** Required
 **Headers:** `Authorization: Bearer <token>`
 
 **Request:**
 ```json
 {
+  "savingsAccountId": "savings-account-id",
+  "sourceBankAccountId": "bank-account-id",
   "amount": 500.00,
-  "notes": "Monthly savings deposit"
+  "transactionType": "DEPOSIT",
+  "description": "Monthly savings contribution",
+  "category": "MONTHLY_SAVINGS",
+  "notes": "20% of salary saved",
+  "transactionDate": "2024-01-15T00:00:00Z",
+  "currency": "USD",
+  "isRecurring": true,
+  "recurringFrequency": "MONTHLY"
 }
 ```
 
-### 34. POST `/api/savings/{accountId}/withdraw`
-**Description:** Make a withdrawal from savings account
+**Note:** `transactionType` must be either `"DEPOSIT"` (transfer from bank to savings) or `"WITHDRAWAL"` (transfer from savings to bank).
+
+### 37. GET `/api/Savings/summary`
+**Description:** Get savings summary with total savings balance across all accounts
+**Authentication:** Required
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "totalSavingsAccounts": 3,
+    "totalSavingsBalance": 5000.00,
+    "totalTargetAmount": 15000.00,
+    "overallProgressPercentage": 33.33,
+    "activeGoals": 2,
+    "completedGoals": 1,
+    "monthlySavingsTarget": 1250.00,
+    "thisMonthSaved": 500.00,
+    "recentAccounts": [...]
+  }
+}
+```
+
+### 38. GET `/api/Savings/analytics?period=month`
+**Description:** Get savings analytics for a specific period
+**Authentication:** Required
+**Headers:** `Authorization: Bearer <token>`
+**Query Parameters:**
+- `period`: Period type (week/month/quarter/year, default: month)
+
+### 39. GET `/api/Savings/by-type`
+**Description:** Get savings grouped by type (EMERGENCY, VACATION, etc.)
+**Authentication:** Required
+**Headers:** `Authorization: Bearer <token>`
+
+### 40. POST `/api/Savings/transfer/bank-to-savings`
+**Description:** Transfer money from bank account to savings account
 **Authentication:** Required
 **Headers:** `Authorization: Bearer <token>`
 
 **Request:**
 ```json
 {
-  "amount": 200.00,
-  "notes": "Emergency withdrawal"
+  "bankAccountId": "bank-account-id",
+  "savingsAccountId": "savings-account-id",
+  "amount": 1000.00,
+  "description": "Monthly savings transfer"
+}
+```
+
+### 41. POST `/api/Savings/transfer/savings-to-bank`
+**Description:** Transfer money from savings account to bank account
+**Authentication:** Required
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "savingsAccountId": "savings-account-id",
+  "bankAccountId": "bank-account-id",
+  "amount": 500.00,
+  "description": "Emergency withdrawal"
 }
 ```
 
@@ -684,9 +798,38 @@
 
 ---
 
-## 📊 Reports Endpoints (`/api/reports`)
+## 📊 Reports Endpoints (`/api/Reports`)
 
-### 60. GET `/api/reports/user/{userId}`
+### 60. GET `/api/Reports/summary`
+**Description:** Get financial summary including total savings, income, expenses, and net worth
+**Authentication:** Required
+**Headers:** `Authorization: Bearer <token>`
+**Query Parameters:**
+- `date`: Optional date for summary (default: current date)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "totalIncome": 8000.00,
+    "incomeChange": 5.2,
+    "totalExpenses": 4500.00,
+    "expenseChange": -2.1,
+    "disposableIncome": 3500.00,
+    "disposableChange": 8.5,
+    "totalSavings": 5000.00,
+    "savingsGoal": 10000.00,
+    "savingsProgress": 50.0,
+    "netWorth": 25000.00,
+    "netWorthChange": 12.5
+  }
+}
+```
+
+**Note:** This endpoint provides `totalSavings` which is an alternative to `GET /api/Savings/summary` for getting your total savings amount. Use this endpoint when you need a comprehensive financial summary that includes savings along with income, expenses, and net worth.
+
+### 61. GET `/api/Reports/user/{userId}`
 **Description:** Get user financial report
 **Authentication:** Required
 **Headers:** `Authorization: Bearer <token>`
@@ -695,7 +838,7 @@
 - `startDate`: Start date (ISO format)
 - `endDate`: End date (ISO format)
 
-### 61. GET `/api/reports/loan/{loanId}`
+### 62. GET `/api/Reports/loan/{loanId}`
 **Description:** Get detailed loan report
 **Authentication:** Required
 **Headers:** `Authorization: Bearer <token>`
@@ -704,7 +847,7 @@
 
 ## 👨‍💼 Admin Endpoints (`/api/admin`)
 
-### 62. PUT `/api/admin/loans/{loanId}/approve`
+### 63. PUT `/api/admin/loans/{loanId}/approve`
 **Description:** Approve a loan (Admin only)
 **Authentication:** Required (Admin)
 **Headers:** `Authorization: Bearer <token>`
@@ -717,7 +860,7 @@
 }
 ```
 
-### 63. PUT `/api/admin/loans/{loanId}/reject`
+### 64. PUT `/api/admin/loans/{loanId}/reject`
 **Description:** Reject a loan (Admin only)
 **Authentication:** Required (Admin)
 **Headers:** `Authorization: Bearer <token>`

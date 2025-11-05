@@ -31,6 +31,14 @@ namespace UtilityHub360.DTOs
         public decimal? InvestmentAllocation { get; set; }
         public decimal? NetDisposableAmount { get; set; }
         
+        // Spending Tracking
+        public decimal ActualSpending { get; set; } // Actual spending from transactions
+        public decimal SpendingPercentage { get; set; } // Percentage of disposable amount spent
+        public decimal RemainingPercentage { get; set; } // Percentage of disposable amount remaining
+        public decimal? ExceededPercentage { get; set; } // Percentage exceeded (if spending > disposable)
+        public bool IsExceeded { get; set; } // Whether spending exceeds disposable amount
+        public decimal? RemainingDisposableAmount { get; set; } // Actual remaining disposable amount
+        
         // Insights
         public List<string> Insights { get; set; } = new();
         public ComparisonData? Comparison { get; set; }

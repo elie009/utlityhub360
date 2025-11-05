@@ -44,8 +44,10 @@ namespace UtilityHub360.Services
                     Industry = createProfileDto.Industry,
                     Location = createProfileDto.Location,
                     Notes = createProfileDto.Notes,
-                    // TODO: Uncomment after running migration AddPreferredCurrencyColumn
-                    // PreferredCurrency = createProfileDto.PreferredCurrency ?? "USD",
+                    // TODO: Uncomment after running add_preferred_currency_column.sql
+                    // PreferredCurrency = !string.IsNullOrEmpty(createProfileDto.PreferredCurrency) 
+                    //     ? createProfileDto.PreferredCurrency.ToUpper() 
+                    //     : "USD",
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -76,19 +78,75 @@ namespace UtilityHub360.Services
         {
             try
             {
+                Console.WriteLine($"[GET USER PROFILE] Attempting to get profile for UserId: {userId}");
+                
+                // Try to query without PreferredCurrency first to avoid column issues
                 var userProfile = await _context.UserProfiles
-                    .FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive);
+                    .Where(p => p.UserId == userId && p.IsActive)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.UserId,
+                        p.JobTitle,
+                        p.Company,
+                        p.EmploymentType,
+                        p.MonthlySavingsGoal,
+                        p.MonthlyInvestmentGoal,
+                        p.MonthlyEmergencyFundGoal,
+                        p.TaxRate,
+                        p.MonthlyTaxDeductions,
+                        p.Industry,
+                        p.Location,
+                        p.Notes,
+                        p.IsActive,
+                        p.CreatedAt,
+                        p.UpdatedAt
+                    })
+                    .FirstOrDefaultAsync();
+
+                Console.WriteLine($"[GET USER PROFILE] Query completed. Found profile: {(userProfile != null ? "Yes" : "No")}");
 
                 if (userProfile == null)
                 {
+                    Console.WriteLine($"[GET USER PROFILE] No active profile found for UserId: {userId}");
+                    
+                    // Check if there's any profile (active or inactive)
+                    var anyProfile = await _context.UserProfiles
+                        .Where(p => p.UserId == userId)
+                        .Select(p => new { p.Id, p.IsActive })
+                        .FirstOrDefaultAsync();
+                    
+                    if (anyProfile != null)
+                    {
+                        Console.WriteLine($"[GET USER PROFILE] Found profile but IsActive = {anyProfile.IsActive} for UserId: {userId}");
+                        return ApiResponse<UserProfileDto>.ErrorResult($"User profile exists but is {(anyProfile.IsActive ? "active but query failed" : "inactive")}");
+                    }
+                    
                     return ApiResponse<UserProfileDto>.ErrorResult("User profile not found");
                 }
 
-                var profileDto = await MapToUserProfileDto(userProfile);
+                // Now fetch the full profile (will use Ignore for PreferredCurrency if column doesn't exist)
+                var fullProfile = await _context.UserProfiles
+                    .FirstOrDefaultAsync(p => p.Id == userProfile.Id);
+
+                if (fullProfile == null)
+                {
+                    return ApiResponse<UserProfileDto>.ErrorResult("Failed to load full user profile");
+                }
+
+                Console.WriteLine($"[GET USER PROFILE] Full profile loaded. PreferredCurrency: '{fullProfile.PreferredCurrency}'");
+                var profileDto = await MapToUserProfileDto(fullProfile);
+                Console.WriteLine($"[GET USER PROFILE] DTO mapped successfully. PreferredCurrency: '{profileDto.PreferredCurrency}'");
                 return ApiResponse<UserProfileDto>.SuccessResult(profileDto);
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"[GET USER PROFILE ERROR] Exception occurred: {ex.Message}");
+                Console.WriteLine($"[GET USER PROFILE ERROR] Stack trace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"[GET USER PROFILE ERROR] Inner exception: {ex.InnerException.Message}");
+                }
                 return ApiResponse<UserProfileDto>.ErrorResult($"Failed to retrieve user profile: {ex.Message}");
             }
         }
@@ -128,15 +186,28 @@ namespace UtilityHub360.Services
                     userProfile.Location = updateProfileDto.Location;
                 if (!string.IsNullOrEmpty(updateProfileDto.Notes))
                     userProfile.Notes = updateProfileDto.Notes;
-                // TODO: Uncomment after running migration AddPreferredCurrencyColumn
-                // if (!string.IsNullOrEmpty(updateProfileDto.PreferredCurrency))
-                //     userProfile.PreferredCurrency = updateProfileDto.PreferredCurrency;
+                if (!string.IsNullOrEmpty(updateProfileDto.PreferredCurrency))
+                {
+                    var newCurrency = updateProfileDto.PreferredCurrency.ToUpper();
+                    Console.WriteLine($"[USER PROFILE UPDATE] Updating PreferredCurrency from '{userProfile.PreferredCurrency}' to '{newCurrency}'");
+                    userProfile.PreferredCurrency = newCurrency;
+                }
+                else
+                {
+                    Console.WriteLine($"[USER PROFILE UPDATE] PreferredCurrency not provided in update request. Current value: '{userProfile.PreferredCurrency}'");
+                }
 
                 userProfile.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
+                Console.WriteLine($"[USER PROFILE UPDATE] Saved successfully. PreferredCurrency is now: '{userProfile.PreferredCurrency}'");
+
+                // Reload from database to ensure we have the latest value
+                await _context.Entry(userProfile).ReloadAsync();
+                Console.WriteLine($"[USER PROFILE UPDATE] After reload from DB, PreferredCurrency is: '{userProfile.PreferredCurrency}'");
 
                 var profileDto = await MapToUserProfileDto(userProfile);
+                Console.WriteLine($"[USER PROFILE UPDATE] DTO PreferredCurrency: '{profileDto.PreferredCurrency}'");
                 return ApiResponse<UserProfileDto>.SuccessResult(profileDto, "User profile updated successfully");
             }
             catch (Exception ex)
@@ -582,15 +653,14 @@ namespace UtilityHub360.Services
                     return ApiResponse<UserProfileDto>.ErrorResult("User profile not found");
                 }
 
-                // TODO: Uncomment after running migration AddPreferredCurrencyColumn
-                // userProfile.PreferredCurrency = currency;
+                // TODO: Uncomment after running add_preferred_currency_column.sql
+                // userProfile.PreferredCurrency = !string.IsNullOrEmpty(currency) ? currency.ToUpper() : "USD";
                 // userProfile.UpdatedAt = DateTime.UtcNow;
                 // await _context.SaveChangesAsync();
                 // var userProfileDto = await MapToUserProfileDto(userProfile);
                 // return ApiResponse<UserProfileDto>.SuccessResult(userProfileDto, "Preferred currency updated successfully");
                 
-                // For now, just return error (until migration is applied)
-                return ApiResponse<UserProfileDto>.ErrorResult("PreferredCurrency update is temporarily disabled. Please run the AddPreferredCurrencyColumn migration first.");
+                return ApiResponse<UserProfileDto>.ErrorResult("PreferredCurrency column not found in database. Please run add_preferred_currency_column.sql script first.");
             }
             catch (Exception ex)
             {

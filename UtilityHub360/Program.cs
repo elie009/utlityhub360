@@ -67,7 +67,9 @@ builder.Services.AddCors(options =>
                 "http://localhost:3000",
                 "https://localhost:3000",
                 "http://localhost:5000",
-                "https://localhost:5000"
+                "https://localhost:5000",
+                "http://localhost:64653",
+                "https://localhost:64653"
               )
               .AllowAnyHeader()
               .AllowAnyMethod()
@@ -131,6 +133,7 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddSingleton<IDocumentationSearchService, DocumentationSearchService>();
 builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
+builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 
 // Add Background Services
 builder.Services.AddHostedService<BillReminderBackgroundService>();

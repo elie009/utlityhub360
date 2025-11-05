@@ -111,6 +111,7 @@ namespace UtilityHub360.DTOs
     {
         public string Id { get; set; } = string.Empty;
         public string BankAccountId { get; set; } = string.Empty;
+        public string? AccountName { get; set; } // Bank account name
         public string UserId { get; set; } = string.Empty;
         public decimal Amount { get; set; }
         public string TransactionType { get; set; } = string.Empty;
@@ -185,6 +186,9 @@ namespace UtilityHub360.DTOs
 
         [StringLength(450)]
         public string? LoanId { get; set; } // Reference to loan if category is loan-related
+
+        [StringLength(450)]
+        public string? ToBankAccountId { get; set; } // Destination account for transfers (when transferring from one account to another)
     }
 
     public class BankAccountSummaryDto

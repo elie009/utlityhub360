@@ -83,7 +83,7 @@ public class SavingsTransaction
 
 #### Create Savings Account
 ```http
-POST /api/savings/accounts
+POST /api/Savings/accounts
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -100,19 +100,19 @@ Content-Type: application/json
 
 #### Get User Savings Accounts
 ```http
-GET /api/savings/accounts
+GET /api/Savings/accounts
 Authorization: Bearer {token}
 ```
 
 #### Get Specific Savings Account
 ```http
-GET /api/savings/accounts/{savingsAccountId}
+GET /api/Savings/accounts/{savingsAccountId}
 Authorization: Bearer {token}
 ```
 
 #### Update Savings Account
 ```http
-PUT /api/savings/accounts/{savingsAccountId}
+PUT /api/Savings/accounts/{savingsAccountId}
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -129,7 +129,7 @@ Content-Type: application/json
 
 #### Delete Savings Account
 ```http
-DELETE /api/savings/accounts/{savingsAccountId}
+DELETE /api/Savings/accounts/{savingsAccountId}
 Authorization: Bearer {token}
 ```
 
@@ -137,7 +137,7 @@ Authorization: Bearer {token}
 
 #### Create Savings Transaction
 ```http
-POST /api/savings/transactions
+POST /api/Savings/transactions
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -158,13 +158,13 @@ Content-Type: application/json
 
 #### Get Savings Transactions
 ```http
-GET /api/savings/accounts/{savingsAccountId}/transactions?page=1&limit=50
+GET /api/Savings/accounts/{savingsAccountId}/transactions?page=1&limit=50
 Authorization: Bearer {token}
 ```
 
 #### Get Specific Transaction
 ```http
-GET /api/savings/transactions/{transactionId}
+GET /api/Savings/transactions/{transactionId}
 Authorization: Bearer {token}
 ```
 
@@ -172,7 +172,7 @@ Authorization: Bearer {token}
 
 #### Get Savings Summary
 ```http
-GET /api/savings/summary
+GET /api/Savings/summary
 Authorization: Bearer {token}
 ```
 
@@ -195,9 +195,39 @@ Authorization: Bearer {token}
 }
 ```
 
+**Alternative: Get Total Savings via Financial Reports**
+
+You can also get your total savings amount as part of a comprehensive financial summary:
+
+```http
+GET /api/Reports/summary
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "totalIncome": 8000.00,
+    "totalExpenses": 4500.00,
+    "disposableIncome": 3500.00,
+    "totalSavings": 5000.00,
+    "savingsGoal": 10000.00,
+    "savingsProgress": 50.0,
+    "netWorth": 25000.00,
+    ...
+  }
+}
+```
+
+**When to use which endpoint:**
+- Use `GET /api/Savings/summary` when you need detailed savings-specific information (accounts, goals, progress, etc.)
+- Use `GET /api/Reports/summary` when you need total savings along with other financial metrics (income, expenses, net worth) in a single call
+
 #### Get Savings Analytics
 ```http
-GET /api/savings/analytics?period=month
+GET /api/Savings/analytics?period=month
 Authorization: Bearer {token}
 ```
 
@@ -230,7 +260,7 @@ Authorization: Bearer {token}
 
 #### Get Savings by Type
 ```http
-GET /api/savings/by-type
+GET /api/Savings/by-type
 Authorization: Bearer {token}
 ```
 
@@ -238,7 +268,7 @@ Authorization: Bearer {token}
 
 #### Update Savings Goal
 ```http
-PUT /api/savings/accounts/{savingsAccountId}/goal
+PUT /api/Savings/accounts/{savingsAccountId}/goal
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -250,13 +280,13 @@ Content-Type: application/json
 
 #### Get Savings Goals by Type
 ```http
-GET /api/savings/goals/{savingsType}
+GET /api/Savings/goals/{savingsType}
 Authorization: Bearer {token}
 ```
 
 #### Get Total Savings Progress
 ```http
-GET /api/savings/progress
+GET /api/Savings/progress
 Authorization: Bearer {token}
 ```
 
@@ -264,7 +294,7 @@ Authorization: Bearer {token}
 
 #### Transfer from Bank to Savings
 ```http
-POST /api/savings/transfer/bank-to-savings
+POST /api/Savings/transfer/bank-to-savings
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -278,7 +308,7 @@ Content-Type: application/json
 
 #### Transfer from Savings to Bank
 ```http
-POST /api/savings/transfer/savings-to-bank
+POST /api/Savings/transfer/savings-to-bank
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -515,7 +545,7 @@ await transferToSavings({
 
 ```javascript
 // Create emergency fund
-const emergencyFund = await fetch('/api/savings/accounts', {
+const emergencyFund = await fetch('/api/Savings/accounts', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -532,7 +562,7 @@ const emergencyFund = await fetch('/api/savings/accounts', {
 });
 
 // Create vacation fund
-const vacationFund = await fetch('/api/savings/accounts', {
+const vacationFund = await fetch('/api/Savings/accounts', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -549,7 +579,7 @@ const vacationFund = await fetch('/api/savings/accounts', {
 });
 
 // Create investment fund
-const investmentFund = await fetch('/api/savings/accounts', {
+const investmentFund = await fetch('/api/Savings/accounts', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -576,7 +606,7 @@ const monthlySavings = async (salaryAmount) => {
   const investmentAmount = salaryAmount * 0.15; // 15% to investment
 
   // Transfer to emergency fund
-  await fetch('/api/savings/transfer/bank-to-savings', {
+  await fetch('/api/Savings/transfer/bank-to-savings', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -591,7 +621,7 @@ const monthlySavings = async (salaryAmount) => {
   });
 
   // Transfer to vacation fund
-  await fetch('/api/savings/transfer/bank-to-savings', {
+  await fetch('/api/Savings/transfer/bank-to-savings', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -606,7 +636,7 @@ const monthlySavings = async (salaryAmount) => {
   });
 
   // Transfer to investment fund
-  await fetch('/api/savings/transfer/bank-to-savings', {
+  await fetch('/api/Savings/transfer/bank-to-savings', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -627,7 +657,7 @@ const monthlySavings = async (salaryAmount) => {
 ```javascript
 // Get savings summary
 const getSavingsProgress = async () => {
-  const response = await fetch('/api/savings/summary', {
+  const response = await fetch('/api/Savings/summary', {
     headers: { 'Authorization': `Bearer ${token}` }
   });
   const data = await response.json();
@@ -641,7 +671,7 @@ const getSavingsProgress = async () => {
 
 // Get individual account progress
 const getAccountProgress = async (accountId) => {
-  const response = await fetch(`/api/savings/accounts/${accountId}`, {
+  const response = await fetch(`/api/Savings/accounts/${accountId}`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
   const data = await response.json();
@@ -660,7 +690,7 @@ const getAccountProgress = async (accountId) => {
 ```javascript
 // Emergency withdrawal from savings
 const emergencyWithdrawal = async (amount, reason) => {
-  const response = await fetch('/api/savings/transfer/savings-to-bank', {
+  const response = await fetch('/api/Savings/transfer/savings-to-bank', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

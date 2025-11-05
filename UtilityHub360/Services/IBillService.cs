@@ -20,7 +20,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<BillAnalyticsDto>> GetBillAnalyticsAsync(string userId);
 
         // Bill Management
-        Task<ApiResponse<BillDto>> MarkBillAsPaidAsync(string billId, string userId, string? notes);
+        Task<ApiResponse<BillDto>> MarkBillAsPaidAsync(string billId, string userId, string? notes, string? bankAccountId = null);
         Task<ApiResponse<bool>> UpdateBillStatusAsync(string billId, string status, string userId);
         Task<ApiResponse<List<BillDto>>> GetOverdueBillsAsync(string userId);
         Task<ApiResponse<List<BillDto>>> GetUpcomingBillsAsync(string userId, int days = 7);

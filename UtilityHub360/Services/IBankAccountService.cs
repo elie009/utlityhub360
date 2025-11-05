@@ -14,7 +14,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<List<BankAccountDto>>> GetUserBankAccountsAsync(string userId, bool includeInactive = false);
 
         // Bank Account Analytics & Summary
-        Task<ApiResponse<BankAccountSummaryDto>> GetBankAccountSummaryAsync(string userId, string frequency = "monthly");
+        Task<ApiResponse<BankAccountSummaryDto>> GetBankAccountSummaryAsync(string userId, string frequency = "monthly", int? year = null, int? month = null);
         Task<ApiResponse<BankAccountAnalyticsDto>> GetBankAccountAnalyticsAsync(string userId, string period = "month");
         Task<ApiResponse<decimal>> GetTotalBalanceAsync(string userId);
         Task<ApiResponse<List<BankAccountDto>>> GetTopAccountsByBalanceAsync(string userId, int limit = 5);
@@ -27,8 +27,8 @@ namespace UtilityHub360.Services
 
         // Bank Transactions
         Task<ApiResponse<BankTransactionDto>> CreateTransactionAsync(CreateBankTransactionDto createTransactionDto, string userId);
-        Task<ApiResponse<List<BankTransactionDto>>> GetAccountTransactionsAsync(string bankAccountId, string userId, int page = 1, int limit = 50);
-        Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? accountType = null, int page = 1, int limit = 50);
+        Task<ApiResponse<List<BankTransactionDto>>> GetAccountTransactionsAsync(string bankAccountId, string userId, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null);
+        Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? accountType = null, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null);
         Task<ApiResponse<BankTransactionDto>> GetTransactionAsync(string transactionId, string userId);
         Task<ApiResponse<bool>> DeleteTransactionAsync(string transactionId, string userId);
 
