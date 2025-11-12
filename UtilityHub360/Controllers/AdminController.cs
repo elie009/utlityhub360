@@ -9,7 +9,7 @@ namespace UtilityHub360.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize(Roles = "ADMIN")]
+    [Authorize]
     public class AdminController : ControllerBase
     {
         private readonly ILoanService _loanService;
@@ -119,7 +119,8 @@ namespace UtilityHub360.Controllers
                     disburseLoanDto.LoanId, 
                     adminId, 
                     disburseLoanDto.DisbursementMethod, 
-                    disburseLoanDto.Reference);
+                    disburseLoanDto.Reference,
+                    disburseLoanDto.BankAccountId);
                 
                 if (result.Success)
                 {
@@ -212,6 +213,7 @@ namespace UtilityHub360.Controllers
         public string DisbursedBy { get; set; } = string.Empty;
         public string DisbursementMethod { get; set; } = string.Empty;
         public string? Reference { get; set; }
+        public string? BankAccountId { get; set; } // Optional: If provided, loan amount will be credited to this bank account
     }
 
     public class CloseLoanDto

@@ -9,10 +9,12 @@ namespace UtilityHub360.Services
     public class LoanService : ILoanService
     {
         private readonly ApplicationDbContext _context;
+        private readonly LoanAccountingService _accountingService;
 
-        public LoanService(ApplicationDbContext context)
+        public LoanService(ApplicationDbContext context, LoanAccountingService accountingService)
         {
             _context = context;
+            _accountingService = accountingService;
         }
 
         public async Task<Loan?> GetLoanWithAccessCheckAsync(string loanId, string userId)
@@ -69,8 +71,21 @@ namespace UtilityHub360.Services
 
                 // Create loan from application using provided interest rate
                 var interestRate = application.InterestRate;
-                var monthlyPayment = CalculateMonthlyPayment(application.Principal, interestRate, application.Term);
+                var interestMethod = "AMORTIZED"; // Default to amortized, can be made configurable
+                var actualFinancedAmount = application.Principal; // Will be adjusted if down payment is provided
+                var monthlyPayment = CalculateMonthlyPayment(actualFinancedAmount, interestRate, application.Term, interestMethod);
                 var totalAmount = monthlyPayment * application.Term;
+                
+                // Calculate total interest based on method
+                decimal totalInterest = 0;
+                if (interestMethod == "FLAT_RATE")
+                {
+                    totalInterest = CalculateFlatRateInterest(actualFinancedAmount, interestRate, application.Term);
+                }
+                else
+                {
+                    totalInterest = CalculateAmortizedInterest(actualFinancedAmount, interestRate, application.Term);
+                }
 
                 var loan = new Entities.Loan
                 {
@@ -85,13 +100,19 @@ namespace UtilityHub360.Services
                     RemainingBalance = totalAmount,
                     AppliedAt = DateTime.UtcNow,
                     AdditionalInfo = application.AdditionalInfo
+                    // TEMPORARY: Commented out until database migration is applied
+                    // InterestComputationMethod = interestMethod,
+                    // TotalInterest = totalInterest,
+                    // ActualFinancedAmount = actualFinancedAmount,
+                    // PaymentFrequency = "MONTHLY",
+                    // StartDate = null // Will be set when disbursed
                 };
 
                 _context.Loans.Add(loan);
                 await _context.SaveChangesAsync();
 
                 // Create repayment schedule
-                await CreateRepaymentScheduleAsync(loan.Id, monthlyPayment, application.Term, interestRate);
+                await CreateRepaymentScheduleAsync(loan.Id, monthlyPayment, application.Term, interestRate, null, interestMethod, actualFinancedAmount);
 
                 // Update due dates based on repayment schedule
                 await UpdateLoanDueDatesAsync(loan);
@@ -420,7 +441,7 @@ namespace UtilityHub360.Services
             }
         }
 
-        public async Task<ApiResponse<object>> DisburseLoanAsync(string loanId, string adminId, string disbursementMethod, string? reference)
+        public async Task<ApiResponse<object>> DisburseLoanAsync(string loanId, string adminId, string disbursementMethod, string? reference, string? bankAccountId = null)
         {
             try
             {
@@ -437,20 +458,124 @@ namespace UtilityHub360.Services
 
                 loan.Status = "ACTIVE";
                 loan.DisbursedAt = DateTime.UtcNow;
+                // TEMPORARY: Commented out until database migration is applied
+                // loan.StartDate = DateTime.UtcNow;
 
-                // Create disbursement transaction as Payment record
+                // TEMPORARY: Commented out until database migration is applied
+                // Handle processing fee if applicable (record before disbursement)
+                // if (loan.ProcessingFee > 0)
+                // {
+                //     await _accountingService.CreateProcessingFeeEntryAsync(
+                //         loanId,
+                //         loan.UserId,
+                //         loan.ProcessingFee,
+                //         reference != null ? $"{reference}-FEE" : null);
+                // }
+
+                // TEMPORARY: Commented out until database migration is applied
+                // Handle down payment if applicable (reduces principal before disbursement)
+                // if (loan.DownPayment > 0)
+                // {
+                //     await _accountingService.CreateDownPaymentEntryAsync(
+                //         loanId,
+                //         loan.UserId,
+                //         loan.DownPayment,
+                //         reference != null ? $"{reference}-DOWN" : null);
+                //     
+                //     // Adjust remaining balance for down payment
+                //     loan.RemainingBalance -= loan.DownPayment;
+                // }
+
+                // TEMPORARY: Commented out until database migration is applied
+                // Create journal entry for loan disbursement (Debit Cash, Credit Loan Payable)
+                var disbursementAmount = loan.Principal; // loan.ActualFinancedAmount > 0 ? loan.ActualFinancedAmount : loan.Principal;
+                // await _accountingService.CreateLoanDisbursementEntryAsync(
+                //     loanId,
+                //     loan.UserId,
+                //     disbursementAmount,
+                //     reference);
+
+                // Credit loan amount to bank account if BankAccountId is provided
+                if (!string.IsNullOrEmpty(bankAccountId))
+                {
+                    var bankAccount = await _context.BankAccounts
+                        .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == loan.UserId);
+
+                    if (bankAccount == null)
+                    {
+                        return ApiResponse<object>.ErrorResult("Bank account not found or does not belong to the loan user");
+                    }
+
+                    if (!bankAccount.IsActive)
+                    {
+                        return ApiResponse<object>.ErrorResult("Bank account is not active");
+                    }
+
+                    // Create bank transaction (CREDIT) - Loan disbursement credited to account
+                    var bankTransaction = new Entities.BankTransaction
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        BankAccountId = bankAccountId,
+                        UserId = loan.UserId,
+                        Amount = disbursementAmount,
+                        TransactionType = "CREDIT",
+                        Description = $"Loan disbursement - {loan.Purpose}",
+                        Category = "LOAN",
+                        ReferenceNumber = reference ?? $"LOAN-DISB-{DateTime.UtcNow:yyyyMMddHHmmss}",
+                        ExternalTransactionId = $"LOAN_{loanId}",
+                        Notes = $"Loan disbursement for loan {loanId}",
+                        Currency = bankAccount.Currency,
+                        TransactionDate = DateTime.UtcNow,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    // Update bank account balance (CREDIT = add money)
+                    bankAccount.CurrentBalance += disbursementAmount;
+                    bankTransaction.BalanceAfterTransaction = bankAccount.CurrentBalance;
+                    bankAccount.UpdatedAt = DateTime.UtcNow;
+
+                    // Create Payment record for bank transaction
+                    var bankPayment = new Entities.Payment
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        BankAccountId = bankAccountId,
+                        LoanId = loanId,
+                        UserId = loan.UserId,
+                        Amount = disbursementAmount,
+                        Method = "BANK_TRANSFER",
+                        Reference = bankTransaction.ReferenceNumber,
+                        Status = "COMPLETED",
+                        IsBankTransaction = true,
+                        TransactionType = "CREDIT",
+                        Description = $"Loan disbursement credited to {bankAccount.AccountName}",
+                        Category = "LOAN",
+                        Currency = bankAccount.Currency,
+                        BalanceAfterTransaction = bankAccount.CurrentBalance,
+                        ProcessedAt = DateTime.UtcNow,
+                        TransactionDate = DateTime.UtcNow,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    _context.BankTransactions.Add(bankTransaction);
+                    _context.Payments.Add(bankPayment);
+                }
+
+                // Create disbursement transaction as Payment record (for loan transaction history)
                 var disbursementPayment = new Entities.Payment
                 {
                     Id = Guid.NewGuid().ToString(),
                     LoanId = loanId,
                     UserId = loan.UserId,
-                    Amount = loan.Principal,
+                    Amount = disbursementAmount,
                     Method = disbursementMethod,
-                    Reference = reference,
+                    Reference = reference ?? $"DISB-{DateTime.UtcNow:yyyyMMddHHmmss}",
                     Status = "COMPLETED",
                     IsBankTransaction = false, // This is a loan activity, not a bank transaction
                     TransactionType = "DISBURSEMENT",
-                    Description = $"Loan disbursement via {disbursementMethod}",
+                    Description = $"Loan disbursement via {disbursementMethod}" + 
+                                 (!string.IsNullOrEmpty(bankAccountId) ? $" (credited to bank account)" : ""),
                     ProcessedAt = DateTime.UtcNow,
                     TransactionDate = DateTime.UtcNow,
                     CreatedAt = DateTime.UtcNow,
@@ -466,7 +591,12 @@ namespace UtilityHub360.Services
                     disbursedAmount = loan.Principal,
                     disbursedAt = loan.DisbursedAt,
                     disbursementMethod,
-                    reference
+                    reference,
+                    bankAccountCredited = !string.IsNullOrEmpty(bankAccountId),
+                    bankAccountId = bankAccountId,
+                    message = !string.IsNullOrEmpty(bankAccountId) 
+                        ? $"Loan disbursed and credited to bank account successfully" 
+                        : $"Loan disbursed successfully (no bank account credited)"
                 };
 
                 return ApiResponse<object>.SuccessResult(result, "Loan disbursed successfully");
@@ -609,6 +739,54 @@ namespace UtilityHub360.Services
                     return ApiResponse<PaymentDto>.ErrorResult("Payment amount cannot exceed remaining loan balance");
                 }
 
+                // Calculate principal and interest portions based on repayment schedule
+                // Find the next unpaid installment to determine how payment should be allocated
+                var nextUnpaidInstallment = await _context.RepaymentSchedules
+                    .Where(rs => rs.LoanId == loanId && rs.Status == "PENDING")
+                    .OrderBy(rs => rs.InstallmentNumber)
+                    .FirstOrDefaultAsync();
+
+                decimal principalAmount = 0;
+                decimal interestAmount = 0;
+
+                if (nextUnpaidInstallment != null)
+                {
+                    // If payment covers the full installment
+                    if (payment.Amount >= nextUnpaidInstallment.TotalAmount)
+                    {
+                        principalAmount = nextUnpaidInstallment.PrincipalAmount;
+                        interestAmount = nextUnpaidInstallment.InterestAmount;
+                        
+                        // Mark installment as paid
+                        nextUnpaidInstallment.Status = "PAID";
+                        nextUnpaidInstallment.PaidAt = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        // Partial payment - allocate proportionally
+                        var ratio = payment.Amount / nextUnpaidInstallment.TotalAmount;
+                        principalAmount = nextUnpaidInstallment.PrincipalAmount * ratio;
+                        interestAmount = nextUnpaidInstallment.InterestAmount * ratio;
+                    }
+                }
+                else
+                {
+                    // No schedule found or all paid - treat entire payment as principal
+                    principalAmount = payment.Amount;
+                    interestAmount = 0;
+                }
+
+                // TEMPORARY: Commented out until database migration is applied
+                // Create journal entry for loan payment (Debit Loan Payable, Debit Interest Expense, Credit Cash)
+                // await _accountingService.CreateLoanPaymentEntryAsync(
+                //     loanId,
+                //     userId,
+                //     principalAmount,
+                //     interestAmount,
+                //     payment.Amount,
+                //     payment.Reference,
+                //     $"Loan payment via {payment.Method}");
+
                 // Create payment (combining both payment and loan activity tracking)
                 var newPayment = new Entities.Payment
                 {
@@ -620,7 +798,7 @@ namespace UtilityHub360.Services
                     Status = "COMPLETED",
                     IsBankTransaction = false, // This is a loan payment, not a bank transaction
                     TransactionType = "PAYMENT",
-                    Description = $"Payment via {payment.Method}",
+                    Description = $"Payment via {payment.Method} - Principal: {principalAmount:C}, Interest: {interestAmount:C}",
                     ProcessedAt = DateTime.UtcNow,
                     TransactionDate = DateTime.UtcNow,
                     CreatedAt = DateTime.UtcNow,
@@ -696,7 +874,10 @@ namespace UtilityHub360.Services
             return Math.Max(5.0m, baseRate + principalFactor + incomeFactor);
         }
 
-        private decimal CalculateMonthlyPayment(decimal principal, decimal interestRate, int term)
+        /// <summary>
+        /// Calculates monthly payment based on interest computation method
+        /// </summary>
+        private decimal CalculateMonthlyPayment(decimal principal, decimal interestRate, int term, string method = "AMORTIZED")
         {
             if (interestRate == 0)
             {
@@ -704,60 +885,44 @@ namespace UtilityHub360.Services
                 return principal / term;
             }
 
-            var monthlyRate = interestRate / 100 / 12;
-            var power = (decimal)Math.Pow((double)(1 + monthlyRate), term);
-            return principal * (monthlyRate * power) / (power - 1);
-        }
-
-        private async Task CreateRepaymentScheduleAsync(string loanId, decimal monthlyPayment, int term, decimal interestRate)
-        {
-            var schedules = new List<Entities.RepaymentSchedule>();
-            
-            if (interestRate == 0)
+            if (method == "FLAT_RATE")
             {
-                // For 0% interest loans, all payments go to principal
-                for (int i = 1; i <= term; i++)
-                {
-                    schedules.Add(new Entities.RepaymentSchedule
-                    {
-                        LoanId = loanId,
-                        InstallmentNumber = i,
-                        DueDate = DateTime.UtcNow.AddMonths(i),
-                        PrincipalAmount = monthlyPayment,
-                        InterestAmount = 0,
-                        TotalAmount = monthlyPayment,
-                        Status = "PENDING"
-                    });
-                }
+                // Flat Rate Method: Interest = P × R × T
+                // Total Payable = Principal + Interest
+                // Monthly Payment = Total Payable / Term
+                var annualInterest = principal * (interestRate / 100m) * (term / 12m);
+                var totalPayable = principal + annualInterest;
+                return totalPayable / term;
             }
             else
             {
-                // For loans with interest, calculate principal and interest portions
-                var monthlyRate = interestRate / 100 / 12;
-                var remainingPrincipal = monthlyPayment * term;
-
-                for (int i = 1; i <= term; i++)
-                {
-                    var interestAmount = remainingPrincipal * monthlyRate;
-                    var principalAmount = monthlyPayment - interestAmount;
-                    remainingPrincipal -= principalAmount;
-
-                    schedules.Add(new Entities.RepaymentSchedule
-                    {
-                        LoanId = loanId,
-                        InstallmentNumber = i,
-                        DueDate = DateTime.UtcNow.AddMonths(i),
-                        PrincipalAmount = principalAmount,
-                        InterestAmount = interestAmount,
-                        TotalAmount = monthlyPayment,
-                        Status = "PENDING"
-                    });
-                }
+                // Amortized Method (Reducing Balance): M = P × [r(1+r)^n] / [(1+r)^n - 1]
+                var monthlyRate = interestRate / 100m / 12m;
+                var power = (decimal)Math.Pow((double)(1 + monthlyRate), term);
+                return principal * (monthlyRate * power) / (power - 1);
             }
-
-            _context.RepaymentSchedules.AddRange(schedules);
-            await _context.SaveChangesAsync();
         }
+
+        /// <summary>
+        /// Calculates total interest for flat rate method
+        /// </summary>
+        private decimal CalculateFlatRateInterest(decimal principal, decimal interestRate, int term)
+        {
+            // Interest = P × R × T (where T is in years)
+            var timeInYears = term / 12m;
+            return principal * (interestRate / 100m) * timeInYears;
+        }
+
+        /// <summary>
+        /// Calculates total interest for amortized method
+        /// </summary>
+        private decimal CalculateAmortizedInterest(decimal principal, decimal interestRate, int term)
+        {
+            var monthlyPayment = CalculateMonthlyPayment(principal, interestRate, term, "AMORTIZED");
+            var totalPayable = monthlyPayment * term;
+            return totalPayable - principal;
+        }
+
 
         /// Updates NextDueDate and FinalDueDate for a loan based on its repayment schedule - TEMPORARILY DISABLED
         /// 
@@ -1123,7 +1288,7 @@ namespace UtilityHub360.Services
 
                 // Generate new payment schedule
                 var startDate = regenerateDto.StartDate ?? DateTime.UtcNow;
-                await CreateRepaymentScheduleAsync(loanId, regenerateDto.NewMonthlyPayment, regenerateDto.NewTerm, loan.InterestRate, startDate);
+                await CreateRepaymentScheduleAsync(loanId, regenerateDto.NewMonthlyPayment, regenerateDto.NewTerm, loan.InterestRate, startDate, loan.InterestComputationMethod, loan.ActualFinancedAmount);
 
                 await _context.SaveChangesAsync();
 
@@ -1468,11 +1633,12 @@ namespace UtilityHub360.Services
             }
         }
 
-        // Updated CreateRepaymentScheduleAsync with optional start date parameter
-        private async Task CreateRepaymentScheduleAsync(string loanId, decimal monthlyPayment, int term, decimal interestRate, DateTime? startDate = null)
+        // Updated CreateRepaymentScheduleAsync with optional start date parameter and interest method
+        private async Task CreateRepaymentScheduleAsync(string loanId, decimal monthlyPayment, int term, decimal interestRate, DateTime? startDate = null, string interestMethod = "AMORTIZED", decimal actualFinancedAmount = 0)
         {
             var schedules = new List<Entities.RepaymentSchedule>();
             var baseDate = startDate ?? DateTime.UtcNow;
+            var principal = actualFinancedAmount > 0 ? actualFinancedAmount : monthlyPayment * term; // Use actual financed amount if provided
             
             if (interestRate == 0)
             {
@@ -1491,25 +1657,53 @@ namespace UtilityHub360.Services
                     });
                 }
             }
-            else
+            else if (interestMethod == "FLAT_RATE")
             {
-                // For loans with interest, calculate principal and interest portions
-                var monthlyRate = interestRate / 100 / 12;
-                var remainingPrincipal = monthlyPayment * term;
+                // Flat Rate Method: Interest is fixed for all installments
+                var totalInterest = CalculateFlatRateInterest(principal, interestRate, term);
+                var interestPerMonth = totalInterest / term;
+                var principalPerMonth = monthlyPayment - interestPerMonth;
 
                 for (int i = 1; i <= term; i++)
                 {
-                    var interestAmount = remainingPrincipal * monthlyRate;
+                    schedules.Add(new Entities.RepaymentSchedule
+                    {
+                        LoanId = loanId,
+                        InstallmentNumber = i,
+                        DueDate = baseDate.AddMonths(i),
+                        PrincipalAmount = principalPerMonth,
+                        InterestAmount = interestPerMonth,
+                        TotalAmount = monthlyPayment,
+                        Status = "PENDING"
+                    });
+                }
+            }
+            else
+            {
+                // Amortized Method (Reducing Balance): Interest decreases over time
+                var monthlyRate = interestRate / 100m / 12m;
+                var remainingBalance = principal;
+
+                for (int i = 1; i <= term; i++)
+                {
+                    var interestAmount = remainingBalance * monthlyRate;
                     var principalAmount = monthlyPayment - interestAmount;
-                    remainingPrincipal -= principalAmount;
+                    remainingBalance -= principalAmount;
+
+                    // Ensure remaining balance doesn't go negative due to rounding
+                    if (remainingBalance < 0)
+                    {
+                        principalAmount += remainingBalance; // Adjust last payment
+                        remainingBalance = 0;
+                    }
 
                     schedules.Add(new Entities.RepaymentSchedule
                     {
                         LoanId = loanId,
                         InstallmentNumber = i,
                         DueDate = baseDate.AddMonths(i),
-                        PrincipalAmount = principalAmount,
-                        InterestAmount = interestAmount,
+                        PrincipalAmount = Math.Round(principalAmount, 2),
+                        InterestAmount = Math.Round(interestAmount, 2),
                         TotalAmount = monthlyPayment,
                         Status = "PENDING"
                     });

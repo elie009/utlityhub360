@@ -34,6 +34,10 @@ namespace UtilityHub360.Data
         // Chat Support Tables
         public DbSet<ChatConversation> ChatConversations { get; set; }
         public DbSet<ChatMessage> ChatMessages { get; set; }
+        
+        // Accounting Tables (DbSets uncommented for compilation, but tables not mapped until migration)
+        public DbSet<JournalEntry> JournalEntries { get; set; } = null!;
+        public DbSet<JournalEntryLine> JournalEntryLines { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -53,7 +57,56 @@ namespace UtilityHub360.Data
                     .WithMany(p => p.Loans)
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+                
+                // TEMPORARY: Ignore new accounting columns until migration is applied
+                // TODO: Remove these Ignore() calls after running the SQL migration
+                entity.Ignore(e => e.InterestComputationMethod);
+                entity.Ignore(e => e.TotalInterest);
+                entity.Ignore(e => e.DownPayment);
+                entity.Ignore(e => e.ProcessingFee);
+                entity.Ignore(e => e.ActualFinancedAmount);
+                entity.Ignore(e => e.PaymentFrequency);
+                entity.Ignore(e => e.StartDate);
+                entity.Ignore(e => e.JournalEntries);
             });
+
+            // TEMPORARY: Ignore JournalEntry entities until database migration is applied
+            modelBuilder.Ignore<JournalEntry>();
+            modelBuilder.Ignore<JournalEntryLine>();
+            
+            // TEMPORARY: Commented out until database migration is applied
+            // JournalEntry configuration
+            // modelBuilder.Entity<JournalEntry>(entity =>
+            // {
+            //     entity.HasOne(d => d.User)
+            //         .WithMany()
+            //         .HasForeignKey(d => d.UserId)
+            //         .OnDelete(DeleteBehavior.Cascade);
+
+            //     entity.HasOne(d => d.Loan)
+            //         .WithMany(p => p.JournalEntries)
+            //         .HasForeignKey(d => d.LoanId)
+            //         .OnDelete(DeleteBehavior.Cascade);
+
+            //     entity.HasIndex(e => e.LoanId);
+            //     entity.HasIndex(e => e.UserId);
+            //     entity.HasIndex(e => e.EntryType);
+            //     entity.HasIndex(e => e.EntryDate);
+            // });
+
+            // TEMPORARY: Commented out until database migration is applied
+            // JournalEntryLine configuration
+            // modelBuilder.Entity<JournalEntryLine>(entity =>
+            // {
+            //     entity.HasOne(d => d.JournalEntry)
+            //         .WithMany(p => p.JournalEntryLines)
+            //         .HasForeignKey(d => d.JournalEntryId)
+            //         .OnDelete(DeleteBehavior.Cascade);
+
+            //     entity.HasIndex(e => e.JournalEntryId);
+            //     entity.HasIndex(e => e.AccountName);
+            //     entity.HasIndex(e => e.AccountType);
+            // });
 
             // RepaymentSchedule configuration
             modelBuilder.Entity<RepaymentSchedule>(entity =>

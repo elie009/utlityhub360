@@ -55,6 +55,27 @@ namespace UtilityHub360.Entities
         [StringLength(1000)]
         public string? AdditionalInfo { get; set; }
 
+        // Accounting fields
+        [StringLength(20)]
+        public string InterestComputationMethod { get; set; } = "AMORTIZED"; // FLAT_RATE, AMORTIZED
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal TotalInterest { get; set; } = 0;
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal DownPayment { get; set; } = 0; // Optional down payment that reduces principal
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal ProcessingFee { get; set; } = 0; // Optional processing fee
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal ActualFinancedAmount { get; set; } = 0; // Principal - DownPayment (used for interest calculation)
+
+        [StringLength(20)]
+        public string PaymentFrequency { get; set; } = "MONTHLY"; // MONTHLY, WEEKLY, BIWEEKLY, QUARTERLY
+
+        public DateTime? StartDate { get; set; } // Loan start date for interest calculation
+
         // Due date information - TEMPORARILY COMMENTED OUT
         // public DateTime? NextDueDate { get; set; }
         
@@ -67,5 +88,6 @@ namespace UtilityHub360.Entities
 
         public virtual ICollection<RepaymentSchedule> RepaymentSchedules { get; set; } = new List<RepaymentSchedule>();
         public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
+        public virtual ICollection<JournalEntry> JournalEntries { get; set; } = new List<JournalEntry>();
     }
 }

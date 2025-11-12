@@ -118,6 +118,7 @@ builder.Services.AddResponseCaching();
 
 // Add Services
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<LoanAccountingService>();
 builder.Services.AddScoped<ILoanService, LoanService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
