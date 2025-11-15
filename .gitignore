@@ -11,3 +11,15 @@
 bin/
 obj/
 
+# AppSettings files with secrets (exclude from git)
+appsettings.json
+appsettings.Development.json
+appsettings.Production.json
+appsettings.Staging.json
+**/appsettings.Production.json
+**/appsettings.Staging.json
+
+# Publish folders (may contain secrets)
+publish/
+**/publish/
+
