@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
 using UtilityHub360.Entities;
@@ -9,10 +9,12 @@ namespace UtilityHub360.Services
     public class BankAccountService : IBankAccountService
     {
         private readonly ApplicationDbContext _context;
+        private readonly IServiceProvider _serviceProvider;
 
-        public BankAccountService(ApplicationDbContext context)
+        public BankAccountService(ApplicationDbContext context, IServiceProvider serviceProvider)
         {
             _context = context;
+            _serviceProvider = serviceProvider;
         }
 
         public async Task<ApiResponse<BankAccountDto>> CreateBankAccountAsync(CreateBankAccountDto createBankAccountDto, string userId)
@@ -191,7 +193,7 @@ namespace UtilityHub360.Services
             }
         }
 
-        public async Task<ApiResponse<BankAccountSummaryDto>> GetBankAccountSummaryAsync(string userId, string frequency = "monthly", int? year = null, int? month = null)
+        public async Task<ApiResponse<BankAccountSummaryDto>> GetBankAccountSummaryAsync(string userId, string frequency = "monthly")
         {
             try
             {
@@ -199,23 +201,6 @@ namespace UtilityHub360.Services
                     .Include(ba => ba.Transactions)
                     .Where(ba => ba.UserId == userId && ba.IsActive)
                     .ToListAsync();
-
-                // Determine the target month for transaction totals
-                DateTime targetMonthStart;
-                DateTime targetMonthEnd;
-                
-                if (year.HasValue && month.HasValue)
-                {
-                    // Use the provided year and month
-                    targetMonthStart = new DateTime(year.Value, month.Value, 1);
-                    targetMonthEnd = targetMonthStart.AddMonths(1).AddDays(-1);
-                }
-                else
-                {
-                    // Use current month
-                    targetMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
-                    targetMonthEnd = targetMonthStart.AddMonths(1).AddDays(-1);
-                }
 
                 if (!bankAccounts.Any())
                 {
@@ -231,29 +216,16 @@ namespace UtilityHub360.Services
                         CurrentMonthOutgoing = 0,
                         CurrentMonthNet = 0,
                         Frequency = frequency,
-                        PeriodStart = targetMonthStart,
-                        PeriodEnd = targetMonthEnd,
+                        PeriodStart = DateTime.UtcNow,
+                        PeriodEnd = DateTime.UtcNow,
                         TransactionCount = 0,
                         Accounts = new List<BankAccountDto>(),
                         SpendingByCategory = new Dictionary<string, decimal>()
                     });
                 }
 
-                // Calculate period dates based on frequency (if year/month not provided) or use the target month
-                DateTime periodStart;
-                DateTime periodEnd;
-                
-                if (year.HasValue && month.HasValue)
-                {
-                    // Use the specific month for the period
-                    periodStart = targetMonthStart;
-                    periodEnd = targetMonthEnd;
-                }
-                else
-                {
-                    // Use frequency-based period
-                    (periodStart, periodEnd) = GetPeriodDates(frequency);
-                }
+                // Calculate period dates based on frequency
+                var (periodStart, periodEnd) = GetPeriodDates(frequency);
 
                 // Get all transactions for the period (now from Payments table)
                 var allTransactions = await _context.Payments
@@ -261,10 +233,12 @@ namespace UtilityHub360.Services
                                p.TransactionDate >= periodStart && p.TransactionDate <= periodEnd)
                     .ToListAsync();
 
-                // Get transactions for the target month (for transaction totals)
-                var targetMonthTransactions = await _context.Payments
+                // Get current month transactions
+                var currentMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+                var currentMonthEnd = currentMonthStart.AddMonths(1).AddDays(-1);
+                var currentMonthTransactions = await _context.Payments
                     .Where(p => p.UserId == userId && p.IsBankTransaction && 
-                               p.TransactionDate >= targetMonthStart && p.TransactionDate <= targetMonthEnd)
+                               p.TransactionDate >= currentMonthStart && p.TransactionDate <= currentMonthEnd)
                     .ToListAsync();
 
                 var summary = new BankAccountSummaryDto
@@ -279,15 +253,15 @@ namespace UtilityHub360.Services
                     TotalOutgoing = allTransactions
                         .Where(t => t.TransactionType == "DEBIT")
                         .Sum(t => t.Amount),
-                    CurrentMonthIncoming = targetMonthTransactions
+                    CurrentMonthIncoming = currentMonthTransactions
                         .Where(t => t.TransactionType == "CREDIT")
                         .Sum(t => t.Amount),
-                    CurrentMonthOutgoing = targetMonthTransactions
+                    CurrentMonthOutgoing = currentMonthTransactions
                         .Where(t => t.TransactionType == "DEBIT")
                         .Sum(t => t.Amount),
-                    CurrentMonthNet = targetMonthTransactions
+                    CurrentMonthNet = currentMonthTransactions
                         .Where(t => t.TransactionType == "CREDIT")
-                        .Sum(t => t.Amount) - targetMonthTransactions
+                        .Sum(t => t.Amount) - currentMonthTransactions
                         .Where(t => t.TransactionType == "DEBIT")
                         .Sum(t => t.Amount),
                     Frequency = frequency,
@@ -530,148 +504,6 @@ namespace UtilityHub360.Services
                     return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found");
                 }
 
-                // Check if this is a transfer between bank accounts
-                bool isTransfer = !string.IsNullOrEmpty(createTransactionDto.ToBankAccountId) && 
-                                  createTransactionDto.ToBankAccountId != createTransactionDto.BankAccountId;
-
-                if (isTransfer)
-                {
-                    // Validate destination account
-                    if (createTransactionDto.TransactionType.ToUpper() != "DEBIT")
-                    {
-                        return ApiResponse<BankTransactionDto>.ErrorResult("Transfers must be DEBIT type from the source account");
-                    }
-
-                    var destinationAccount = await _context.BankAccounts
-                        .FirstOrDefaultAsync(ba => ba.Id == createTransactionDto.ToBankAccountId && ba.UserId == userId);
-
-                    if (destinationAccount == null)
-                    {
-                        return ApiResponse<BankTransactionDto>.ErrorResult("Destination bank account not found");
-                    }
-
-                    if (!destinationAccount.IsActive)
-                    {
-                        return ApiResponse<BankTransactionDto>.ErrorResult("Destination bank account is not active");
-                    }
-
-                    // Generate a shared reference number for both transactions
-                    var transferReference = createTransactionDto.ReferenceNumber ?? $"TRANSFER_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}_{DateTime.UtcNow:yyyyMMddHHmmss}";
-                    var transferDescription = string.IsNullOrEmpty(createTransactionDto.Description) 
-                        ? $"Transfer to {destinationAccount.AccountName}" 
-                        : createTransactionDto.Description;
-
-                    // Create DEBIT transaction from source account
-                    var debitPayment = new Entities.Payment
-                    {
-                        Id = Guid.NewGuid().ToString(),
-                        BankAccountId = createTransactionDto.BankAccountId,
-                        UserId = userId,
-                        Amount = createTransactionDto.Amount,
-                        Method = "BANK_TRANSFER",
-                        Reference = transferReference,
-                        Status = "COMPLETED",
-                        IsBankTransaction = true,
-                        TransactionType = "DEBIT",
-                        Description = $"Transfer: {transferDescription}",
-                        Category = createTransactionDto.Category ?? "TRANSFER",
-                        ExternalTransactionId = $"TRANSFER_{transferReference}",
-                        Notes = createTransactionDto.Notes ?? $"Transfer to {destinationAccount.AccountName}",
-                        Currency = createTransactionDto.Currency.ToUpper(),
-                        ProcessedAt = createTransactionDto.TransactionDate,
-                        TransactionDate = createTransactionDto.TransactionDate,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-
-                    // Update source account balance (deduct)
-                    bankAccount.CurrentBalance -= debitPayment.Amount;
-                    debitPayment.BalanceAfterTransaction = bankAccount.CurrentBalance;
-                    bankAccount.UpdatedAt = DateTime.UtcNow;
-
-                    // Create CREDIT transaction to destination account
-                    var creditPayment = new Entities.Payment
-                    {
-                        Id = Guid.NewGuid().ToString(),
-                        BankAccountId = createTransactionDto.ToBankAccountId,
-                        UserId = userId,
-                        Amount = createTransactionDto.Amount,
-                        Method = "BANK_TRANSFER",
-                        Reference = transferReference,
-                        Status = "COMPLETED",
-                        IsBankTransaction = true,
-                        TransactionType = "CREDIT",
-                        Description = $"Transfer: {transferDescription}",
-                        Category = createTransactionDto.Category ?? "TRANSFER",
-                        ExternalTransactionId = $"TRANSFER_{transferReference}",
-                        Notes = createTransactionDto.Notes ?? $"Transfer from {bankAccount.AccountName}",
-                        Currency = createTransactionDto.Currency.ToUpper(),
-                        ProcessedAt = createTransactionDto.TransactionDate,
-                        TransactionDate = createTransactionDto.TransactionDate,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-
-                    // Update destination account balance (add)
-                    destinationAccount.CurrentBalance += creditPayment.Amount;
-                    creditPayment.BalanceAfterTransaction = destinationAccount.CurrentBalance;
-                    destinationAccount.UpdatedAt = DateTime.UtcNow;
-
-                    // Add both transactions
-                    _context.Payments.Add(debitPayment);
-                    _context.Payments.Add(creditPayment);
-
-                    // Also create BankTransaction records
-                    var debitBankTransaction = new Entities.BankTransaction
-                    {
-                        Id = Guid.NewGuid().ToString(),
-                        BankAccountId = createTransactionDto.BankAccountId,
-                        UserId = userId,
-                        Amount = createTransactionDto.Amount,
-                        TransactionType = "DEBIT",
-                        Description = $"Transfer: {transferDescription}",
-                        Category = createTransactionDto.Category ?? "TRANSFER",
-                        ReferenceNumber = transferReference,
-                        ExternalTransactionId = $"TRANSFER_{transferReference}",
-                        Notes = createTransactionDto.Notes ?? $"Transfer to {destinationAccount.AccountName}",
-                        Currency = createTransactionDto.Currency.ToUpper(),
-                        BalanceAfterTransaction = bankAccount.CurrentBalance,
-                        TransactionDate = createTransactionDto.TransactionDate,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-
-                    var creditBankTransaction = new Entities.BankTransaction
-                    {
-                        Id = Guid.NewGuid().ToString(),
-                        BankAccountId = createTransactionDto.ToBankAccountId,
-                        UserId = userId,
-                        Amount = createTransactionDto.Amount,
-                        TransactionType = "CREDIT",
-                        Description = $"Transfer: {transferDescription}",
-                        Category = createTransactionDto.Category ?? "TRANSFER",
-                        ReferenceNumber = transferReference,
-                        ExternalTransactionId = $"TRANSFER_{transferReference}",
-                        Notes = createTransactionDto.Notes ?? $"Transfer from {bankAccount.AccountName}",
-                        Currency = createTransactionDto.Currency.ToUpper(),
-                        BalanceAfterTransaction = destinationAccount.CurrentBalance,
-                        TransactionDate = createTransactionDto.TransactionDate,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-
-                    _context.BankTransactions.Add(debitBankTransaction);
-                    _context.BankTransactions.Add(creditBankTransaction);
-
-                    await _context.SaveChangesAsync();
-
-                    // Return the debit transaction (source account transaction) as the primary response
-                    var transferTransactionDto = MapPaymentToBankTransactionDto(debitPayment, bankAccount.AccountName);
-                    return ApiResponse<BankTransactionDto>.SuccessResult(transferTransactionDto, 
-                        $"Transfer of {createTransactionDto.Amount:C} from {bankAccount.AccountName} to {destinationAccount.AccountName} completed successfully");
-                }
-
-                // Regular transaction (non-transfer)
                 // Handle category-based references
                 string? billId = null;
                 string? savingsAccountId = null;
@@ -786,7 +618,7 @@ namespace UtilityHub360.Services
                 _context.BankTransactions.Add(bankTransaction);
                 await _context.SaveChangesAsync();
 
-                var transactionDto = MapPaymentToBankTransactionDto(payment, bankAccount.AccountName);
+                var transactionDto = MapPaymentToBankTransactionDto(payment);
                 return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Transaction created successfully");
             }
             catch (Exception ex)
@@ -795,7 +627,7 @@ namespace UtilityHub360.Services
             }
         }
 
-        public async Task<ApiResponse<List<BankTransactionDto>>> GetAccountTransactionsAsync(string bankAccountId, string userId, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null)
+        public async Task<ApiResponse<List<BankTransactionDto>>> GetAccountTransactionsAsync(string bankAccountId, string userId, int page = 1, int limit = 50)
         {
             try
             {
@@ -807,32 +639,14 @@ namespace UtilityHub360.Services
                     return ApiResponse<List<BankTransactionDto>>.ErrorResult("Bank account not found");
                 }
 
-                // Store account name since all transactions are for this account
-                var accountName = bankAccount.AccountName;
-
-                var query = _context.Payments
-                    .Where(p => p.BankAccountId == bankAccountId && p.UserId == userId && p.IsBankTransaction);
-
-                // Add date filtering
-                if (dateFrom.HasValue)
-                {
-                    query = query.Where(p => (p.TransactionDate ?? p.ProcessedAt) >= dateFrom.Value.Date);
-                }
-
-                if (dateTo.HasValue)
-                {
-                    // Include the entire end date (up to end of day)
-                    var endDate = dateTo.Value.Date.AddDays(1).AddTicks(-1);
-                    query = query.Where(p => (p.TransactionDate ?? p.ProcessedAt) <= endDate);
-                }
-
-                var payments = await query
+                var payments = await _context.Payments
+                    .Where(p => p.BankAccountId == bankAccountId && p.UserId == userId && p.IsBankTransaction)
                     .OrderByDescending(p => p.TransactionDate ?? p.ProcessedAt)
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToListAsync();
 
-                var transactionDtos = payments.Select(p => MapPaymentToBankTransactionDto(p, accountName)).ToList();
+                var transactionDtos = payments.Select(MapPaymentToBankTransactionDto).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
             }
             catch (Exception ex)
@@ -841,79 +655,26 @@ namespace UtilityHub360.Services
             }
         }
 
-        public async Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? accountType = null, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null)
+        public async Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? accountType = null, int page = 1, int limit = 50)
         {
             try
             {
-                // Query from Payments table (primary source for bank transactions)
-                IQueryable<Entities.Payment> paymentsQuery = _context.Payments
-                    .Include(p => p.BankAccount)
-                    .Where(p => p.UserId == userId && p.IsBankTransaction && p.BankAccountId != null && p.BankAccountId != string.Empty);
+                var query = _context.BankTransactions
+                    .Include(t => t.BankAccount)
+                    .Where(t => t.UserId == userId);
 
-                // Filter by account type if specified
                 if (!string.IsNullOrEmpty(accountType))
                 {
-                    var accountTypeLower = accountType.ToLower();
-                    paymentsQuery = from payment in paymentsQuery
-                                   join bankAccount in _context.BankAccounts on payment.BankAccountId equals bankAccount.Id
-                                   where bankAccount.UserId == userId && bankAccount.AccountType == accountTypeLower
-                                   select payment;
+                    query = query.Where(t => t.BankAccount.AccountType == accountType.ToLower());
                 }
 
-                // Add date filtering - extract dates before using in LINQ
-                DateTime? filterDateFrom = null;
-                DateTime? filterDateTo = null;
-                
-                if (dateFrom.HasValue)
-                {
-                    filterDateFrom = dateFrom.Value.Date;
-                }
-
-                if (dateTo.HasValue)
-                {
-                    // Include the entire end date (up to end of day)
-                    filterDateTo = dateTo.Value.Date.AddDays(1).AddTicks(-1);
-                }
-
-                if (filterDateFrom.HasValue)
-                {
-                    var dateFromValue = filterDateFrom.Value;
-                    paymentsQuery = paymentsQuery.Where(p => (p.TransactionDate ?? p.ProcessedAt) >= dateFromValue);
-                }
-
-                if (filterDateTo.HasValue)
-                {
-                    var dateToValue = filterDateTo.Value;
-                    paymentsQuery = paymentsQuery.Where(p => (p.TransactionDate ?? p.ProcessedAt) <= dateToValue);
-                }
-
-                var payments = await paymentsQuery
-                    .OrderByDescending(p => p.TransactionDate ?? p.ProcessedAt)
+                var transactions = await query
+                    .OrderByDescending(t => t.TransactionDate)
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToListAsync();
 
-                // Get all unique bank account IDs and fetch their names
-                var bankAccountIds = payments
-                    .Where(p => !string.IsNullOrEmpty(p.BankAccountId))
-                    .Select(p => p.BankAccountId)
-                    .Distinct()
-                    .ToList();
-
-                var bankAccounts = await _context.BankAccounts
-                    .Where(ba => bankAccountIds.Contains(ba.Id))
-                    .ToDictionaryAsync(ba => ba.Id, ba => ba.AccountName);
-
-                // Map to DTOs with account names
-                var transactionDtos = new List<BankTransactionDto>();
-                foreach (var payment in payments)
-                {
-                    var accountName = !string.IsNullOrEmpty(payment.BankAccountId) && bankAccounts.ContainsKey(payment.BankAccountId) 
-                        ? bankAccounts[payment.BankAccountId] 
-                        : null;
-                    transactionDtos.Add(MapPaymentToBankTransactionDto(payment, accountName));
-                }
-
+                var transactionDtos = transactions.Select(MapToBankTransactionDto).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
             }
             catch (Exception ex)
@@ -926,29 +687,17 @@ namespace UtilityHub360.Services
         {
             try
             {
-                // Try to find in BankTransactions first
-                var bankTransaction = await _context.BankTransactions
+                var transaction = await _context.BankTransactions
                     .Include(t => t.BankAccount)
                     .FirstOrDefaultAsync(t => t.Id == transactionId && t.UserId == userId);
 
-                if (bankTransaction != null)
+                if (transaction == null)
                 {
-                    var bankTransactionDto = MapToBankTransactionDto(bankTransaction, bankTransaction.BankAccount?.AccountName);
-                    return ApiResponse<BankTransactionDto>.SuccessResult(bankTransactionDto);
+                    return ApiResponse<BankTransactionDto>.ErrorResult("Transaction not found");
                 }
 
-                // If not found in BankTransactions, check Payments table (for transactions created via Payments API)
-                var payment = await _context.Payments
-                    .Include(p => p.BankAccount)
-                    .FirstOrDefaultAsync(p => p.Id == transactionId && p.UserId == userId && p.IsBankTransaction);
-
-                if (payment != null)
-                {
-                    var paymentTransactionDto = MapPaymentToBankTransactionDto(payment, payment.BankAccount?.AccountName);
-                    return ApiResponse<BankTransactionDto>.SuccessResult(paymentTransactionDto);
-                }
-
-                return ApiResponse<BankTransactionDto>.ErrorResult("Transaction not found");
+                var transactionDto = MapToBankTransactionDto(transaction);
+                return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto);
             }
             catch (Exception ex)
             {
@@ -1018,7 +767,7 @@ namespace UtilityHub360.Services
                     .Take(limit)
                     .ToListAsync();
 
-                var transactionDtos = transactions.Select(t => MapToBankTransactionDto(t, t.BankAccount?.AccountName)).ToList();
+                var transactionDtos = transactions.Select(MapToBankTransactionDto).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
             }
             catch (Exception ex)
@@ -1164,7 +913,7 @@ namespace UtilityHub360.Services
                     .Take(limit)
                     .ToListAsync();
 
-                var transactionDtos = transactions.Select(t => MapToBankTransactionDto(t, t.BankAccount?.AccountName)).ToList();
+                var transactionDtos = transactions.Select(MapToBankTransactionDto).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
             }
             catch (Exception ex)
@@ -1229,7 +978,6 @@ namespace UtilityHub360.Services
                 var (startDate, endDate) = GetPeriodDates(period);
 
                 var expenses = await _context.BankTransactions
-                    .Include(t => t.BankAccount)
                     .Where(t => t.UserId == userId && 
                                t.TransactionType == "DEBIT" && 
                                t.TransactionDate >= startDate && 
@@ -1253,7 +1001,7 @@ namespace UtilityHub360.Services
                     RecentExpenses = expenses
                         .OrderByDescending(t => t.TransactionDate)
                         .Take(10)
-                        .Select(t => MapToBankTransactionDto(t, t.BankAccount?.AccountName))
+                        .Select(MapToBankTransactionDto)
                         .ToList(),
                     AverageDailySpending = expenses.Count > 0 ? expenses.Sum(t => t.Amount) / (decimal)(endDate - startDate).TotalDays : 0,
                     AverageTransactionAmount = expenses.Count > 0 ? expenses.Average(t => t.Amount) : 0
@@ -1303,14 +1051,12 @@ namespace UtilityHub360.Services
                     .Take(5)
                     .ToDictionaryAsync(x => x.Category, x => x.Amount);
 
-                var recentExpensesData = await _context.BankTransactions
-                    .Include(t => t.BankAccount)
+                var recentExpenses = await _context.BankTransactions
                     .Where(t => t.UserId == userId && t.TransactionType == "DEBIT")
                     .OrderByDescending(t => t.TransactionDate)
                     .Take(5)
+                    .Select(t => MapToBankTransactionDto(t))
                     .ToListAsync();
-
-                var recentExpenses = recentExpensesData.Select(t => MapToBankTransactionDto(t, t.BankAccount?.AccountName)).ToList();
 
                 var summary = new ExpenseSummaryDto
                 {
@@ -1335,7 +1081,6 @@ namespace UtilityHub360.Services
             try
             {
                 var expenses = await _context.BankTransactions
-                    .Include(t => t.BankAccount)
                     .Where(t => t.UserId == userId && 
                                t.TransactionType == "DEBIT" && 
                                t.Category == category)
@@ -1344,7 +1089,7 @@ namespace UtilityHub360.Services
                     .Take(limit)
                     .ToListAsync();
 
-                var expenseDtos = expenses.Select(t => MapToBankTransactionDto(t, t.BankAccount?.AccountName)).ToList();
+                var expenseDtos = expenses.Select(MapToBankTransactionDto).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(expenseDtos);
             }
             catch (Exception ex)
@@ -1461,13 +1206,12 @@ namespace UtilityHub360.Services
             };
         }
 
-        private static BankTransactionDto MapToBankTransactionDto(BankTransaction transaction, string? accountName = null)
+        private static BankTransactionDto MapToBankTransactionDto(BankTransaction transaction)
         {
             return new BankTransactionDto
             {
                 Id = transaction.Id,
                 BankAccountId = transaction.BankAccountId,
-                AccountName = accountName ?? transaction.BankAccount?.AccountName,
                 UserId = transaction.UserId,
                 Amount = transaction.Amount,
                 TransactionType = transaction.TransactionType,
@@ -1488,13 +1232,12 @@ namespace UtilityHub360.Services
             };
         }
 
-        private static BankTransactionDto MapPaymentToBankTransactionDto(Entities.Payment payment, string? accountName = null)
+        private static BankTransactionDto MapPaymentToBankTransactionDto(Entities.Payment payment)
         {
             return new BankTransactionDto
             {
                 Id = payment.Id,
-                BankAccountId = payment.BankAccountId ?? string.Empty,
-                AccountName = accountName ?? payment.BankAccount?.AccountName,
+                BankAccountId = payment.BankAccountId,
                 UserId = payment.UserId,
                 Amount = payment.Amount,
                 TransactionType = payment.TransactionType ?? "UNKNOWN",
@@ -1527,6 +1270,144 @@ namespace UtilityHub360.Services
                 "yearly" or "year" => (now.AddDays(-365).Date, now.Date),
                 _ => (now.AddDays(-30).Date, now.Date) // Default to month
             };
+        }
+
+        public async Task<ApiResponse<List<BankTransactionDto>>> GetAccountTransactionsAsync(string bankAccountId, string userId, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null)
+        {
+            try
+            {
+                var bankAccount = await _context.BankAccounts
+                    .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
+
+                if (bankAccount == null)
+                {
+                    return ApiResponse<List<BankTransactionDto>>.ErrorResult("Bank account not found");
+                }
+
+                var query = _context.Payments
+                    .Where(p => p.BankAccountId == bankAccountId && p.UserId == userId && p.IsBankTransaction);
+
+                if (dateFrom.HasValue)
+                {
+                    query = query.Where(p => p.TransactionDate >= dateFrom.Value);
+                }
+
+                if (dateTo.HasValue)
+                {
+                    query = query.Where(p => p.TransactionDate <= dateTo.Value);
+                }
+
+                var transactions = await query
+                    .OrderByDescending(p => p.TransactionDate)
+                    .Skip((page - 1) * limit)
+                    .Take(limit)
+                    .ToListAsync();
+
+                var transactionDtos = transactions.Select(p => MapPaymentToBankTransactionDto(p)).ToList();
+                return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<List<BankTransactionDto>>.ErrorResult($"Failed to get account transactions: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? accountType = null, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null)
+        {
+            try
+            {
+                var query = _context.Payments
+                    .Where(p => p.UserId == userId && p.IsBankTransaction);
+
+                if (!string.IsNullOrEmpty(accountType))
+                {
+                    query = query.Where(p => p.BankAccount != null && p.BankAccount.AccountType == accountType);
+                }
+
+                if (dateFrom.HasValue)
+                {
+                    query = query.Where(p => p.TransactionDate >= dateFrom.Value);
+                }
+
+                if (dateTo.HasValue)
+                {
+                    query = query.Where(p => p.TransactionDate <= dateTo.Value);
+                }
+
+                var transactions = await query
+                    .OrderByDescending(p => p.TransactionDate)
+                    .Skip((page - 1) * limit)
+                    .Take(limit)
+                    .ToListAsync();
+
+                var transactionDtos = transactions.Select(p => MapPaymentToBankTransactionDto(p)).ToList();
+                return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<List<BankTransactionDto>>.ErrorResult($"Failed to get user transactions: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<BankAccountSummaryDto>> GetBankAccountSummaryAsync(string userId, string frequency = "monthly", int? year = null, int? month = null)
+        {
+            try
+            {
+                var (startDate, endDate) = GetPeriodDates(frequency);
+                
+                if (year.HasValue && month.HasValue)
+                {
+                    startDate = new DateTime(year.Value, month.Value, 1);
+                    endDate = startDate.AddMonths(1).AddDays(-1);
+                }
+
+                var accounts = await _context.BankAccounts
+                    .Where(ba => ba.UserId == userId && ba.IsActive)
+                    .ToListAsync();
+
+                var transactions = await _context.Payments
+                    .Where(p => p.UserId == userId && 
+                               p.IsBankTransaction && 
+                               p.TransactionDate >= startDate && 
+                               p.TransactionDate <= endDate)
+                    .ToListAsync();
+
+                var summary = new BankAccountSummaryDto
+                {
+                    TotalBalance = accounts.Sum(a => a.CurrentBalance),
+                    TotalIncoming = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount),
+                    TotalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount),
+                    CurrentMonthNet = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount) -
+                                     transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount),
+                    Frequency = frequency,
+                    PeriodStart = startDate,
+                    PeriodEnd = endDate,
+                    TransactionCount = transactions.Count,
+                    Accounts = accounts.Select(a => MapToBankAccountDtoAsync(a).Result).ToList(),
+                    SpendingByCategory = transactions
+                        .Where(t => t.TransactionType == "DEBIT" && !string.IsNullOrEmpty(t.Category))
+                        .GroupBy(t => t.Category!)
+                        .ToDictionary(g => g.Key, g => g.Sum(t => t.Amount))
+                };
+
+                return ApiResponse<BankAccountSummaryDto>.SuccessResult(summary);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<BankAccountSummaryDto>.ErrorResult($"Failed to get bank account summary: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<BankTransactionDto>> AnalyzeAndCreateTransactionAsync(AnalyzeTransactionTextDto analyzeDto, string userId)
+        {
+            // Delegate to AI Agent service via dependency injection
+            var aiAgentService = _serviceProvider.GetService<IAIAgentService>();
+            if (aiAgentService != null)
+            {
+                return await aiAgentService.AnalyzeAndCreateTransactionWithAgentAsync(analyzeDto, userId);
+            }
+            
+            return ApiResponse<BankTransactionDto>.ErrorResult("AI Agent service is not available");
         }
     }
 }

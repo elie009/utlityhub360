@@ -9,10 +9,12 @@ namespace UtilityHub360.Services
     public class BillService : IBillService
     {
         private readonly ApplicationDbContext _context;
+        private readonly AccountingService _accountingService;
 
-        public BillService(ApplicationDbContext context)
+        public BillService(ApplicationDbContext context, AccountingService accountingService)
         {
             _context = context;
+            _accountingService = accountingService;
         }
 
         public async Task<ApiResponse<BillDto>> CreateBillAsync(CreateBillDto createBillDto, string userId)
@@ -523,6 +525,8 @@ namespace UtilityHub360.Services
 
         public async Task<ApiResponse<BillDto>> MarkBillAsPaidAsync(string billId, string userId, string? notes, string? bankAccountId = null)
         {
+            // Use database transaction to ensure atomicity
+            using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
                 var bill = await _context.Bills
@@ -643,19 +647,24 @@ namespace UtilityHub360.Services
                         };
 
                         _context.BankTransactions.Add(bankTxnRecord);
-                        Console.WriteLine($"DEBUG: Created BankTransaction record for bill payment. Transaction ID: {bankTxnRecord.Id}");
+
+                        // Create Journal Entry for bill payment (Debit Expense, Credit Bank Account)
+                        await _accountingService.CreateBillPaymentEntryAsync(
+                            billId,
+                            userId,
+                            bill.Amount,
+                            bill.BillName,
+                            bill.BillType,
+                            bankAccount.AccountName,
+                            paymentReference,
+                            $"Bill payment - {bill.BillName}",
+                            DateTime.UtcNow
+                        );
                     }
-                    else
-                    {
-                        Console.WriteLine($"DEBUG: Payment transaction already exists for bill {billId}. Skipping transaction creation.");
-                    }
-                }
-                else
-                {
-                    Console.WriteLine($"DEBUG: No bank account available. Bill marked as paid without transaction record.");
                 }
 
                 await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
 
                 var billDto = MapToBillDto(bill);
 
@@ -663,6 +672,7 @@ namespace UtilityHub360.Services
             }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 return ApiResponse<BillDto>.ErrorResult($"Failed to mark bill as paid: {ex.Message}");
             }
         }

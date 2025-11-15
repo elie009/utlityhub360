@@ -58,3 +58,5 @@ WHERE [ActualFinancedAmount] = 0 AND [Principal] > 0;
 **That's it! This will fix the error immediately.**
 
 
+
+

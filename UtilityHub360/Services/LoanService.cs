@@ -9,11 +9,13 @@ namespace UtilityHub360.Services
     public class LoanService : ILoanService
     {
         private readonly ApplicationDbContext _context;
-        private readonly LoanAccountingService _accountingService;
+        private readonly LoanAccountingService _loanAccountingService;
+        private readonly AccountingService _accountingService;
 
-        public LoanService(ApplicationDbContext context, LoanAccountingService accountingService)
+        public LoanService(ApplicationDbContext context, LoanAccountingService loanAccountingService, AccountingService accountingService)
         {
             _context = context;
+            _loanAccountingService = loanAccountingService;
             _accountingService = accountingService;
         }
 
@@ -443,6 +445,8 @@ namespace UtilityHub360.Services
 
         public async Task<ApiResponse<object>> DisburseLoanAsync(string loanId, string adminId, string disbursementMethod, string? reference, string? bankAccountId = null)
         {
+            // Use database transaction to ensure atomicity
+            using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
                 var loan = await _context.Loans.FindAsync(loanId);
@@ -486,14 +490,8 @@ namespace UtilityHub360.Services
                 //     loan.RemainingBalance -= loan.DownPayment;
                 // }
 
-                // TEMPORARY: Commented out until database migration is applied
-                // Create journal entry for loan disbursement (Debit Cash, Credit Loan Payable)
+                // Create journal entry for loan disbursement (Debit Bank Account, Credit Loan Payable)
                 var disbursementAmount = loan.Principal; // loan.ActualFinancedAmount > 0 ? loan.ActualFinancedAmount : loan.Principal;
-                // await _accountingService.CreateLoanDisbursementEntryAsync(
-                //     loanId,
-                //     loan.UserId,
-                //     disbursementAmount,
-                //     reference);
 
                 // Credit loan amount to bank account if BankAccountId is provided
                 if (!string.IsNullOrEmpty(bankAccountId))
@@ -560,6 +558,16 @@ namespace UtilityHub360.Services
 
                     _context.BankTransactions.Add(bankTransaction);
                     _context.Payments.Add(bankPayment);
+
+                    // Create Journal Entry for loan disbursement (Debit Bank Account, Credit Loan Payable)
+                    await _accountingService.CreateLoanDisbursementEntryAsync(
+                        loanId,
+                        loan.UserId,
+                        disbursementAmount,
+                        bankAccount.AccountName,
+                        reference ?? $"DISB-{DateTime.UtcNow:yyyyMMddHHmmss}",
+                        DateTime.UtcNow
+                    );
                 }
 
                 // Create disbursement transaction as Payment record (for loan transaction history)
@@ -584,6 +592,7 @@ namespace UtilityHub360.Services
 
                 _context.Payments.Add(disbursementPayment);
                 await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
 
                 var result = new
                 {
@@ -603,6 +612,7 @@ namespace UtilityHub360.Services
             }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 return ApiResponse<object>.ErrorResult($"Failed to disburse loan: {ex.Message}");
             }
         }

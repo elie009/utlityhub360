@@ -21,3 +21,5 @@ WHERE [ActualFinancedAmount] = 0 AND [Principal] > 0;
 PRINT 'Loan columns added successfully!';
 
 
+
+

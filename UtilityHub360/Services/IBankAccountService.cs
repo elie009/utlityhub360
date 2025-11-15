@@ -52,5 +52,8 @@ namespace UtilityHub360.Services
         // Admin Operations
         Task<ApiResponse<List<BankAccountDto>>> GetAllBankAccountsAsync(int page = 1, int limit = 50);
         Task<ApiResponse<List<BankTransactionDto>>> GetAllTransactionsAsync(int page = 1, int limit = 50);
+
+        // Text Analysis for Bank Transactions
+        Task<ApiResponse<BankTransactionDto>> AnalyzeAndCreateTransactionAsync(AnalyzeTransactionTextDto analyzeDto, string userId);
     }
 }

@@ -13,10 +13,12 @@ namespace UtilityHub360.Controllers
     public class BankAccountsController : ControllerBase
     {
         private readonly IBankAccountService _bankAccountService;
+        private readonly IAIAgentService _aiAgentService;
 
-        public BankAccountsController(IBankAccountService bankAccountService)
+        public BankAccountsController(IBankAccountService bankAccountService, IAIAgentService aiAgentService)
         {
             _bankAccountService = bankAccountService;
+            _aiAgentService = aiAgentService;
         }
 
         /// <summary>
@@ -168,10 +170,7 @@ namespace UtilityHub360.Controllers
         /// Get bank account summary with analytics
         /// </summary>
         [HttpGet("summary")]
-        public async Task<ActionResult<ApiResponse<BankAccountSummaryDto>>> GetBankAccountSummary(
-            [FromQuery] string frequency = "monthly",
-            [FromQuery] int? year = null,
-            [FromQuery] int? month = null)
+        public async Task<ActionResult<ApiResponse<BankAccountSummaryDto>>> GetBankAccountSummary([FromQuery] string frequency = "monthly")
         {
             try
             {
@@ -181,34 +180,14 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<BankAccountSummaryDto>.ErrorResult("User not authenticated"));
                 }
 
-                // Validate year and month if provided
-                if (year.HasValue && (year < 2000 || year > 3000))
+                // Validate frequency parameter
+                var validFrequencies = new[] { "weekly", "monthly", "quarterly", "yearly" };
+                if (!validFrequencies.Contains(frequency.ToLower()))
                 {
-                    return BadRequest(ApiResponse<BankAccountSummaryDto>.ErrorResult("Year must be between 2000 and 3000"));
+                    return BadRequest(ApiResponse<BankAccountSummaryDto>.ErrorResult("Invalid frequency. Must be one of: weekly, monthly, quarterly, yearly"));
                 }
 
-                if (month.HasValue && (month < 1 || month > 12))
-                {
-                    return BadRequest(ApiResponse<BankAccountSummaryDto>.ErrorResult("Month must be between 1 and 12"));
-                }
-
-                // If year or month is provided, both must be provided
-                if ((year.HasValue && !month.HasValue) || (!year.HasValue && month.HasValue))
-                {
-                    return BadRequest(ApiResponse<BankAccountSummaryDto>.ErrorResult("Both year and month must be provided together"));
-                }
-
-                // Validate frequency parameter (only if year/month not provided)
-                if (!year.HasValue && !month.HasValue)
-                {
-                    var validFrequencies = new[] { "weekly", "monthly", "quarterly", "yearly" };
-                    if (!validFrequencies.Contains(frequency.ToLower()))
-                    {
-                        return BadRequest(ApiResponse<BankAccountSummaryDto>.ErrorResult("Invalid frequency. Must be one of: weekly, monthly, quarterly, yearly"));
-                    }
-                }
-
-                var result = await _bankAccountService.GetBankAccountSummaryAsync(userId, frequency.ToLower(), year, month);
+                var result = await _bankAccountService.GetBankAccountSummaryAsync(userId, frequency.ToLower());
                 
                 if (!result.Success)
                 {
@@ -548,7 +527,7 @@ namespace UtilityHub360.Controllers
         /// Get transactions for a specific account
         /// </summary>
         [HttpGet("{bankAccountId}/transactions")]
-        public async Task<ActionResult<ApiResponse<List<BankTransactionDto>>>> GetAccountTransactions(string bankAccountId, [FromQuery] int page = 1, [FromQuery] int limit = 50, [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null)
+        public async Task<ActionResult<ApiResponse<List<BankTransactionDto>>>> GetAccountTransactions(string bankAccountId, [FromQuery] int page = 1, [FromQuery] int limit = 50)
         {
             try
             {
@@ -558,7 +537,7 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<List<BankTransactionDto>>.ErrorResult("User not authenticated"));
                 }
 
-                var result = await _bankAccountService.GetAccountTransactionsAsync(bankAccountId, userId, page, limit, dateFrom, dateTo);
+                var result = await _bankAccountService.GetAccountTransactionsAsync(bankAccountId, userId, page, limit);
                 
                 if (!result.Success)
                 {
@@ -577,7 +556,7 @@ namespace UtilityHub360.Controllers
         /// Get all transactions for the user
         /// </summary>
         [HttpGet("transactions")]
-        public async Task<ActionResult<ApiResponse<List<BankTransactionDto>>>> GetUserTransactions([FromQuery] string? accountType = null, [FromQuery] int page = 1, [FromQuery] int limit = 50, [FromQuery] DateTime? dateFrom = null, [FromQuery] DateTime? dateTo = null)
+        public async Task<ActionResult<ApiResponse<List<BankTransactionDto>>>> GetUserTransactions([FromQuery] string? accountType = null, [FromQuery] int page = 1, [FromQuery] int limit = 50)
         {
             try
             {
@@ -587,7 +566,7 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<List<BankTransactionDto>>.ErrorResult("User not authenticated"));
                 }
 
-                var result = await _bankAccountService.GetUserTransactionsAsync(userId, accountType, page, limit, dateFrom, dateTo);
+                var result = await _bankAccountService.GetUserTransactionsAsync(userId, accountType, page, limit);
                 
                 if (!result.Success)
                 {
@@ -950,6 +929,49 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<Dictionary<string, decimal>>.ErrorResult($"Failed to get expense categories: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Analyze transaction text from SMS/notification and create bank transaction (AI Agent Enhanced)
+        /// </summary>
+        /// <remarks>
+        /// This endpoint uses AI Agent to intelligently analyze transaction text and automatically create a bank transaction.
+        /// It extracts: amount, currency, merchant, date/time, card info, and location.
+        /// 
+        /// Request body:
+        /// - transactionText (required): The SMS/notification text to analyze
+        /// - bankAccountId (optional): If provided, uses this bank account instead of matching by card number
+        /// </remarks>
+        [HttpPost("transactions/analyze-text")]
+        public async Task<ActionResult<ApiResponse<BankTransactionDto>>> AnalyzeAndCreateTransaction([FromBody] AnalyzeTransactionTextDto analyzeDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<BankTransactionDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (analyzeDto == null || string.IsNullOrWhiteSpace(analyzeDto.TransactionText))
+                {
+                    return BadRequest(ApiResponse<BankTransactionDto>.ErrorResult("Transaction text is required."));
+                }
+
+                // Use AI Agent service for enhanced transaction analysis
+                var result = await _aiAgentService.AnalyzeAndCreateTransactionWithAgentAsync(analyzeDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BankTransactionDto>.ErrorResult($"Failed to analyze and create transaction: {ex.Message}"));
             }
         }
     }

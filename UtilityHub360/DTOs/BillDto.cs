@@ -84,6 +84,15 @@ namespace UtilityHub360.DTOs
         public bool AutoGenerateNext { get; set; } = false;
     }
 
+    public class MarkBillPaidDto
+    {
+        [StringLength(500)]
+        public string? Notes { get; set; }
+
+        [StringLength(450)]
+        public string? BankAccountId { get; set; }
+    }
+
     public class UpdateBillDto
     {
         [StringLength(255)]
@@ -241,17 +250,5 @@ namespace UtilityHub360.DTOs
         public DateTime StartDate { get; set; }
         public DateTime EndDate { get; set; }
         public string Message { get; set; } = string.Empty;
-    }
-
-    /// <summary>
-    /// DTO for marking a bill as paid
-    /// </summary>
-    public class MarkBillPaidDto
-    {
-        [StringLength(500)]
-        public string? Notes { get; set; }
-
-        [StringLength(450)]
-        public string? BankAccountId { get; set; } // Optional: if not provided, uses first active bank account
     }
 }

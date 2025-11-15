@@ -118,13 +118,17 @@ builder.Services.AddResponseCaching();
 
 // Add Services
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<LoanAccountingService>();
 builder.Services.AddScoped<ILoanService, LoanService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IBillService, BillService>();
 builder.Services.AddScoped<IBillAnalyticsService, BillAnalyticsService>();
-builder.Services.AddScoped<IBankAccountService, BankAccountService>();
+builder.Services.AddScoped<IBankAccountService>(sp => 
+{
+    var context = sp.GetRequiredService<ApplicationDbContext>();
+    var serviceProvider = sp;
+    return new BankAccountService(context, serviceProvider);
+});
 builder.Services.AddScoped<ISavingsService, SavingsService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IIncomeSourceService, IncomeSourceService>();
@@ -133,8 +137,8 @@ builder.Services.AddScoped<IOnboardingService, OnboardingService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddSingleton<IDocumentationSearchService, DocumentationSearchService>();
 builder.Services.AddScoped<IChatService, ChatService>();
+builder.Services.AddScoped<IAIAgentService, AIAgentService>();
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
-builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 
 // Add Background Services
 builder.Services.AddHostedService<BillReminderBackgroundService>();
