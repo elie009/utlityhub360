@@ -146,6 +146,7 @@ builder.Services.AddScoped<IAIAgentService>(sp =>
     return new AIAgentService(context, bankAccountService, logger, openAISettings);
 });
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
+builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 
 // Add Background Services
 builder.Services.AddHostedService<BillReminderBackgroundService>();

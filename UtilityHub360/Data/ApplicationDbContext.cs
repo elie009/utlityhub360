@@ -57,6 +57,16 @@ namespace UtilityHub360.Data
                     .WithMany(p => p.Loans)
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+
+                // Temporary: Ignore accounting properties until database migration is applied
+                // TODO: Remove these Ignore() calls after running APPLY_ALL_LOAN_ACCOUNTING_CHANGES.sql
+                entity.Ignore(e => e.InterestComputationMethod);
+                entity.Ignore(e => e.TotalInterest);
+                entity.Ignore(e => e.DownPayment);
+                entity.Ignore(e => e.ProcessingFee);
+                entity.Ignore(e => e.ActualFinancedAmount);
+                entity.Ignore(e => e.PaymentFrequency);
+                entity.Ignore(e => e.StartDate);
             });
 
             // RepaymentSchedule configuration

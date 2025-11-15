@@ -97,7 +97,21 @@ namespace UtilityHub360.Services
                 var text = analyzeDto.TransactionText.Trim();
 
                 // Use AI to extract transaction details
-                var extractedData = await ExtractTransactionDetailsWithAIAsync(text);
+                TransactionExtractedData? extractedData = null;
+                try
+                {
+                    extractedData = await ExtractTransactionDetailsWithAIAsync(text);
+                }
+                catch (Exception aiEx)
+                {
+                    _logger.LogWarning(aiEx, "AI extraction failed, falling back to regex");
+                }
+
+                // Fallback to regex if AI extraction failed or is not available
+                if (extractedData == null || extractedData.Amount <= 0)
+                {
+                    extractedData = ExtractTransactionDetailsWithRegex(text);
+                }
                 
                 if (extractedData == null || extractedData.Amount <= 0)
                 {
@@ -129,6 +143,25 @@ namespace UtilityHub360.Services
 
                 // Parse transaction date
                 var transactionDateTime = ParseTransactionDateTime(extractedData.DateText, extractedData.TimeText);
+
+                // Check for duplicate transaction (same amount, date, time, and merchant)
+                var duplicateInPayments = await _context.Payments
+                    .AnyAsync(p => p.BankAccountId == bankAccount.Id
+                        && p.UserId == userId
+                        && p.IsBankTransaction
+                        && p.Amount == extractedData.Amount
+                        && p.TransactionDate.HasValue
+                        && p.TransactionDate.Value.Date == transactionDateTime.Date
+                        && p.TransactionDate.Value.Hour == transactionDateTime.Hour
+                        && p.TransactionDate.Value.Minute == transactionDateTime.Minute
+                        && (extractedData.Merchant == null || p.Merchant == extractedData.Merchant));
+
+                if (duplicateInPayments)
+                {
+                    return ApiResponse<BankTransactionDto>.ErrorResult(
+                        $"Duplicate transaction detected. A transaction with the same amount ({extractedData.Amount} {extractedData.Currency ?? bankAccount.Currency}), " +
+                        $"date/time ({transactionDateTime:yyyy-MM-dd HH:mm}), and merchant ({extractedData.Merchant ?? "N/A"}) already exists.");
+                }
 
                 // Create transaction
                 var createTransactionDto = new CreateBankTransactionDto
@@ -355,6 +388,163 @@ Rules:
             }
 
             return date.Add(time);
+        }
+
+        private TransactionExtractedData? ExtractTransactionDetailsWithRegex(string text)
+        {
+            try
+            {
+                var data = new TransactionExtractedData();
+
+                // Extract amount - look for patterns like "SAR 84.30", "84.30 SAR", "$100", "100 USD", etc.
+                var amountPatterns = new[]
+                {
+                    @"(?:SAR|USD|EUR|GBP|AED|KWD|BHD|OMR|QAR|JOD|EGP|LBP|IQD|YER|SYP|TND|DZD|MAD|LYD|SDG|MUR|SCR|DJF|ETB|SOS|KES|UGX|TZS|RWF|BIF|CDF|AOA|ZMW|MWK|MZN|SZL|LSL|BWP|ZAR|NAD|MGA|KMF|STN|CVE|XOF|XAF|XPF|NGN|GHS|XCD|BBD|BMD|BZD|GTQ|HNL|NIO|CRC|PAB|PYG|BOB|PEN|CLP|COP|VES|GYD|SRD|TTD|JMD|CUP|DOP|HTG|AWG|ANG|SBD|FJD|PGK|WST|TOP|VUV|NZD|AUD|SGD|MYR|THB|VND|LAK|KHR|MMK|PHP|IDR|BND|CNY|JPY|KRW|TWD|HKD|MOP|PKR|INR|BDT|LKR|NPR|BTN|MVR|AFN|TJS|KGS|UZS|TMT|KZT|MNT)\s*([\d,]+\.?\d*)",
+                    @"([\d,]+\.?\d*)\s*(?:SAR|USD|EUR|GBP|AED|KWD|BHD|OMR|QAR|JOD|EGP|LBP|IQD|YER|SYP|TND|DZD|MAD|LYD|SDG|MUR|SCR|DJF|ETB|SOS|KES|UGX|TZS|RWF|BIF|CDF|AOA|ZMW|MWK|MZN|SZL|LSL|BWP|ZAR|NAD|MGA|KMF|STN|CVE|XOF|XAF|XPF|NGN|GHS|XCD|BBD|BMD|BZD|GTQ|HNL|NIO|CRC|PAB|PYG|BOB|PEN|CLP|COP|VES|GYD|SRD|TTD|JMD|CUP|DOP|HTG|AWG|ANG|SBD|FJD|PGK|WST|TOP|VUV|NZD|AUD|SGD|MYR|THB|VND|LAK|KHR|MMK|PHP|IDR|BND|CNY|JPY|KRW|TWD|HKD|MOP|PKR|INR|BDT|LKR|NPR|BTN|MVR|AFN|TJS|KGS|UZS|TMT|KZT|MNT)",
+                    @"(?:Amount|AMOUNT|amount):\s*([\d,]+\.?\d*)",
+                    @"\$([\d,]+\.?\d*)",
+                    @"([\d,]+\.?\d*)\s*(?:dollars|dollar)"
+                };
+
+                foreach (var pattern in amountPatterns)
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(text, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (match.Success && match.Groups.Count > 1)
+                    {
+                        var amountStr = match.Groups[1].Value.Replace(",", "");
+                        if (decimal.TryParse(amountStr, out var amount))
+                        {
+                            data.Amount = amount;
+                            break;
+                        }
+                    }
+                }
+
+                // Extract currency
+                var currencyMatch = System.Text.RegularExpressions.Regex.Match(text, @"(SAR|USD|EUR|GBP|AED|KWD|BHD|OMR|QAR|JOD|EGP|LBP|IQD|YER|SYP|TND|DZD|MAD|LYD|SDG|MUR|SCR|DJF|ETB|SOS|KES|UGX|TZS|RWF|BIF|CDF|AOA|ZMW|MWK|MZN|SZL|LSL|BWP|ZAR|NAD|MGA|KMF|STN|CVE|XOF|XAF|XPF|NGN|GHS|XCD|BBD|BMD|BZD|GTQ|HNL|NIO|CRC|PAB|PYG|BOB|PEN|CLP|COP|VES|GYD|SRD|TTD|JMD|CUP|DOP|HTG|AWG|ANG|SBD|FJD|PGK|WST|TOP|VUV|NZD|AUD|SGD|MYR|THB|VND|LAK|KHR|MMK|PHP|IDR|BND|CNY|JPY|KRW|TWD|HKD|MOP|PKR|INR|BDT|LKR|NPR|BTN|MVR|AFN|TJS|KGS|UZS|TMT|KZT|MNT)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (currencyMatch.Success)
+                {
+                    data.Currency = currencyMatch.Value.ToUpper();
+                }
+
+                // Extract card last 4 digits - look for patterns like "Card: XX0655", "Visa card XX0655", "Card ending in 0655", etc.
+                var cardPatterns = new[]
+                {
+                    @"(?:Card|CARD|card):\s*(?:Visa\s+card\s+)?(?:XX|xx|\*{2,4})?(\d{4})",
+                    @"Visa\s+card\s+(?:XX|xx|\*{2,4})?(\d{4})",
+                    @"Card\s+ending\s+in[:\s]+(\d{4})",
+                    @"(?:XX|xx|\*{2,4})?(\d{4})(?:\s|$)"
+                };
+
+                foreach (var pattern in cardPatterns)
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(text, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (match.Success && match.Groups.Count > 1)
+                    {
+                        data.CardLast4 = match.Groups[1].Value;
+                        break;
+                    }
+                }
+
+                // Extract merchant - look for "Merchant:", "At:", "From:", etc.
+                var merchantPatterns = new[]
+                {
+                    @"(?:Merchant|MERCHANT|merchant):\s*([^\n\r]+)",
+                    @"(?:At|AT|at|From|FROM|from):\s*([^\n\r]+)"
+                };
+
+                foreach (var pattern in merchantPatterns)
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(text, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (match.Success && match.Groups.Count > 1)
+                    {
+                        var merchant = match.Groups[1].Value.Trim();
+                        if (!string.IsNullOrEmpty(merchant) && 
+                            !merchant.Contains("SAUDI ARABIA") && 
+                            !merchant.Contains("On:") &&
+                            !merchant.Contains("Remaining") &&
+                            !merchant.Contains("limit"))
+                        {
+                            data.Merchant = merchant;
+                            break;
+                        }
+                    }
+                }
+
+                // Extract location
+                var locationMatch = System.Text.RegularExpressions.Regex.Match(text, @"In:\s*([^\n\r]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (locationMatch.Success && locationMatch.Groups.Count > 1)
+                {
+                    data.Location = locationMatch.Groups[1].Value.Trim();
+                }
+
+                // Extract date and time - look for patterns like "On: 2025-11-14 21:31:17", "2025-11-14 21:31:17", etc.
+                var dateTimePatterns = new[]
+                {
+                    @"(?:On|ON|on|Date|DATE|date):\s*(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2}(?::\d{2})?)",
+                    @"(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2}(?::\d{2})?)"
+                };
+
+                foreach (var pattern in dateTimePatterns)
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(text, pattern);
+                    if (match.Success && match.Groups.Count >= 3)
+                    {
+                        data.DateText = match.Groups[1].Value;
+                        data.TimeText = match.Groups[2].Value;
+                        break;
+                    }
+                }
+
+                // If date/time not found together, try separately
+                if (string.IsNullOrEmpty(data.DateText))
+                {
+                    var datePatterns = new[]
+                    {
+                        @"(?:On|ON|on|Date|DATE|date):\s*(\d{4}-\d{2}-\d{2})",
+                        @"(\d{4}-\d{2}-\d{2})",
+                        @"(\d{2}/\d{2}/\d{4})",
+                        @"(\d{2}-\d{2}-\d{4})"
+                    };
+
+                    foreach (var pattern in datePatterns)
+                    {
+                        var match = System.Text.RegularExpressions.Regex.Match(text, pattern);
+                        if (match.Success && match.Groups.Count > 1)
+                        {
+                            data.DateText = match.Groups[1].Value;
+                            break;
+                        }
+                    }
+                }
+
+                // Extract time separately if not already extracted
+                if (string.IsNullOrEmpty(data.TimeText))
+                {
+                    var timeMatch = System.Text.RegularExpressions.Regex.Match(text, @"(\d{1,2}:\d{2}(?::\d{2})?)");
+                    if (timeMatch.Success)
+                    {
+                        data.TimeText = timeMatch.Groups[1].Value;
+                    }
+                }
+
+                // Extract description
+                var descMatch = System.Text.RegularExpressions.Regex.Match(text, @"(?:POS\s+Purchase|Purchase|Transaction|Payment)([^\n\r]*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (descMatch.Success)
+                {
+                    data.Description = descMatch.Value.Trim();
+                }
+
+                // Check for Apple Pay
+                data.IsApplePay = System.Text.RegularExpressions.Regex.IsMatch(text, @"Apple\s+Pay", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                return data.Amount > 0 ? data : null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in regex extraction");
+                return null;
+            }
         }
 
         private string GetSystemPrompt()
