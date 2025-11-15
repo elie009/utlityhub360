@@ -137,7 +137,14 @@ builder.Services.AddScoped<IOnboardingService, OnboardingService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddSingleton<IDocumentationSearchService, DocumentationSearchService>();
 builder.Services.AddScoped<IChatService, ChatService>();
-builder.Services.AddScoped<IAIAgentService, AIAgentService>();
+builder.Services.AddScoped<IAIAgentService>(sp =>
+{
+    var context = sp.GetRequiredService<ApplicationDbContext>();
+    var bankAccountService = sp.GetRequiredService<IBankAccountService>();
+    var logger = sp.GetRequiredService<ILogger<AIAgentService>>();
+    var openAISettings = sp.GetRequiredService<OpenAISettings>();
+    return new AIAgentService(context, bankAccountService, logger, openAISettings);
+});
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 
 // Add Background Services

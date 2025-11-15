@@ -15,19 +15,24 @@ namespace UtilityHub360.Services
         private readonly IBankAccountService _bankAccountService;
         private readonly HttpClient _httpClient;
         private readonly ILogger<AIAgentService> _logger;
-
-        private const string OpenAIApiKey = "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";
+        private readonly OpenAISettings _openAISettings;
 
         public AIAgentService(
             ApplicationDbContext context,
             IBankAccountService bankAccountService,
-            ILogger<AIAgentService> logger)
+            ILogger<AIAgentService> logger,
+            OpenAISettings openAISettings)
         {
             _context = context;
             _bankAccountService = bankAccountService;
             _logger = logger;
+            _openAISettings = openAISettings;
             _httpClient = new HttpClient();
-            _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {OpenAIApiKey}");
+            
+            if (!string.IsNullOrEmpty(_openAISettings.ApiKey))
+            {
+                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_openAISettings.ApiKey}");
+            }
         }
 
         public async Task<ApiResponse<AIAgentResponseDto>> ProcessAgentRequestAsync(AIAgentRequestDto request, string userId)
