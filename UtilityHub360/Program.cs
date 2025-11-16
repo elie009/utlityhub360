@@ -117,6 +117,8 @@ builder.Services.AddMemoryCache();
 builder.Services.AddResponseCaching();
 
 // Add Services
+builder.Services.AddScoped<AccountingService>();
+builder.Services.AddScoped<LoanAccountingService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ILoanService, LoanService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();

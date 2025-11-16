@@ -217,15 +217,18 @@ namespace UtilityHub360.Services
                 var loanIds = loans.Select(l => l.Id).ToList();
                 
                 // Get next due dates from RepaymentSchedule for all loans at once
-                var nextDueDates = await _context.RepaymentSchedules
+                var nextDueDatesQuery = _context.RepaymentSchedules
                     .Where(rs => loanIds.Contains(rs.LoanId) && rs.Status == "PENDING")
                     .GroupBy(rs => rs.LoanId)
                     .Select(g => new
                     {
                         LoanId = g.Key,
-                        NextDueDate = g.OrderBy(rs => rs.DueDate).FirstOrDefault()!.DueDate
-                    })
-                    .ToListAsync();
+                        NextDueDate = g.OrderBy(rs => rs.DueDate)
+                            .Select(rs => (DateTime?)rs.DueDate)
+                            .FirstOrDefault()
+                    });
+                
+                var nextDueDates = await nextDueDatesQuery.ToListAsync();
 
                 var loanDtos = loans.Select(loan => new LoanDto
                 {

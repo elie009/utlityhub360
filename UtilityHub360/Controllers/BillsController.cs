@@ -310,7 +310,7 @@ namespace UtilityHub360.Controllers
         // Bill Management Endpoints
 
         [HttpPut("{billId}/mark-paid")]
-        public async Task<ActionResult<ApiResponse<BillDto>>> MarkBillAsPaid(string billId, [FromBody] MarkBillPaidDto? request = null)
+        public async Task<ActionResult<ApiResponse<BillDto>>> MarkBillAsPaid(string billId, [FromBody] string? notes = null)
         {
             try
             {
@@ -321,10 +321,7 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<BillDto>.ErrorResult("User not authenticated"));
                 }
 
-                var notes = request?.Notes;
-                var bankAccountId = request?.BankAccountId;
-
-                var result = await _billService.MarkBillAsPaidAsync(billId, userId, notes, bankAccountId);
+                var result = await _billService.MarkBillAsPaidAsync(billId, userId, notes);
                 
                 if (result.Success)
                 {

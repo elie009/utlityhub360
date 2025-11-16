@@ -144,6 +144,18 @@ namespace UtilityHub360.Services
                 // Parse transaction date
                 var transactionDateTime = ParseTransactionDateTime(extractedData.DateText, extractedData.TimeText);
 
+                // Validate that only one transaction type is specified (bill, loan, or savings)
+                var transactionTypeCount = 0;
+                if (!string.IsNullOrEmpty(analyzeDto.BillId)) transactionTypeCount++;
+                if (!string.IsNullOrEmpty(analyzeDto.LoanId)) transactionTypeCount++;
+                if (!string.IsNullOrEmpty(analyzeDto.SavingsAccountId)) transactionTypeCount++;
+
+                if (transactionTypeCount > 1)
+                {
+                    return ApiResponse<BankTransactionDto>.ErrorResult(
+                        "Only one transaction type can be specified. Please provide either BillId, LoanId, or SavingsAccountId, but not multiple.");
+                }
+
                 // Check for duplicate transaction (same amount, date, time, and merchant)
                 var duplicateInPayments = await _context.Payments
                     .AnyAsync(p => p.BankAccountId == bankAccount.Id
@@ -176,7 +188,11 @@ namespace UtilityHub360.Services
                     Currency = extractedData.Currency ?? bankAccount.Currency,
                     TransactionDate = transactionDateTime,
                     ReferenceNumber = $"SMS_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
-                    Notes = $"Parsed from SMS: {text}"
+                    Notes = $"Parsed from SMS: {text}",
+                    // Link to bill, loan, or savings account if provided
+                    BillId = analyzeDto.BillId,
+                    LoanId = analyzeDto.LoanId,
+                    SavingsAccountId = analyzeDto.SavingsAccountId
                 };
 
                 return await _bankAccountService.CreateTransactionAsync(createTransactionDto, userId);

@@ -360,6 +360,18 @@ namespace UtilityHub360.Services
         {
             try
             {
+                // Validate and limit the maximum page size to prevent performance issues
+                const int maxLimit = 1000;
+                if (limit > maxLimit)
+                {
+                    limit = maxLimit;
+                }
+
+                if (page < 1)
+                {
+                    page = 1;
+                }
+
                 var query = _context.Bills.Where(b => b.UserId == userId);
 
                 if (!string.IsNullOrEmpty(status))
@@ -373,9 +385,17 @@ namespace UtilityHub360.Services
                 }
 
                 var totalCount = await query.CountAsync();
+                
+                // Calculate skip value safely
+                var skip = (page - 1) * limit;
+                if (skip < 0)
+                {
+                    skip = 0;
+                }
+
                 var bills = await query
                     .OrderByDescending(b => b.CreatedAt)
-                    .Skip((page - 1) * limit)
+                    .Skip(skip)
                     .Take(limit)
                     .ToListAsync();
 
@@ -393,6 +413,14 @@ namespace UtilityHub360.Services
             }
             catch (Exception ex)
             {
+                // Log the full exception for debugging
+                System.Diagnostics.Debug.WriteLine($"GetUserBillsAsync Error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Stack Trace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Inner Exception: {ex.InnerException.Message}");
+                }
+                
                 return ApiResponse<PaginatedResponse<BillDto>>.ErrorResult($"Failed to get bills: {ex.Message}");
             }
         }

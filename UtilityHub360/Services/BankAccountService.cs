@@ -510,7 +510,57 @@ namespace UtilityHub360.Services
                 string? loanId = null;
                 string enhancedDescription = createTransactionDto.Description;
 
-                if (!string.IsNullOrEmpty(createTransactionDto.Category))
+                // Use directly provided IDs first (from DTO) - can have multiple
+                if (!string.IsNullOrEmpty(createTransactionDto.BillId))
+                {
+                    billId = createTransactionDto.BillId;
+                    if (string.IsNullOrEmpty(enhancedDescription) || enhancedDescription == createTransactionDto.Description)
+                    {
+                        enhancedDescription = $"Bill Payment - {createTransactionDto.Description}";
+                    }
+                }
+                
+                if (!string.IsNullOrEmpty(createTransactionDto.SavingsAccountId))
+                {
+                    savingsAccountId = createTransactionDto.SavingsAccountId;
+                    
+                    // Fetch the savings account to get its AccountName for the category
+                    var savingsAccount = await _context.SavingsAccounts
+                        .FirstOrDefaultAsync(sa => sa.Id == savingsAccountId && sa.UserId == userId);
+                    
+                    if (savingsAccount != null)
+                    {
+                        // Set category to [SAVINGS-{AccountName}]
+                        createTransactionDto.Category = $"[SAVINGS-{savingsAccount.AccountName}]";
+                    }
+                    
+                    if (string.IsNullOrEmpty(enhancedDescription) || enhancedDescription == createTransactionDto.Description)
+                    {
+                        enhancedDescription = $"Savings - {createTransactionDto.Description}";
+                    }
+                }
+                
+                if (!string.IsNullOrEmpty(createTransactionDto.LoanId))
+                {
+                    loanId = createTransactionDto.LoanId;
+                    
+                    // Fetch the loan to get its Purpose for the category
+                    var loan = await _context.Loans
+                        .FirstOrDefaultAsync(l => l.Id == loanId && l.UserId == userId);
+                    
+                    if (loan != null)
+                    {
+                        // Set category to [LOAN-{Purpose}]
+                        createTransactionDto.Category = $"[LOAN-{loan.Purpose}]";
+                    }
+                    
+                    if (string.IsNullOrEmpty(enhancedDescription) || enhancedDescription == createTransactionDto.Description)
+                    {
+                        enhancedDescription = $"Loan Payment - {createTransactionDto.Description}";
+                    }
+                }
+                // Fallback to category-based detection if no direct IDs provided
+                if (string.IsNullOrEmpty(billId) && string.IsNullOrEmpty(savingsAccountId) && string.IsNullOrEmpty(loanId) && !string.IsNullOrEmpty(createTransactionDto.Category))
                 {
                     var categoryLower = createTransactionDto.Category.ToLower();
                     
@@ -525,7 +575,7 @@ namespace UtilityHub360.Services
                             enhancedDescription = $"Bill Payment - {createTransactionDto.Description}";
                         }
                     }
-                    // Savings-related categories (only if explicitly linking to a different savings account)
+                    // Savings-related categories
                     else if ((categoryLower.Contains("savings") || categoryLower.Contains("deposit") || 
                              categoryLower.Contains("investment") || categoryLower.Contains("goal")) &&
                              !string.IsNullOrEmpty(createTransactionDto.SavingsAccountId) &&
@@ -616,6 +666,64 @@ namespace UtilityHub360.Services
                 };
 
                 _context.BankTransactions.Add(bankTransaction);
+
+                // Handle savings account transaction if linked
+                if (!string.IsNullOrEmpty(savingsAccountId))
+                {
+                    var savingsAccount = await _context.SavingsAccounts
+                        .FirstOrDefaultAsync(sa => sa.Id == savingsAccountId && sa.UserId == userId);
+
+                    if (savingsAccount == null)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            $"Savings account not found. SavingsAccountId: {savingsAccountId}, UserId: {userId}");
+                    }
+
+                    // Determine savings transaction type based on bank transaction type
+                    // For purchases (DEBIT), treat as DEPOSIT to savings (allocating money to savings goal)
+                    // For income (CREDIT), treat as DEPOSIT to savings (saving money)
+                    // Note: This means linking a transaction to savings always adds to savings balance
+                    string savingsTransactionType = "DEPOSIT";
+
+                    // Create savings transaction
+                    var savingsTransaction = new SavingsTransaction
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        SavingsAccountId = savingsAccountId,
+                        SourceBankAccountId = createTransactionDto.BankAccountId,
+                        Amount = payment.Amount,
+                        TransactionType = savingsTransactionType,
+                        Description = payment.Description,
+                        Category = payment.Category ?? "SAVINGS",
+                        Notes = payment.Notes,
+                        TransactionDate = payment.TransactionDate ?? DateTime.UtcNow,
+                        Currency = payment.Currency,
+                        IsRecurring = payment.IsRecurring,
+                        RecurringFrequency = payment.RecurringFrequency,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    _context.SavingsTransactions.Add(savingsTransaction);
+
+                    // Update savings account balance
+                    if (savingsTransactionType == "DEPOSIT")
+                    {
+                        savingsAccount.CurrentBalance += payment.Amount;
+                    }
+                    else if (savingsTransactionType == "WITHDRAWAL")
+                    {
+                        // Check if savings account has sufficient balance
+                        if (savingsAccount.CurrentBalance < payment.Amount)
+                        {
+                            return ApiResponse<BankTransactionDto>.ErrorResult(
+                                $"Insufficient balance in savings account. Current balance: {savingsAccount.CurrentBalance}, Required: {payment.Amount}");
+                        }
+                        savingsAccount.CurrentBalance -= payment.Amount;
+                    }
+
+                    savingsAccount.UpdatedAt = DateTime.UtcNow;
+                }
+
                 await _context.SaveChangesAsync();
 
                 var transactionDto = MapPaymentToBankTransactionDto(payment);
@@ -1212,6 +1320,7 @@ namespace UtilityHub360.Services
             {
                 Id = transaction.Id,
                 BankAccountId = transaction.BankAccountId,
+                AccountName = transaction.BankAccount?.AccountName ?? string.Empty,
                 UserId = transaction.UserId,
                 Amount = transaction.Amount,
                 TransactionType = transaction.TransactionType,
@@ -1238,6 +1347,7 @@ namespace UtilityHub360.Services
             {
                 Id = payment.Id,
                 BankAccountId = payment.BankAccountId,
+                AccountName = payment.BankAccount?.AccountName ?? string.Empty,
                 UserId = payment.UserId,
                 Amount = payment.Amount,
                 TransactionType = payment.TransactionType ?? "UNKNOWN",
@@ -1285,6 +1395,7 @@ namespace UtilityHub360.Services
                 }
 
                 var query = _context.Payments
+                    .Include(p => p.BankAccount)
                     .Where(p => p.BankAccountId == bankAccountId && p.UserId == userId && p.IsBankTransaction);
 
                 if (dateFrom.HasValue)
@@ -1317,6 +1428,7 @@ namespace UtilityHub360.Services
             try
             {
                 var query = _context.Payments
+                    .Include(p => p.BankAccount)
                     .Where(p => p.UserId == userId && p.IsBankTransaction);
 
                 if (!string.IsNullOrEmpty(accountType))

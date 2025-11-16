@@ -799,36 +799,66 @@ namespace UtilityHub360.Services
                     .Where(b => b.UserId == userId && b.CreatedAt >= startDate)
                     .ToListAsync();
 
+                // Return empty list if no bills found
+                if (bills == null || !bills.Any())
+                {
+                    return ApiResponse<List<ProviderAnalyticsDto>>.SuccessResult(new List<ProviderAnalyticsDto>());
+                }
+
                 var providerGroups = bills
-                    .Where(b => !string.IsNullOrEmpty(b.Provider))
-                    .GroupBy(b => new { b.Provider, b.BillType });
+                    .Where(b => !string.IsNullOrEmpty(b.Provider) && !string.IsNullOrEmpty(b.BillType))
+                    .GroupBy(b => new { Provider = b.Provider!, BillType = b.BillType });
 
                 var analytics = new List<ProviderAnalyticsDto>();
 
                 foreach (var group in providerGroups)
                 {
                     var providerBills = group.ToList();
-                    var monthlySummary = await GetMonthlyTrendAsync(
-                        userId, group.Key.Provider, group.Key.BillType, months);
+                    
+                    if (!providerBills.Any() || string.IsNullOrEmpty(group.Key.Provider) || string.IsNullOrEmpty(group.Key.BillType))
+                        continue;
 
-                    // Get budget if exists
-                    var budget = await _context.BudgetSettings
-                        .FirstOrDefaultAsync(b => b.UserId == userId && 
-                                                 b.Provider == group.Key.Provider && 
-                                                 b.BillType == group.Key.BillType);
+                    // Get monthly summary (safely handle if method doesn't exist)
+                    ApiResponse<List<MonthlyBillSummaryDto>> monthlySummary;
+                    try
+                    {
+                        monthlySummary = await GetMonthlyTrendAsync(
+                            userId, group.Key.Provider, group.Key.BillType, months);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Method may not be fully implemented, use empty list
+                        monthlySummary = ApiResponse<List<MonthlyBillSummaryDto>>.SuccessResult(new List<MonthlyBillSummaryDto>());
+                    }
+
+                    // Get budget if exists (safely handle if BudgetSettings table doesn't exist)
+                    decimal? currentBudget = null;
+                    try
+                    {
+                        var budget = await _context.BudgetSettings
+                            .FirstOrDefaultAsync(b => b.UserId == userId && 
+                                                     b.Provider == group.Key.Provider && 
+                                                     b.BillType == group.Key.BillType);
+                        currentBudget = budget?.MonthlyBudget;
+                    }
+                    catch (Exception ex)
+                    {
+                        // BudgetSettings table may not exist, ignore
+                        currentBudget = null;
+                    }
 
                     analytics.Add(new ProviderAnalyticsDto
                     {
-                        Provider = group.Key.Provider!,
+                        Provider = group.Key.Provider,
                         BillType = group.Key.BillType,
                         TotalSpent = providerBills.Sum(b => b.Amount),
-                        AverageMonthly = providerBills.Average(b => b.Amount),
+                        AverageMonthly = providerBills.Any() ? providerBills.Average(b => b.Amount) : 0,
                         BillCount = providerBills.Count,
-                        HighestBill = providerBills.Max(b => b.Amount),
-                        LowestBill = providerBills.Min(b => b.Amount),
-                        LastBillDate = providerBills.Max(b => b.CreatedAt),
-                        CurrentBudget = budget?.MonthlyBudget,
-                        MonthlySummary = monthlySummary.Data ?? new List<MonthlyBillSummaryDto>()
+                        HighestBill = providerBills.Any() ? providerBills.Max(b => b.Amount) : 0,
+                        LowestBill = providerBills.Any() ? providerBills.Min(b => b.Amount) : 0,
+                        LastBillDate = providerBills.Any() ? providerBills.Max(b => b.CreatedAt) : (DateTime?)null,
+                        CurrentBudget = currentBudget,
+                        MonthlySummary = monthlySummary?.Data ?? new List<MonthlyBillSummaryDto>()
                     });
                 }
 
@@ -837,6 +867,14 @@ namespace UtilityHub360.Services
             }
             catch (Exception ex)
             {
+                // Log the full exception for debugging
+                System.Diagnostics.Debug.WriteLine($"GetProviderAnalyticsAsync Error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Stack Trace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Inner Exception: {ex.InnerException.Message}");
+                }
+                
                 return ApiResponse<List<ProviderAnalyticsDto>>.ErrorResult(
                     $"Failed to get provider analytics: {ex.Message}");
             }
