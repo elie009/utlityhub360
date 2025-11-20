@@ -167,5 +167,77 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<object>.ErrorResult($"Failed to reset password: {ex.Message}"));
             }
         }
+
+        [HttpPost("change-password")]
+        [Authorize]
+        public async Task<ActionResult<ApiResponse<object>>> ChangePassword([FromBody] ChangePasswordDto changePasswordDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<object>.ErrorResult("User not authenticated"));
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<object>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _authService.ChangePasswordAsync(changePasswordDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.ErrorResult($"Failed to change password: {ex.Message}"));
+            }
+        }
+
+        [HttpPost("clear-all-data")]
+        [Authorize]
+        public async Task<ActionResult<ApiResponse<object>>> ClearAllData([FromBody] ClearAllDataDto clearAllDataDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<object>.ErrorResult("User not authenticated"));
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<object>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _authService.ClearAllUserDataAsync(clearAllDataDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.ErrorResult($"Failed to clear user data: {ex.Message}"));
+            }
+        }
     }
 }

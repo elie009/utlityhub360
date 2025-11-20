@@ -40,6 +40,8 @@ namespace UtilityHub360.Entities
 
         public DateTime TargetDate { get; set; }
 
+        public DateTime? StartDate { get; set; }
+
         public bool IsActive { get; set; } = true;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

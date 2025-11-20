@@ -168,8 +168,9 @@ namespace UtilityHub360.Services
             {
                 var (startDate, endDate) = GetDateRange(query);
 
+                // Note: IsDeleted is ignored in DbContext, so we don't filter by it
                 var incomeSources = await _context.IncomeSources
-                    .Where(i => i.UserId == userId && !i.IsDeleted && i.IsActive)
+                    .Where(i => i.UserId == userId && i.IsActive)
                     .ToListAsync();
 
                 var totalIncome = incomeSources.Sum(i => i.MonthlyAmount);
@@ -496,12 +497,136 @@ namespace UtilityHub360.Services
         }
 
         // ==========================================
-        // SAVINGS REPORT (STUB)
+        // SAVINGS REPORT
         // ==========================================
 
         public async Task<ApiResponse<SavingsReportDto>> GetSavingsReportAsync(string userId, ReportQueryDto query)
         {
-            return await Task.FromResult(ApiResponse<SavingsReportDto>.ErrorResult("Not implemented yet"));
+            try
+            {
+                var (startDate, endDate) = GetDateRange(query);
+
+                // Get all active savings accounts for the user
+                var savingsAccounts = await _context.SavingsAccounts
+                    .Where(sa => sa.UserId == userId && sa.IsActive)
+                    .ToListAsync();
+
+                // Calculate total savings (sum of current balances)
+                var totalSavings = savingsAccounts.Sum(sa => sa.CurrentBalance);
+
+                // Calculate total savings goal (sum of target amounts)
+                var savingsGoal = savingsAccounts.Sum(sa => sa.TargetAmount);
+
+                // Calculate goal progress percentage
+                var goalProgress = savingsGoal > 0 
+                    ? (totalSavings / savingsGoal) * 100 
+                    : 0;
+
+                // Calculate monthly savings from transactions in the period
+                var monthlySavings = await _context.SavingsTransactions
+                    .Where(st => st.SavingsAccount.UserId == userId && 
+                                st.TransactionType == "DEPOSIT" &&
+                                st.TransactionDate >= startDate && 
+                                st.TransactionDate <= endDate)
+                    .SumAsync(st => st.Amount);
+
+                // Get savings goals list
+                var goals = savingsAccounts.Select(sa => 
+                {
+                    // Use StartDate if available, otherwise use CreatedAt as fallback
+                    var startDate = sa.StartDate ?? sa.CreatedAt;
+                    
+                    return new SavingsGoalDto
+                    {
+                        GoalName = sa.Goal ?? sa.AccountName,
+                        TargetAmount = sa.TargetAmount,
+                        CurrentAmount = sa.CurrentBalance,
+                        Progress = sa.TargetAmount > 0 
+                            ? (sa.CurrentBalance / sa.TargetAmount) * 100 
+                            : 0,
+                        TargetDate = sa.TargetDate,
+                        StartDate = startDate
+                    };
+                }).ToList();
+
+                // Calculate savings trend (monthly breakdown)
+                var savingsTrend = new List<TrendDataPoint>();
+                var savingsTransactions = await _context.SavingsTransactions
+                    .Where(st => st.SavingsAccount.UserId == userId && 
+                                st.TransactionType == "DEPOSIT" &&
+                                st.TransactionDate >= startDate && 
+                                st.TransactionDate <= endDate)
+                    .ToListAsync();
+
+                var monthlyGrouped = savingsTransactions
+                    .GroupBy(st => new { 
+                        Year = st.TransactionDate.Year, 
+                        Month = st.TransactionDate.Month 
+                    })
+                    .Select(g => new TrendDataPoint
+                    {
+                        Date = new DateTime(g.Key.Year, g.Key.Month, 1),
+                        Label = $"{new DateTime(g.Key.Year, g.Key.Month, 1):MMM yyyy}",
+                        Value = g.Sum(st => st.Amount)
+                    })
+                    .OrderBy(t => t.Date)
+                    .ToList();
+
+                savingsTrend = monthlyGrouped;
+
+                // Calculate savings rate (as percentage of income - you may need to get income from income sources)
+                var savingsRate = 0m; // TODO: Calculate based on income sources
+
+                // Calculate projected goal date and months to goal
+                DateTime? projectedGoalDate = null;
+                int monthsToGoal = 0;
+                decimal suggestionIncrease = 0;
+                int suggestionMonthsSaved = 0;
+
+                if (savingsAccounts.Any() && monthlySavings > 0)
+                {
+                    var remainingAmount = savingsGoal - totalSavings;
+                    if (remainingAmount > 0)
+                    {
+                        var monthsRemaining = (int)Math.Ceiling((double)(remainingAmount / monthlySavings));
+                        projectedGoalDate = DateTime.UtcNow.AddMonths(monthsRemaining);
+                        monthsToGoal = monthsRemaining;
+
+                        // Calculate suggestion: if they increase savings by 20%, how many months saved?
+                        var increasedSavings = monthlySavings * 1.2m;
+                        var monthsWithIncrease = (int)Math.Ceiling((double)(remainingAmount / increasedSavings));
+                        suggestionMonthsSaved = monthsRemaining - monthsWithIncrease;
+                        suggestionIncrease = increasedSavings - monthlySavings;
+                    }
+                    else
+                    {
+                        // Goal already reached
+                        projectedGoalDate = DateTime.UtcNow;
+                        monthsToGoal = 0;
+                    }
+                }
+
+                var report = new SavingsReportDto
+                {
+                    TotalSavings = totalSavings,
+                    MonthlySavings = monthlySavings,
+                    SavingsGoal = savingsGoal,
+                    GoalProgress = goalProgress,
+                    Goals = goals,
+                    SavingsTrend = savingsTrend,
+                    SavingsRate = savingsRate,
+                    ProjectedGoalDate = projectedGoalDate,
+                    MonthsToGoal = monthsToGoal,
+                    SuggestionIncrease = suggestionIncrease,
+                    SuggestionMonthsSaved = suggestionMonthsSaved
+                };
+
+                return ApiResponse<SavingsReportDto>.SuccessResult(report);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<SavingsReportDto>.ErrorResult($"Error generating savings report: {ex.Message}");
+            }
         }
 
         // ==========================================
@@ -913,8 +1038,9 @@ namespace UtilityHub360.Services
 
         private async Task<decimal> CalculateTotalIncomeAsync(string userId, DateTime startDate, DateTime endDate)
         {
+            // Note: IsDeleted is ignored in DbContext, so we don't filter by it
             var incomeSources = await _context.IncomeSources
-                .Where(i => i.UserId == userId && !i.IsDeleted && i.IsActive)
+                .Where(i => i.UserId == userId && i.IsActive)
                 .ToListAsync();
 
             return incomeSources.Sum(i => i.MonthlyAmount);

@@ -44,10 +44,9 @@ namespace UtilityHub360.Services
                     Industry = createProfileDto.Industry,
                     Location = createProfileDto.Location,
                     Notes = createProfileDto.Notes,
-                    // TODO: Uncomment after running add_preferred_currency_column.sql
-                    // PreferredCurrency = !string.IsNullOrEmpty(createProfileDto.PreferredCurrency) 
-                    //     ? createProfileDto.PreferredCurrency.ToUpper() 
-                    //     : "USD",
+                    PreferredCurrency = !string.IsNullOrEmpty(createProfileDto.PreferredCurrency) 
+                        ? createProfileDto.PreferredCurrency.ToUpper() 
+                        : "USD",
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -653,14 +652,11 @@ namespace UtilityHub360.Services
                     return ApiResponse<UserProfileDto>.ErrorResult("User profile not found");
                 }
 
-                // TODO: Uncomment after running add_preferred_currency_column.sql
-                // userProfile.PreferredCurrency = !string.IsNullOrEmpty(currency) ? currency.ToUpper() : "USD";
-                // userProfile.UpdatedAt = DateTime.UtcNow;
-                // await _context.SaveChangesAsync();
-                // var userProfileDto = await MapToUserProfileDto(userProfile);
-                // return ApiResponse<UserProfileDto>.SuccessResult(userProfileDto, "Preferred currency updated successfully");
-                
-                return ApiResponse<UserProfileDto>.ErrorResult("PreferredCurrency column not found in database. Please run add_preferred_currency_column.sql script first.");
+                userProfile.PreferredCurrency = !string.IsNullOrEmpty(currency) ? currency.ToUpper() : "USD";
+                userProfile.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                var userProfileDto = await MapToUserProfileDto(userProfile);
+                return ApiResponse<UserProfileDto>.SuccessResult(userProfileDto, "Preferred currency updated successfully");
             }
             catch (Exception ex)
             {

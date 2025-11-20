@@ -191,6 +191,7 @@ namespace UtilityHub360.DTOs
     public class BankAccountSummaryDto
     {
         public decimal TotalBalance { get; set; }
+        public decimal? TotalRemainingCreditLimit { get; set; }
         public int TotalAccounts { get; set; }
         public int ActiveAccounts { get; set; }
         public int ConnectedAccounts { get; set; }

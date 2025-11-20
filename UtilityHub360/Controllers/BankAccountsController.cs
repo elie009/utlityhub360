@@ -232,7 +232,7 @@ namespace UtilityHub360.Controllers
         }
 
         /// <summary>
-        /// Get total balance across all accounts
+        /// Get total balance across all accounts (excluding credit cards)
         /// </summary>
         [HttpGet("total-balance")]
         public async Task<ActionResult<ApiResponse<decimal>>> GetTotalBalance()
@@ -257,6 +257,35 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<decimal>.ErrorResult($"Failed to get total balance: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get total debt from credit card accounts
+        /// </summary>
+        [HttpGet("total-debt")]
+        public async Task<ActionResult<ApiResponse<decimal>>> GetTotalDebt()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<decimal>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _bankAccountService.GetTotalDebtAsync(userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<decimal>.ErrorResult($"Failed to get total debt: {ex.Message}"));
             }
         }
 

@@ -222,6 +222,9 @@ namespace UtilityHub360.Data
 
                 entity.HasIndex(e => new { e.UserId, e.AccountName }).IsUnique();
 
+                // NOTE: Make sure add_startdate_to_savings_accounts.sql migration has been run!
+                // If you get "Invalid column name 'StartDate'" error, run the migration first.
+
                 // Temporary: Ignore soft delete properties until migration is applied
                 // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
                 entity.Ignore(e => e.IsDeleted);
@@ -264,10 +267,6 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.UserId).IsUnique();
                 entity.HasIndex(e => e.Industry);
                 entity.HasIndex(e => e.EmploymentType);
-
-                // Temporary: Ignore PreferredCurrency until migration is applied
-                // TODO: Remove this Ignore() call after running migration AddPreferredCurrencyColumn
-                entity.Ignore(e => e.PreferredCurrency);
             });
 
             // IncomeSource configuration

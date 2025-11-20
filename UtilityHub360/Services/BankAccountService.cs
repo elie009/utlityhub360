@@ -21,6 +21,35 @@ namespace UtilityHub360.Services
         {
             try
             {
+                // Check for duplicate account name
+                var existingAccountByName = await _context.BankAccounts
+                    .FirstOrDefaultAsync(ba => ba.UserId == userId && ba.AccountName == createBankAccountDto.AccountName);
+                
+                if (existingAccountByName != null)
+                {
+                    return ApiResponse<BankAccountDto>.ErrorResult($"An account with the name '{createBankAccountDto.AccountName}' already exists. Please use a different account name.");
+                }
+
+                // Check for duplicate account number (if provided and not empty)
+                if (!string.IsNullOrWhiteSpace(createBankAccountDto.AccountNumber))
+                {
+                    var existingAccountByNumber = await _context.BankAccounts
+                        .FirstOrDefaultAsync(ba => ba.UserId == userId && ba.AccountNumber == createBankAccountDto.AccountNumber);
+                    
+                    if (existingAccountByNumber != null)
+                    {
+                        return ApiResponse<BankAccountDto>.ErrorResult($"An account with this account number already exists.");
+                    }
+                }
+
+                // Convert empty strings to null for optional fields to avoid unique constraint issues
+                var accountNumber = string.IsNullOrWhiteSpace(createBankAccountDto.AccountNumber) ? null : createBankAccountDto.AccountNumber;
+                var routingNumber = string.IsNullOrWhiteSpace(createBankAccountDto.RoutingNumber) ? null : createBankAccountDto.RoutingNumber;
+                var description = string.IsNullOrWhiteSpace(createBankAccountDto.Description) ? null : createBankAccountDto.Description;
+                var financialInstitution = string.IsNullOrWhiteSpace(createBankAccountDto.FinancialInstitution) ? null : createBankAccountDto.FinancialInstitution;
+                var iban = string.IsNullOrWhiteSpace(createBankAccountDto.Iban) ? null : createBankAccountDto.Iban;
+                var swiftCode = string.IsNullOrWhiteSpace(createBankAccountDto.SwiftCode) ? null : createBankAccountDto.SwiftCode;
+
                 var bankAccount = new BankAccount
                 {
                     Id = Guid.NewGuid().ToString(),
@@ -30,13 +59,13 @@ namespace UtilityHub360.Services
                     InitialBalance = createBankAccountDto.InitialBalance,
                     CurrentBalance = createBankAccountDto.InitialBalance,
                     Currency = createBankAccountDto.Currency.ToUpper(),
-                    Description = createBankAccountDto.Description,
-                    FinancialInstitution = createBankAccountDto.FinancialInstitution,
-                    AccountNumber = createBankAccountDto.AccountNumber,
-                    RoutingNumber = createBankAccountDto.RoutingNumber,
+                    Description = description,
+                    FinancialInstitution = financialInstitution,
+                    AccountNumber = accountNumber,
+                    RoutingNumber = routingNumber,
                     SyncFrequency = createBankAccountDto.SyncFrequency.ToUpper(),
-                    Iban = createBankAccountDto.Iban,
-                    SwiftCode = createBankAccountDto.SwiftCode,
+                    Iban = iban,
+                    SwiftCode = swiftCode,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
                     IsActive = true,
@@ -48,6 +77,23 @@ namespace UtilityHub360.Services
 
                 var bankAccountDto = await MapToBankAccountDtoAsync(bankAccount);
                 return ApiResponse<BankAccountDto>.SuccessResult(bankAccountDto, "Bank account created successfully");
+            }
+            catch (DbUpdateException dbEx)
+            {
+                // Handle database constraint violations
+                var innerException = dbEx.InnerException?.Message ?? dbEx.Message;
+                
+                if (innerException.Contains("IX_BankAccounts_UserId_AccountName") || innerException.Contains("duplicate key"))
+                {
+                    return ApiResponse<BankAccountDto>.ErrorResult($"An account with the name '{createBankAccountDto.AccountName}' already exists. Please use a different account name.");
+                }
+                
+                if (innerException.Contains("IX_BankAccounts_UserId_AccountNumber") || innerException.Contains("duplicate key"))
+                {
+                    return ApiResponse<BankAccountDto>.ErrorResult($"An account with this account number already exists.");
+                }
+                
+                return ApiResponse<BankAccountDto>.ErrorResult($"Failed to create bank account: {innerException}");
             }
             catch (Exception ex)
             {
@@ -89,6 +135,42 @@ namespace UtilityHub360.Services
                     return ApiResponse<BankAccountDto>.ErrorResult("Bank account not found");
                 }
 
+                // Check for duplicate account name (excluding current account)
+                if (!string.IsNullOrEmpty(updateBankAccountDto.AccountName) && 
+                    updateBankAccountDto.AccountName != bankAccount.AccountName)
+                {
+                    var existingAccountByName = await _context.BankAccounts
+                        .FirstOrDefaultAsync(ba => ba.UserId == userId && 
+                                                  ba.AccountName == updateBankAccountDto.AccountName &&
+                                                  ba.Id != bankAccountId);
+                    
+                    if (existingAccountByName != null)
+                    {
+                        return ApiResponse<BankAccountDto>.ErrorResult($"An account with the name '{updateBankAccountDto.AccountName}' already exists. Please use a different account name.");
+                    }
+                }
+
+                // Convert empty strings to null for optional fields to avoid unique constraint issues
+                string? accountNumber = null;
+                if (updateBankAccountDto.AccountNumber != null)
+                {
+                    accountNumber = string.IsNullOrWhiteSpace(updateBankAccountDto.AccountNumber) ? null : updateBankAccountDto.AccountNumber;
+                }
+
+                // Check for duplicate account number (excluding current account, only if not null/empty)
+                if (accountNumber != null && accountNumber != bankAccount.AccountNumber)
+                {
+                    var existingAccountByNumber = await _context.BankAccounts
+                        .FirstOrDefaultAsync(ba => ba.UserId == userId && 
+                                                  ba.AccountNumber == accountNumber &&
+                                                  ba.Id != bankAccountId);
+                    
+                    if (existingAccountByNumber != null)
+                    {
+                        return ApiResponse<BankAccountDto>.ErrorResult($"An account with this account number already exists.");
+                    }
+                }
+
                 // Update fields if provided
                 if (!string.IsNullOrEmpty(updateBankAccountDto.AccountName))
                     bankAccount.AccountName = updateBankAccountDto.AccountName;
@@ -102,17 +184,24 @@ namespace UtilityHub360.Services
                 if (!string.IsNullOrEmpty(updateBankAccountDto.Currency))
                     bankAccount.Currency = updateBankAccountDto.Currency.ToUpper();
 
+                // Update optional fields if provided, converting empty strings to null
                 if (updateBankAccountDto.Description != null)
-                    bankAccount.Description = updateBankAccountDto.Description;
+                    bankAccount.Description = string.IsNullOrWhiteSpace(updateBankAccountDto.Description) ? null : updateBankAccountDto.Description;
 
                 if (updateBankAccountDto.FinancialInstitution != null)
-                    bankAccount.FinancialInstitution = updateBankAccountDto.FinancialInstitution;
+                    bankAccount.FinancialInstitution = string.IsNullOrWhiteSpace(updateBankAccountDto.FinancialInstitution) ? null : updateBankAccountDto.FinancialInstitution;
 
                 if (updateBankAccountDto.AccountNumber != null)
-                    bankAccount.AccountNumber = updateBankAccountDto.AccountNumber;
+                    bankAccount.AccountNumber = accountNumber;
 
                 if (updateBankAccountDto.RoutingNumber != null)
-                    bankAccount.RoutingNumber = updateBankAccountDto.RoutingNumber;
+                    bankAccount.RoutingNumber = string.IsNullOrWhiteSpace(updateBankAccountDto.RoutingNumber) ? null : updateBankAccountDto.RoutingNumber;
+
+                if (updateBankAccountDto.Iban != null)
+                    bankAccount.Iban = string.IsNullOrWhiteSpace(updateBankAccountDto.Iban) ? null : updateBankAccountDto.Iban;
+
+                if (updateBankAccountDto.SwiftCode != null)
+                    bankAccount.SwiftCode = string.IsNullOrWhiteSpace(updateBankAccountDto.SwiftCode) ? null : updateBankAccountDto.SwiftCode;
 
                 if (!string.IsNullOrEmpty(updateBankAccountDto.SyncFrequency))
                     bankAccount.SyncFrequency = updateBankAccountDto.SyncFrequency.ToUpper();
@@ -120,18 +209,29 @@ namespace UtilityHub360.Services
                 if (updateBankAccountDto.IsActive.HasValue)
                     bankAccount.IsActive = updateBankAccountDto.IsActive.Value;
 
-                if (updateBankAccountDto.Iban != null)
-                    bankAccount.Iban = updateBankAccountDto.Iban;
-
-                if (updateBankAccountDto.SwiftCode != null)
-                    bankAccount.SwiftCode = updateBankAccountDto.SwiftCode;
-
                 bankAccount.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
 
                 var bankAccountDto = await MapToBankAccountDtoAsync(bankAccount);
                 return ApiResponse<BankAccountDto>.SuccessResult(bankAccountDto, "Bank account updated successfully");
+            }
+            catch (DbUpdateException dbEx)
+            {
+                // Handle database constraint violations
+                var innerException = dbEx.InnerException?.Message ?? dbEx.Message;
+                
+                if (innerException.Contains("IX_BankAccounts_UserId_AccountName") || innerException.Contains("duplicate key"))
+                {
+                    return ApiResponse<BankAccountDto>.ErrorResult($"An account with the name '{updateBankAccountDto.AccountName}' already exists. Please use a different account name.");
+                }
+                
+                if (innerException.Contains("IX_BankAccounts_UserId_AccountNumber") || innerException.Contains("duplicate key"))
+                {
+                    return ApiResponse<BankAccountDto>.ErrorResult($"An account with this account number already exists.");
+                }
+                
+                return ApiResponse<BankAccountDto>.ErrorResult($"Failed to update bank account: {innerException}");
             }
             catch (Exception ex)
             {
@@ -207,6 +307,7 @@ namespace UtilityHub360.Services
                     return ApiResponse<BankAccountSummaryDto>.SuccessResult(new BankAccountSummaryDto
                     {
                         TotalBalance = 0,
+                        TotalRemainingCreditLimit = null,
                         TotalAccounts = 0,
                         ActiveAccounts = 0,
                         ConnectedAccounts = 0,
@@ -241,9 +342,38 @@ namespace UtilityHub360.Services
                                p.TransactionDate >= currentMonthStart && p.TransactionDate <= currentMonthEnd)
                     .ToListAsync();
 
+                // Calculate total balance excluding credit cards (they represent debt, not assets)
+                var totalBalance = bankAccounts
+                    .Where(ba => {
+                        var accountTypeLower = ba.AccountType?.ToLower().Trim() ?? "";
+                        return accountTypeLower != "credit_card" && 
+                               accountTypeLower != "credit card" && 
+                               accountTypeLower != "creditcard";
+                    })
+                    .Sum(ba => ba.CurrentBalance);
+
+                // Calculate total remaining credit limit for credit cards
+                // Remaining credit = Credit Limit (InitialBalance) - Current Balance (debt)
+                var creditCardAccounts = bankAccounts
+                    .Where(ba => {
+                        var accountTypeLower = ba.AccountType?.ToLower().Trim() ?? "";
+                        return accountTypeLower == "credit_card" || 
+                               accountTypeLower == "credit card" || 
+                               accountTypeLower == "creditcard";
+                    })
+                    .ToList();
+
+                decimal? totalRemainingCreditLimit = null;
+                if (creditCardAccounts.Any())
+                {
+                    totalRemainingCreditLimit = creditCardAccounts
+                        .Sum(ba => Math.Max(0, ba.InitialBalance - ba.CurrentBalance));
+                }
+
                 var summary = new BankAccountSummaryDto
                 {
-                    TotalBalance = bankAccounts.Sum(ba => ba.CurrentBalance),
+                    TotalBalance = totalBalance,
+                    TotalRemainingCreditLimit = totalRemainingCreditLimit,
                     TotalAccounts = bankAccounts.Count,
                     ActiveAccounts = bankAccounts.Count(ba => ba.IsActive),
                     ConnectedAccounts = bankAccounts.Count(ba => ba.IsConnected),
@@ -342,8 +472,14 @@ namespace UtilityHub360.Services
         {
             try
             {
+                // Exclude credit cards from total balance as they represent debt, not assets
+                // Inline the check so EF Core can translate it to SQL
                 var totalBalance = await _context.BankAccounts
-                    .Where(ba => ba.UserId == userId && ba.IsActive)
+                    .Where(ba => ba.UserId == userId && 
+                               ba.IsActive && 
+                               ba.AccountType.ToLower() != "credit_card" &&
+                               ba.AccountType.ToLower() != "credit card" &&
+                               ba.AccountType.ToLower() != "creditcard")
                     .SumAsync(ba => ba.CurrentBalance);
 
                 return ApiResponse<decimal>.SuccessResult(totalBalance);
@@ -351,6 +487,28 @@ namespace UtilityHub360.Services
             catch (Exception ex)
             {
                 return ApiResponse<decimal>.ErrorResult($"Failed to get total balance: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<decimal>> GetTotalDebtAsync(string userId)
+        {
+            try
+            {
+                // Calculate total debt from credit card accounts
+                // Inline the check so EF Core can translate it to SQL
+                var creditCardDebt = await _context.BankAccounts
+                    .Where(ba => ba.UserId == userId && 
+                               ba.IsActive && 
+                               (ba.AccountType.ToLower() == "credit_card" ||
+                                ba.AccountType.ToLower() == "credit card" ||
+                                ba.AccountType.ToLower() == "creditcard"))
+                    .SumAsync(ba => ba.CurrentBalance);
+
+                return ApiResponse<decimal>.SuccessResult(creditCardDebt);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<decimal>.ErrorResult($"Failed to get total debt: {ex.Message}");
             }
         }
 
@@ -627,13 +785,31 @@ namespace UtilityHub360.Services
                 };
 
                 // Update account balance
+                // For credit cards:
+                // - CREDIT (refund/credit) increases balance
+                // - DEBIT (purchase) decreases balance
+                // For regular accounts:
+                // - CREDIT adds money, so balance increases
+                // - DEBIT removes money, so balance decreases
+                bool isCreditCard = bankAccount.AccountType?.ToLower() == "credit_card";
+                
                 if (payment.TransactionType == "CREDIT")
                 {
+                    // Both credit cards and regular accounts: CREDIT increases balance
                     bankAccount.CurrentBalance += payment.Amount;
                 }
                 else if (payment.TransactionType == "DEBIT")
                 {
-                    bankAccount.CurrentBalance -= payment.Amount;
+                    if (isCreditCard)
+                    {
+                        // Credit card: DEBIT (purchase) decreases balance
+                        bankAccount.CurrentBalance -= payment.Amount;
+                    }
+                    else
+                    {
+                        // Regular account: DEBIT removes money
+                        bankAccount.CurrentBalance -= payment.Amount;
+                    }
                 }
 
                 payment.BalanceAfterTransaction = bankAccount.CurrentBalance;
@@ -1382,6 +1558,20 @@ namespace UtilityHub360.Services
             };
         }
 
+        /// <summary>
+        /// Helper method to check if an account type is a credit card
+        /// </summary>
+        private static bool IsCreditCardAccount(string accountType)
+        {
+            if (string.IsNullOrEmpty(accountType))
+                return false;
+
+            var accountTypeLower = accountType.ToLower().Trim();
+            return accountTypeLower == "credit_card" || 
+                   accountTypeLower == "credit card" || 
+                   accountTypeLower == "creditcard";
+        }
+
         public async Task<ApiResponse<List<BankTransactionDto>>> GetAccountTransactionsAsync(string bankAccountId, string userId, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null)
         {
             try
@@ -1484,11 +1674,44 @@ namespace UtilityHub360.Services
                                p.TransactionDate <= endDate)
                     .ToListAsync();
 
+                // Calculate total balance excluding credit cards (they represent debt, not assets)
+                var totalBalance = accounts
+                    .Where(a => {
+                        var accountTypeLower = a.AccountType?.ToLower().Trim() ?? "";
+                        return accountTypeLower != "credit_card" && 
+                               accountTypeLower != "credit card" && 
+                               accountTypeLower != "creditcard";
+                    })
+                    .Sum(a => a.CurrentBalance);
+
+                // Calculate total remaining credit limit for credit cards
+                var creditCardAccounts = accounts
+                    .Where(a => {
+                        var accountTypeLower = a.AccountType?.ToLower().Trim() ?? "";
+                        return accountTypeLower == "credit_card" || 
+                               accountTypeLower == "credit card" || 
+                               accountTypeLower == "creditcard";
+                    })
+                    .ToList();
+
+                decimal? totalRemainingCreditLimit = null;
+                if (creditCardAccounts.Any())
+                {
+                    totalRemainingCreditLimit = creditCardAccounts
+                        .Sum(a => Math.Max(0, a.InitialBalance - a.CurrentBalance));
+                }
+
                 var summary = new BankAccountSummaryDto
                 {
-                    TotalBalance = accounts.Sum(a => a.CurrentBalance),
+                    TotalBalance = totalBalance,
+                    TotalRemainingCreditLimit = totalRemainingCreditLimit,
+                    TotalAccounts = accounts.Count,
+                    ActiveAccounts = accounts.Count(a => a.IsActive),
+                    ConnectedAccounts = accounts.Count(a => a.IsConnected),
                     TotalIncoming = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount),
                     TotalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount),
+                    CurrentMonthIncoming = 0, // This method doesn't calculate current month separately
+                    CurrentMonthOutgoing = 0,
                     CurrentMonthNet = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount) -
                                      transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount),
                     Frequency = frequency,

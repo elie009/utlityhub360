@@ -290,6 +290,7 @@ namespace UtilityHub360.DTOs
         public decimal CurrentAmount { get; set; }
         public decimal Progress { get; set; } // Percentage
         public DateTime? TargetDate { get; set; }
+        public DateTime? StartDate { get; set; }
     }
 
     public class TransactionLogDto

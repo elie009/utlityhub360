@@ -60,3 +60,6 @@ WHERE [ActualFinancedAmount] = 0 AND [Principal] > 0;
 
 
 
+
+
+

@@ -32,6 +32,7 @@ namespace UtilityHub360.Services
                     Description = savingsAccountDto.Description,
                     Goal = savingsAccountDto.Goal,
                     TargetDate = savingsAccountDto.TargetDate,
+                    StartDate = savingsAccountDto.StartDate ?? DateTime.UtcNow,
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
@@ -143,6 +144,11 @@ namespace UtilityHub360.Services
                 savingsAccount.Description = updateDto.Description;
                 savingsAccount.Goal = updateDto.Goal;
                 savingsAccount.TargetDate = updateDto.TargetDate;
+                // Update StartDate if provided
+                if (updateDto.StartDate.HasValue)
+                {
+                    savingsAccount.StartDate = updateDto.StartDate.Value;
+                }
                 savingsAccount.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
@@ -447,9 +453,16 @@ namespace UtilityHub360.Services
                 var completedGoals = savingsAccounts.Count(sa => sa.CurrentBalance >= sa.TargetAmount);
 
                 // Calculate monthly savings target
+                // Use StartDate if available, otherwise use CreatedAt as fallback
                 var monthlyTarget = savingsAccounts
                     .Where(sa => sa.TargetDate > DateTime.UtcNow)
-                    .Sum(sa => (sa.TargetAmount - sa.CurrentBalance) / Math.Max(1, (decimal)(sa.TargetDate - DateTime.UtcNow).Days / 30.0m));
+                    .Sum(sa => 
+                    {
+                        var remainingAmount = sa.TargetAmount - sa.CurrentBalance;
+                        var daysRemaining = (sa.TargetDate - DateTime.UtcNow).Days;
+                        var monthsRemaining = Math.Max(1, (decimal)daysRemaining / 30.0m);
+                        return remainingAmount / monthsRemaining;
+                    });
 
                 // Calculate this month's savings
                 var thisMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
@@ -830,11 +843,21 @@ namespace UtilityHub360.Services
                 : 0;
 
             var remainingAmount = Math.Max(0, savingsAccount.TargetAmount - savingsAccount.CurrentBalance);
-            var daysRemaining = Math.Max(0, (savingsAccount.TargetDate - DateTime.UtcNow).Days);
-            var monthlyTarget = daysRemaining > 0 
-                ? remainingAmount / Math.Max(1, (decimal)daysRemaining / 30.0m) 
+            
+            // Use StartDate if available, otherwise use CreatedAt as fallback
+            var startDate = savingsAccount.StartDate ?? savingsAccount.CreatedAt;
+            
+            // Calculate daysRemaining: total saving period from StartDate to TargetDate
+            var totalDays = Math.Max(0, (savingsAccount.TargetDate - startDate).Days);
+            var daysRemaining = totalDays;
+            
+            // Calculate monthly target based on remaining amount and total saving period
+            // This gives the monthly savings needed over the total period to reach the goal
+            var totalMonths = Math.Max(1, (decimal)totalDays / 30.0m);
+            var monthlyTarget = totalDays > 0 
+                ? remainingAmount / totalMonths
                 : 0;
-
+            
             return new SavingsAccountDto
             {
                 Id = savingsAccount.Id,
@@ -846,6 +869,7 @@ namespace UtilityHub360.Services
                 Description = savingsAccount.Description,
                 Goal = savingsAccount.Goal,
                 TargetDate = savingsAccount.TargetDate,
+                StartDate = startDate,
                 IsActive = savingsAccount.IsActive,
                 CreatedAt = savingsAccount.CreatedAt,
                 UpdatedAt = savingsAccount.UpdatedAt,

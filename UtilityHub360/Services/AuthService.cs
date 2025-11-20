@@ -304,5 +304,383 @@ namespace UtilityHub360.Services
                 throw new InvalidOperationException($"Failed to reset password: {ex.Message}");
             }
         }
+
+        public async Task<ApiResponse<object>> ChangePasswordAsync(ChangePasswordDto changePasswordDto, string userId)
+        {
+            try
+            {
+                // Get the user
+                var user = await _context.Users.FindAsync(userId);
+                if (user == null)
+                {
+                    return ApiResponse<object>.ErrorResult("User not found");
+                }
+
+                // Verify current password
+                if (!BCrypt.Net.BCrypt.Verify(changePasswordDto.CurrentPassword, user.PasswordHash))
+                {
+                    return ApiResponse<object>.ErrorResult("Current password is incorrect");
+                }
+
+                // Check if new password is different from current password
+                if (BCrypt.Net.BCrypt.Verify(changePasswordDto.NewPassword, user.PasswordHash))
+                {
+                    return ApiResponse<object>.ErrorResult("New password must be different from current password");
+                }
+
+                // Update password
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(changePasswordDto.NewPassword);
+                user.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+                return ApiResponse<object>.SuccessResult(new { }, "Password has been changed successfully.");
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to change password: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<object>> ClearAllUserDataAsync(ClearAllDataDto clearAllDataDto, string userId)
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                // Get the user
+                var user = await _context.Users.FindAsync(userId);
+                if (user == null)
+                {
+                    return ApiResponse<object>.ErrorResult("User not found");
+                }
+
+                // Verify password
+                if (!BCrypt.Net.BCrypt.Verify(clearAllDataDto.Password, user.PasswordHash))
+                {
+                    return ApiResponse<object>.ErrorResult("Password is incorrect");
+                }
+
+                // Verify agreement
+                if (!clearAllDataDto.AgreementConfirmed)
+                {
+                    return ApiResponse<object>.ErrorResult("You must confirm the agreement to delete all your data");
+                }
+
+                // Track deletion counts
+                var deletionSummary = new Dictionary<string, int>();
+
+                // Delete in order to respect foreign key constraints
+                // 1. Payments (may reference loans, bills, savings accounts, bank accounts)
+                var payments = await _context.Payments
+                    .Where(p => p.UserId == userId)
+                    .ToListAsync();
+                if (payments.Any())
+                {
+                    _context.Payments.RemoveRange(payments);
+                    deletionSummary["payments"] = payments.Count;
+                }
+
+                // 2. RepaymentSchedules (references loans)
+                var loanIds = await _context.Loans
+                    .Where(l => l.UserId == userId)
+                    .Select(l => l.Id)
+                    .ToListAsync();
+                var repaymentSchedules = await _context.RepaymentSchedules
+                    .Where(rs => loanIds.Contains(rs.LoanId))
+                    .ToListAsync();
+                if (repaymentSchedules.Any())
+                {
+                    _context.RepaymentSchedules.RemoveRange(repaymentSchedules);
+                    deletionSummary["repaymentSchedules"] = repaymentSchedules.Count;
+                }
+
+                // 3. Loans (cascade will handle repayment schedules, but we already deleted them)
+                var loans = await _context.Loans
+                    .Where(l => l.UserId == userId)
+                    .ToListAsync();
+                if (loans.Any())
+                {
+                    _context.Loans.RemoveRange(loans);
+                    deletionSummary["loans"] = loans.Count;
+                }
+
+                // 4. LoanApplications
+                var loanApplications = await _context.LoanApplications
+                    .Where(la => la.UserId == userId)
+                    .ToListAsync();
+                if (loanApplications.Any())
+                {
+                    _context.LoanApplications.RemoveRange(loanApplications);
+                    deletionSummary["loanApplications"] = loanApplications.Count;
+                }
+
+                // 5. BankTransactions (references bank accounts)
+                var bankTransactions = await _context.BankTransactions
+                    .Where(bt => bt.UserId == userId)
+                    .ToListAsync();
+                if (bankTransactions.Any())
+                {
+                    _context.BankTransactions.RemoveRange(bankTransactions);
+                    deletionSummary["bankTransactions"] = bankTransactions.Count;
+                }
+
+                // 6. BankAccounts
+                var bankAccounts = await _context.BankAccounts
+                    .Where(ba => ba.UserId == userId)
+                    .ToListAsync();
+                if (bankAccounts.Any())
+                {
+                    _context.BankAccounts.RemoveRange(bankAccounts);
+                    deletionSummary["bankAccounts"] = bankAccounts.Count;
+                }
+
+                // 7. SavingsTransactions (references savings accounts)
+                var savingsAccountIds = await _context.SavingsAccounts
+                    .Where(sa => sa.UserId == userId)
+                    .Select(sa => sa.Id)
+                    .ToListAsync();
+                var savingsTransactions = await _context.SavingsTransactions
+                    .Where(st => savingsAccountIds.Contains(st.SavingsAccountId))
+                    .ToListAsync();
+                if (savingsTransactions.Any())
+                {
+                    _context.SavingsTransactions.RemoveRange(savingsTransactions);
+                    deletionSummary["savingsTransactions"] = savingsTransactions.Count;
+                }
+
+                // 8. SavingsAccounts
+                var savingsAccounts = await _context.SavingsAccounts
+                    .Where(sa => sa.UserId == userId)
+                    .ToListAsync();
+                if (savingsAccounts.Any())
+                {
+                    _context.SavingsAccounts.RemoveRange(savingsAccounts);
+                    deletionSummary["savingsAccounts"] = savingsAccounts.Count;
+                }
+
+                // 9. Bills
+                var bills = await _context.Bills
+                    .Where(b => b.UserId == userId)
+                    .ToListAsync();
+                if (bills.Any())
+                {
+                    _context.Bills.RemoveRange(bills);
+                    deletionSummary["bills"] = bills.Count;
+                }
+
+                // 10. IncomeSource
+                var incomeSources = await _context.IncomeSources
+                    .Where(i => i.UserId == userId)
+                    .ToListAsync();
+                if (incomeSources.Any())
+                {
+                    _context.IncomeSources.RemoveRange(incomeSources);
+                    deletionSummary["incomeSources"] = incomeSources.Count;
+                }
+
+                // 11. VariableExpense
+                var variableExpenses = await _context.VariableExpenses
+                    .Where(v => v.UserId == userId)
+                    .ToListAsync();
+                if (variableExpenses.Any())
+                {
+                    _context.VariableExpenses.RemoveRange(variableExpenses);
+                    deletionSummary["variableExpenses"] = variableExpenses.Count;
+                }
+
+                // 12. Notifications
+                var notifications = await _context.Notifications
+                    .Where(n => n.UserId == userId)
+                    .ToListAsync();
+                if (notifications.Any())
+                {
+                    _context.Notifications.RemoveRange(notifications);
+                    deletionSummary["notifications"] = notifications.Count;
+                }
+
+                // 13. UserProfile
+                var userProfile = await _context.UserProfiles
+                    .FirstOrDefaultAsync(up => up.UserId == userId);
+                if (userProfile != null)
+                {
+                    _context.UserProfiles.Remove(userProfile);
+                    deletionSummary["userProfile"] = 1;
+                }
+
+                // 14. UserOnboarding (skip if table doesn't exist)
+                try
+                {
+                    var userOnboarding = await _context.UserOnboardings
+                        .FirstOrDefaultAsync(uo => uo.UserId == userId);
+                    if (userOnboarding != null)
+                    {
+                        _context.UserOnboardings.Remove(userOnboarding);
+                        deletionSummary["userOnboarding"] = 1;
+                    }
+                }
+                catch (Exception)
+                {
+                    // Table doesn't exist, skip
+                }
+
+                // 15. PasswordReset
+                var passwordResets = await _context.PasswordResets
+                    .Where(pr => pr.UserId == userId)
+                    .ToListAsync();
+                if (passwordResets.Any())
+                {
+                    _context.PasswordResets.RemoveRange(passwordResets);
+                    deletionSummary["passwordResets"] = passwordResets.Count;
+                }
+
+                // 16. BudgetSetting (skip if table doesn't exist)
+                try
+                {
+                    var budgetSettings = await _context.BudgetSettings
+                        .Where(bs => bs.UserId == userId)
+                        .ToListAsync();
+                    if (budgetSettings.Any())
+                    {
+                        _context.BudgetSettings.RemoveRange(budgetSettings);
+                        deletionSummary["budgetSettings"] = budgetSettings.Count;
+                    }
+                }
+                catch (Exception)
+                {
+                    // Table doesn't exist, skip
+                }
+
+                // 17. BillAnalyticsCache (skip if table doesn't exist)
+                try
+                {
+                    var billAnalyticsCaches = await _context.BillAnalyticsCaches
+                        .Where(bac => bac.UserId == userId)
+                        .ToListAsync();
+                    if (billAnalyticsCaches.Any())
+                    {
+                        _context.BillAnalyticsCaches.RemoveRange(billAnalyticsCaches);
+                        deletionSummary["billAnalyticsCaches"] = billAnalyticsCaches.Count;
+                    }
+                }
+                catch (Exception)
+                {
+                    // Table doesn't exist, skip
+                }
+
+                // 18. BillAlert (skip if table doesn't exist)
+                try
+                {
+                    var billAlerts = await _context.BillAlerts
+                        .Where(ba => ba.UserId == userId)
+                        .ToListAsync();
+                    if (billAlerts.Any())
+                    {
+                        _context.BillAlerts.RemoveRange(billAlerts);
+                        deletionSummary["billAlerts"] = billAlerts.Count;
+                    }
+                }
+                catch (Exception)
+                {
+                    // Table doesn't exist, skip
+                }
+
+                // 19. ChatMessages (references chat conversations) (skip if table doesn't exist)
+                try
+                {
+                    var conversationIds = await _context.ChatConversations
+                        .Where(cc => cc.UserId == userId)
+                        .Select(cc => cc.Id)
+                        .ToListAsync();
+                    var chatMessages = await _context.ChatMessages
+                        .Where(cm => cm.UserId == userId || conversationIds.Contains(cm.ConversationId))
+                        .ToListAsync();
+                    if (chatMessages.Any())
+                    {
+                        _context.ChatMessages.RemoveRange(chatMessages);
+                        deletionSummary["chatMessages"] = chatMessages.Count;
+                    }
+                }
+                catch (Exception)
+                {
+                    // Table doesn't exist, skip
+                }
+
+                // 20. ChatConversation (skip if table doesn't exist)
+                try
+                {
+                    var chatConversations = await _context.ChatConversations
+                        .Where(cc => cc.UserId == userId)
+                        .ToListAsync();
+                    if (chatConversations.Any())
+                    {
+                        _context.ChatConversations.RemoveRange(chatConversations);
+                        deletionSummary["chatConversations"] = chatConversations.Count;
+                    }
+                }
+                catch (Exception)
+                {
+                    // Table doesn't exist, skip
+                }
+
+                // 21. JournalEntryLines (references journal entries) (skip if table doesn't exist)
+                try
+                {
+                    var journalEntryIds = await _context.JournalEntries
+                        .Where(je => je.UserId == userId)
+                        .Select(je => je.Id)
+                        .ToListAsync();
+                    var journalEntryLines = await _context.JournalEntryLines
+                        .Where(jel => journalEntryIds.Contains(jel.JournalEntryId))
+                        .ToListAsync();
+                    if (journalEntryLines.Any())
+                    {
+                        _context.JournalEntryLines.RemoveRange(journalEntryLines);
+                        deletionSummary["journalEntryLines"] = journalEntryLines.Count;
+                    }
+                }
+                catch (Exception)
+                {
+                    // Table doesn't exist, skip
+                }
+
+                // 22. JournalEntry (skip if table doesn't exist)
+                try
+                {
+                    var journalEntries = await _context.JournalEntries
+                        .Where(je => je.UserId == userId)
+                        .ToListAsync();
+                    if (journalEntries.Any())
+                    {
+                        _context.JournalEntries.RemoveRange(journalEntries);
+                        deletionSummary["journalEntries"] = journalEntries.Count;
+                    }
+                }
+                catch (Exception)
+                {
+                    // Table doesn't exist, skip
+                }
+
+                // Save all changes
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                // Calculate total records deleted
+                var totalRecords = deletionSummary.Values.Sum();
+
+                return ApiResponse<object>.SuccessResult(
+                    new
+                    {
+                        message = "All user data has been cleared successfully",
+                        deletedRecords = deletionSummary,
+                        totalRecordsDeleted = totalRecords
+                    },
+                    $"Successfully deleted {totalRecords} records across {deletionSummary.Count} categories."
+                );
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                throw new InvalidOperationException($"Failed to clear user data: {ex.Message}");
+            }
+        }
     }
 }

@@ -17,6 +17,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<BankAccountSummaryDto>> GetBankAccountSummaryAsync(string userId, string frequency = "monthly", int? year = null, int? month = null);
         Task<ApiResponse<BankAccountAnalyticsDto>> GetBankAccountAnalyticsAsync(string userId, string period = "month");
         Task<ApiResponse<decimal>> GetTotalBalanceAsync(string userId);
+        Task<ApiResponse<decimal>> GetTotalDebtAsync(string userId);
         Task<ApiResponse<List<BankAccountDto>>> GetTopAccountsByBalanceAsync(string userId, int limit = 5);
 
         // Bank Integration & Sync

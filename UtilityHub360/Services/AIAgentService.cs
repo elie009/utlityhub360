@@ -175,12 +175,20 @@ namespace UtilityHub360.Services
                         $"date/time ({transactionDateTime:yyyy-MM-dd HH:mm}), and merchant ({extractedData.Merchant ?? "N/A"}) already exists.");
                 }
 
+                // Determine transaction type - use extracted type or default to DEBIT
+                var transactionType = extractedData.TransactionType ?? "DEBIT";
+                
+                // Transaction type is stored as CREDIT or DEBIT
+                // For credit cards: CREDIT increases balance, DEBIT decreases balance
+                // For regular accounts: CREDIT increases balance, DEBIT decreases balance
+                // The balance calculation in BankAccountService handles both account types correctly
+
                 // Create transaction
                 var createTransactionDto = new CreateBankTransactionDto
                 {
                     BankAccountId = bankAccount.Id,
                     Amount = extractedData.Amount,
-                    TransactionType = "DEBIT",
+                    TransactionType = transactionType,
                     Description = extractedData.Description ?? extractedData.Merchant ?? "Transaction from SMS",
                     Merchant = extractedData.Merchant,
                     Location = extractedData.Location,
@@ -219,7 +227,8 @@ namespace UtilityHub360.Services
   ""timeText"": ""21:31:17"",
   ""description"": ""POS Purchase (Apple Pay)"",
   ""category"": null,
-  ""isApplePay"": true
+  ""isApplePay"": true,
+  ""transactionType"": ""DEBIT""
 }
 
 Rules:
@@ -231,6 +240,9 @@ Rules:
 - Extract date in format YYYY-MM-DD or DD/MM/YYYY
 - Extract time in format HH:MM:SS or HH:MM
 - Set isApplePay to true if Apple Pay is mentioned
+- Set transactionType to ""CREDIT"" if text contains ""Credited"", ""Credit"", ""Refund"", ""Reversal"", or similar terms indicating money was added/refunded
+- Set transactionType to ""DEBIT"" if text contains ""Debited"", ""Debit"", ""Purchase"", ""Payment"", ""Withdrawal"", or similar terms indicating money was spent/withdrawn
+- Default to ""DEBIT"" if transaction type cannot be determined
 - Return null for optional fields if not found
 - Return ONLY the JSON object, no explanations or markdown";
 
@@ -324,6 +336,15 @@ Rules:
                                 data.IsApplePay = applePayElement.GetBoolean();
                             }
 
+                            if (extractedJson.TryGetProperty("transactionType", out var transactionTypeElement))
+                            {
+                                var transactionTypeValue = transactionTypeElement.GetString()?.ToUpper();
+                                if (transactionTypeValue == "CREDIT" || transactionTypeValue == "DEBIT")
+                                {
+                                    data.TransactionType = transactionTypeValue;
+                                }
+                            }
+
                             if (data.Amount > 0)
                             {
                                 return data;
@@ -382,6 +403,26 @@ Rules:
                         int.TryParse(parts[1], out var month) && int.TryParse(parts[2], out var year))
                     {
                         date = new DateTime(year < 100 ? 2000 + year : year, month, day);
+                    }
+                }
+                else if (dateText.Contains('-'))
+                {
+                    // Handle DD-MM-YYYY format
+                    var parts = dateText.Split('-');
+                    if (parts.Length >= 3 && int.TryParse(parts[0], out var day) &&
+                        int.TryParse(parts[1], out var month) && int.TryParse(parts[2], out var year))
+                    {
+                        // Check if it's DD-MM-YYYY (day < 32) or YYYY-MM-DD (year > 1000)
+                        if (day <= 31 && month <= 12 && year < 1000)
+                        {
+                            // DD-MM-YYYY format
+                            date = new DateTime(year < 100 ? 2000 + year : year, month, day);
+                        }
+                        else if (year >= 1000)
+                        {
+                            // YYYY-MM-DD format
+                            date = new DateTime(year, month, day);
+                        }
                     }
                 }
             }
@@ -554,6 +595,48 @@ Rules:
                 // Check for Apple Pay
                 data.IsApplePay = System.Text.RegularExpressions.Regex.IsMatch(text, @"Apple\s+Pay", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
+                // Extract transaction type - check for "Credited", "Credit", "Refund", "Reversal" for CREDIT
+                // Check for "Debited", "Debit", "Purchase", "Payment", "Withdrawal" for DEBIT
+                var creditPatterns = new[]
+                {
+                    @"Credit\s+Card:\s*Credited",
+                    @"Credited",
+                    @"Credit\s+(?:Card|Account)",
+                    @"Refund",
+                    @"Reversal",
+                    @"Returned"
+                };
+
+                var debitPatterns = new[]
+                {
+                    @"Credit\s+Card:\s*Debited",
+                    @"Debited",
+                    @"Debit\s+(?:Card|Account)",
+                    @"Purchase",
+                    @"Payment",
+                    @"Withdrawal",
+                    @"POS\s+Purchase"
+                };
+
+                bool isCredit = creditPatterns.Any(pattern => 
+                    System.Text.RegularExpressions.Regex.IsMatch(text, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+                bool isDebit = debitPatterns.Any(pattern => 
+                    System.Text.RegularExpressions.Regex.IsMatch(text, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+
+                if (isCredit && !isDebit)
+                {
+                    data.TransactionType = "CREDIT";
+                }
+                else if (isDebit && !isCredit)
+                {
+                    data.TransactionType = "DEBIT";
+                }
+                else
+                {
+                    // Default to DEBIT if ambiguous
+                    data.TransactionType = "DEBIT";
+                }
+
                 return data.Amount > 0 ? data : null;
             }
             catch (Exception ex)
@@ -581,6 +664,7 @@ Rules:
         public string? Description { get; set; }
         public string? Category { get; set; }
         public bool IsApplePay { get; set; }
+        public string? TransactionType { get; set; } // CREDIT or DEBIT
     }
 }
 

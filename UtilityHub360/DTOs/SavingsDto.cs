@@ -25,6 +25,8 @@ namespace UtilityHub360.DTOs
         [Required]
         public DateTime TargetDate { get; set; }
 
+        public DateTime? StartDate { get; set; }
+
         [StringLength(10)]
         public string Currency { get; set; } = "USD";
     }
@@ -40,6 +42,7 @@ namespace UtilityHub360.DTOs
         public string? Description { get; set; }
         public string? Goal { get; set; }
         public DateTime TargetDate { get; set; }
+        public DateTime? StartDate { get; set; }
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
