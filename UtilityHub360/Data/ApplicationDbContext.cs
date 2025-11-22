@@ -18,6 +18,9 @@ namespace UtilityHub360.Data
         public DbSet<Bill> Bills { get; set; }
         public DbSet<BankAccount> BankAccounts { get; set; }
         public DbSet<BankTransaction> BankTransactions { get; set; }
+        public DbSet<Card> Cards { get; set; }
+        public DbSet<Receivable> Receivables { get; set; }
+        public DbSet<ReceivablePayment> ReceivablePayments { get; set; }
         public DbSet<SavingsAccount> SavingsAccounts { get; set; }
         public DbSet<SavingsTransaction> SavingsTransactions { get; set; }
         public DbSet<UserProfile> UserProfiles { get; set; }
@@ -212,6 +215,32 @@ namespace UtilityHub360.Data
                 entity.Ignore(e => e.DeleteReason);
             });
 
+            // Card configuration
+            modelBuilder.Entity<Card>(entity =>
+            {
+                entity.HasOne(d => d.BankAccount)
+                    .WithMany(p => p.Cards)
+                    .HasForeignKey(d => d.BankAccountId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.BankAccountId);
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => e.IsPrimary);
+
+                // Temporary: Ignore soft delete properties until migration is applied
+                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
+                entity.Ignore(e => e.IsDeleted);
+                entity.Ignore(e => e.DeletedAt);
+                entity.Ignore(e => e.DeletedBy);
+                entity.Ignore(e => e.DeleteReason);
+            });
+
             // SavingsAccount configuration
             modelBuilder.Entity<SavingsAccount>(entity =>
             {
@@ -254,6 +283,51 @@ namespace UtilityHub360.Data
                 entity.Ignore(e => e.DeletedAt);
                 entity.Ignore(e => e.DeletedBy);
                 entity.Ignore(e => e.DeleteReason);
+            });
+
+            // Receivable configuration
+            modelBuilder.Entity<Receivable>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.BorrowerName);
+                entity.HasIndex(e => e.LentAt);
+
+                // Temporary: Ignore soft delete properties until migration is applied
+                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
+                entity.Ignore(e => e.IsDeleted);
+                entity.Ignore(e => e.DeletedAt);
+                entity.Ignore(e => e.DeletedBy);
+                entity.Ignore(e => e.DeleteReason);
+            });
+
+            // ReceivablePayment configuration
+            modelBuilder.Entity<ReceivablePayment>(entity =>
+            {
+                entity.HasOne(d => d.Receivable)
+                    .WithMany(p => p.Payments)
+                    .HasForeignKey(d => d.ReceivableId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.BankAccount)
+                    .WithMany()
+                    .HasForeignKey(d => d.BankAccountId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(e => e.ReceivableId);
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.PaymentDate);
+                entity.HasIndex(e => e.Reference);
             });
 
             // UserProfile configuration

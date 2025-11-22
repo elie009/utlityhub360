@@ -27,6 +27,7 @@ namespace UtilityHub360.DTOs
         public int TransactionCount { get; set; }
         public decimal TotalIncoming { get; set; }
         public decimal TotalOutgoing { get; set; }
+        public List<CardDto>? Cards { get; set; } // Cards associated with this bank account
     }
 
     public class CreateBankAccountDto

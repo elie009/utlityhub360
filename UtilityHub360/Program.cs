@@ -131,6 +131,8 @@ builder.Services.AddScoped<IBankAccountService>(sp =>
     var serviceProvider = sp;
     return new BankAccountService(context, serviceProvider);
 });
+builder.Services.AddScoped<ICardService, CardService>();
+builder.Services.AddScoped<IReceivableService, ReceivableService>();
 builder.Services.AddScoped<ISavingsService, SavingsService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IIncomeSourceService, IncomeSourceService>();

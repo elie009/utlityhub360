@@ -107,6 +107,7 @@ namespace UtilityHub360.Services
             {
                 var bankAccount = await _context.BankAccounts
                     .Include(ba => ba.Transactions)
+                    .Include(ba => ba.Cards)
                     .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
 
                 if (bankAccount == null)
@@ -268,6 +269,7 @@ namespace UtilityHub360.Services
             {
                 var query = _context.BankAccounts
                     .Include(ba => ba.Transactions)
+                    .Include(ba => ba.Cards)
                     .Where(ba => ba.UserId == userId);
 
                 if (!includeInactive)
@@ -299,6 +301,7 @@ namespace UtilityHub360.Services
             {
                 var bankAccounts = await _context.BankAccounts
                     .Include(ba => ba.Transactions)
+                    .Include(ba => ba.Cards)
                     .Where(ba => ba.UserId == userId && ba.IsActive)
                     .ToListAsync();
 
@@ -518,6 +521,7 @@ namespace UtilityHub360.Services
             {
                 var bankAccounts = await _context.BankAccounts
                     .Include(ba => ba.Transactions)
+                    .Include(ba => ba.Cards)
                     .Where(ba => ba.UserId == userId && ba.IsActive)
                     .OrderByDescending(ba => ba.CurrentBalance)
                     .Take(limit)
@@ -605,6 +609,7 @@ namespace UtilityHub360.Services
             {
                 var bankAccounts = await _context.BankAccounts
                     .Include(ba => ba.Transactions)
+                    .Include(ba => ba.Cards)
                     .Where(ba => ba.UserId == userId && ba.IsConnected && ba.IsActive)
                     .OrderByDescending(ba => ba.CurrentBalance)
                     .ToListAsync();
@@ -1167,6 +1172,7 @@ namespace UtilityHub360.Services
             {
                 var bankAccounts = await _context.BankAccounts
                     .Include(ba => ba.Transactions)
+                    .Include(ba => ba.Cards)
                     .OrderByDescending(ba => ba.CreatedAt)
                     .Skip((page - 1) * limit)
                     .Take(limit)
@@ -1462,6 +1468,37 @@ namespace UtilityHub360.Services
         {
             var transactions = bankAccount.Transactions ?? new List<BankTransaction>();
             
+            // Load cards if not already loaded
+            if (bankAccount.Cards == null || !bankAccount.Cards.Any())
+            {
+                await _context.Entry(bankAccount)
+                    .Collection(ba => ba.Cards)
+                    .LoadAsync();
+            }
+
+            var cards = bankAccount.Cards?
+                .Where(c => !c.IsDeleted)
+                .Select(c => new CardDto
+                {
+                    Id = c.Id,
+                    BankAccountId = c.BankAccountId,
+                    UserId = c.UserId,
+                    CardName = c.CardName,
+                    CardType = c.CardType,
+                    CardBrand = c.CardBrand,
+                    Last4Digits = c.Last4Digits,
+                    CardholderName = c.CardholderName,
+                    ExpiryMonth = c.ExpiryMonth,
+                    ExpiryYear = c.ExpiryYear,
+                    IsPrimary = c.IsPrimary,
+                    IsActive = c.IsActive,
+                    Description = c.Description,
+                    CreatedAt = c.CreatedAt,
+                    UpdatedAt = c.UpdatedAt,
+                    AccountName = bankAccount.AccountName
+                })
+                .ToList() ?? new List<CardDto>();
+            
             return new BankAccountDto
             {
                 Id = bankAccount.Id,
@@ -1486,7 +1523,8 @@ namespace UtilityHub360.Services
                 SwiftCode = bankAccount.SwiftCode,
                 TransactionCount = transactions.Count,
                 TotalIncoming = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount),
-                TotalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount)
+                TotalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount),
+                Cards = cards
             };
         }
 
@@ -1548,13 +1586,16 @@ namespace UtilityHub360.Services
         {
             var now = DateTime.UtcNow;
             
+            // Set endDate to end of today (23:59:59.9999999) to include all transactions on the current day
+            var endOfToday = now.Date.AddDays(1).AddTicks(-1);
+            
             return period.ToLower() switch
             {
-                "weekly" or "week" => (now.AddDays(-7).Date, now.Date),
-                "monthly" or "month" => (now.AddDays(-30).Date, now.Date),
-                "quarterly" or "quarter" => (now.AddDays(-90).Date, now.Date),
-                "yearly" or "year" => (now.AddDays(-365).Date, now.Date),
-                _ => (now.AddDays(-30).Date, now.Date) // Default to month
+                "weekly" or "week" => (now.AddDays(-7).Date, endOfToday),
+                "monthly" or "month" => (now.AddDays(-30).Date, endOfToday),
+                "quarterly" or "quarter" => (now.AddDays(-90).Date, endOfToday),
+                "yearly" or "year" => (now.AddDays(-365).Date, endOfToday),
+                _ => (now.AddDays(-30).Date, endOfToday) // Default to month
             };
         }
 

@@ -81,5 +81,7 @@ namespace UtilityHub360.Entities
         public virtual User User { get; set; } = null!;
 
         public virtual ICollection<BankTransaction> Transactions { get; set; } = new List<BankTransaction>();
+
+        public virtual ICollection<Card> Cards { get; set; } = new List<Card>();
     }
 }
