@@ -20,6 +20,19 @@ namespace UtilityHub360.Entities
         [StringLength(50)]
         public string SavingsType { get; set; } = string.Empty; // EMERGENCY, VACATION, INVESTMENT, etc.
 
+        [StringLength(50)]
+        public string? AccountType { get; set; } // HIGH_YIELD, CD, MONEY_MARKET, REGULAR, etc.
+
+        [Column(TypeName = "decimal(5,4)")]
+        public decimal? InterestRate { get; set; } // Annual interest rate (e.g., 0.0450 for 4.5%)
+
+        [StringLength(50)]
+        public string? InterestCompoundingFrequency { get; set; } // DAILY, MONTHLY, QUARTERLY, ANNUALLY
+
+        public DateTime? LastInterestCalculationDate { get; set; }
+
+        public DateTime? NextInterestCalculationDate { get; set; }
+
         [Required]
         [Column(TypeName = "decimal(18,2)")]
         public decimal TargetAmount { get; set; }

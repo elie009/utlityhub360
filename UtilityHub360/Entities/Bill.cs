@@ -63,6 +63,24 @@ namespace UtilityHub360.Entities
         [StringLength(450)]
         public string? ParentBillId { get; set; } // Links auto-generated bills to their parent
 
+        // Scheduled Payment Configuration
+        public bool IsScheduledPayment { get; set; } = false; // Enable automatic payment
+        [StringLength(450)]
+        public string? ScheduledPaymentBankAccountId { get; set; } // Bank account to use for automatic payment
+        public int? ScheduledPaymentDaysBeforeDue { get; set; } // Pay X days before due date (null = on due date)
+        public DateTime? LastScheduledPaymentAttempt { get; set; } // Last time system tried to pay
+        [StringLength(500)]
+        public string? ScheduledPaymentFailureReason { get; set; } // Reason if scheduled payment failed
+
+        // Bill Approval Workflow
+        [StringLength(20)]
+        public string ApprovalStatus { get; set; } = "APPROVED"; // APPROVED, PENDING_APPROVAL, REJECTED
+        [StringLength(450)]
+        public string? ApprovedBy { get; set; } // User who approved
+        public DateTime? ApprovedAt { get; set; } // When approved
+        [StringLength(500)]
+        public string? ApprovalNotes { get; set; } // Approval/rejection notes
+
         // Soft Delete Properties
         public bool IsDeleted { get; set; } = false;
         public DateTime? DeletedAt { get; set; }

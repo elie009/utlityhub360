@@ -279,6 +279,66 @@ namespace UtilityHub360.Controllers
         }
 
         /// <summary>
+        /// Get balance sheet (Assets, Liabilities, Equity)
+        /// </summary>
+        [HttpGet("balance-sheet")]
+        public async Task<ActionResult<ApiResponse<BalanceSheetDto>>> GetBalanceSheet([FromQuery] DateTime? asOfDate = null)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _reportService.GetBalanceSheetAsync(userId, asOfDate);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<BalanceSheetDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BalanceSheetDto>.ErrorResult($"Failed to get balance sheet: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get income statement (Revenue, Expenses, Net Income)
+        /// </summary>
+        [HttpGet("income-statement")]
+        public async Task<ActionResult<ApiResponse<IncomeStatementDto>>> GetIncomeStatement(
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null,
+            [FromQuery] string period = "MONTHLY",
+            [FromQuery] bool includeComparison = false)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _reportService.GetIncomeStatementAsync(userId, startDate, endDate, period, includeComparison);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<IncomeStatementDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<IncomeStatementDto>.ErrorResult($"Failed to get income statement: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
         /// Get financial insights (AI-generated alerts, tips, forecasts)
         /// </summary>
         [HttpGet("insights")]
@@ -331,6 +391,124 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<List<FinancialPredictionDto>>.ErrorResult($"Failed to get predictions: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get cash flow statement (Operating, Investing, Financing activities)
+        /// </summary>
+        [HttpGet("cashflow-statement")]
+        public async Task<ActionResult<ApiResponse<CashFlowStatementDto>>> GetCashFlowStatement(
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null,
+            [FromQuery] string period = "MONTHLY")
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _reportService.GetCashFlowStatementAsync(userId, startDate, endDate, period);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<CashFlowStatementDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<CashFlowStatementDto>.ErrorResult($"Failed to get cash flow statement: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get cash flow projection for the next N months
+        /// </summary>
+        [HttpGet("cashflow-projection")]
+        public async Task<ActionResult<ApiResponse<CashFlowProjectionDto>>> GetCashFlowProjection([FromQuery] int monthsAhead = 6)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _reportService.GetCashFlowProjectionAsync(userId, monthsAhead);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<CashFlowProjectionDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<CashFlowProjectionDto>.ErrorResult($"Failed to get cash flow projection: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get financial ratios (liquidity, debt, profitability, efficiency)
+        /// </summary>
+        [HttpGet("financial-ratios")]
+        public async Task<ActionResult<ApiResponse<FinancialRatiosDto>>> GetFinancialRatios([FromQuery] DateTime? asOfDate = null)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _reportService.GetFinancialRatiosAsync(userId, asOfDate);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<FinancialRatiosDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<FinancialRatiosDto>.ErrorResult($"Failed to get financial ratios: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get tax report for a specific tax year
+        /// </summary>
+        [HttpGet("tax-report")]
+        public async Task<ActionResult<ApiResponse<TaxReportDto>>> GetTaxReport(
+            [FromQuery] int taxYear,
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _reportService.GetTaxReportAsync(userId, taxYear, startDate, endDate);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<TaxReportDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<TaxReportDto>.ErrorResult($"Failed to get tax report: {ex.Message}"));
             }
         }
 

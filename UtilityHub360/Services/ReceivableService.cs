@@ -9,10 +9,12 @@ namespace UtilityHub360.Services
     public class ReceivableService : IReceivableService
     {
         private readonly ApplicationDbContext _context;
+        private readonly AccountingService _accountingService;
 
-        public ReceivableService(ApplicationDbContext context)
+        public ReceivableService(ApplicationDbContext context, AccountingService accountingService)
         {
             _context = context;
+            _accountingService = accountingService;
         }
 
         public async Task<ApiResponse<ReceivableDto>> CreateReceivableAsync(CreateReceivableDto createReceivableDto, string userId)
@@ -57,6 +59,20 @@ namespace UtilityHub360.Services
                 };
 
                 _context.Receivables.Add(receivable);
+
+                // Create accrual accounting entry when receivable is created
+                // Accrual Basis: Debit Accounts Receivable, Credit Revenue
+                await _accountingService.CreateReceivableAccrualEntryAsync(
+                    receivable.Id,
+                    userId,
+                    totalAmount,
+                    receivable.BorrowerName,
+                    "Receivable Income",
+                    null,
+                    $"Receivable created: {receivable.BorrowerName}",
+                    DateTime.UtcNow
+                );
+
                 await _context.SaveChangesAsync();
 
                 var receivableDto = await MapToReceivableDtoAsync(receivable);
@@ -342,6 +358,26 @@ namespace UtilityHub360.Services
                     };
 
                     _context.Payments.Add(bankPayment);
+
+                    // Check if accrual entry exists for this receivable (accrual accounting)
+                    var accrualEntry = await _context.JournalEntries
+                        .FirstOrDefaultAsync(je => je.ReceivableId == receivable.Id && je.EntryType == "RECEIVABLE_ACCRUAL");
+
+                    if (accrualEntry != null)
+                    {
+                        // Use accrual accounting: Debit Bank Account, Credit Accounts Receivable
+                        await _accountingService.CreateReceivablePaymentEntryAsync(
+                            receivable.Id,
+                            userId,
+                            paymentDto.Amount,
+                            receivable.BorrowerName,
+                            bankAccount.AccountName,
+                            paymentDto.Reference,
+                            $"Payment received from {receivable.BorrowerName}",
+                            paymentDate
+                        );
+                    }
+                    // If no accrual entry exists, we don't create a journal entry (cash basis - revenue was already recognized)
                 }
 
                 await _context.SaveChangesAsync();

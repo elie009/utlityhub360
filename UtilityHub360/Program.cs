@@ -51,7 +51,14 @@ builder.Services.AddSwaggerGen(c =>
 
 // Add Entity Framework
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"), sqlOptions =>
+    {
+        sqlOptions.CommandTimeout(120); // Increase command timeout to 120 seconds
+    });
+    options.EnableSensitiveDataLogging(false);
+    options.EnableServiceProviderCaching();
+});
 
 // Add CORS - Allow specific origins with credentials
 builder.Services.AddCors(options =>
@@ -124,21 +131,27 @@ builder.Services.AddScoped<ILoanService, LoanService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IBillService, BillService>();
+builder.Services.AddScoped<IVendorService, VendorService>();
 builder.Services.AddScoped<IBillAnalyticsService, BillAnalyticsService>();
+builder.Services.AddScoped<IUtilityService, UtilityService>();
 builder.Services.AddScoped<IBankAccountService>(sp => 
 {
     var context = sp.GetRequiredService<ApplicationDbContext>();
     var serviceProvider = sp;
-    return new BankAccountService(context, serviceProvider);
+    var accountingService = sp.GetRequiredService<AccountingService>();
+    return new BankAccountService(context, serviceProvider, accountingService);
 });
 builder.Services.AddScoped<ICardService, CardService>();
 builder.Services.AddScoped<IReceivableService, ReceivableService>();
 builder.Services.AddScoped<ISavingsService, SavingsService>();
+builder.Services.AddScoped<SavingsInterestCalculationService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IIncomeSourceService, IncomeSourceService>();
 builder.Services.AddScoped<IDisposableAmountService, DisposableAmountService>();
+builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IAllocationService, AllocationService>();
 builder.Services.AddSingleton<IDocumentationSearchService, DocumentationSearchService>();
 builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddScoped<IAIAgentService>(sp =>
@@ -151,9 +164,20 @@ builder.Services.AddScoped<IAIAgentService>(sp =>
 });
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
+builder.Services.AddScoped<IReconciliationService, ReconciliationService>();
+builder.Services.AddScoped<ICategoryService, CategoryService>();
+builder.Services.AddScoped<IBankFeedService, BankFeedService>();
+builder.Services.AddScoped<ITransactionRulesService, TransactionRulesService>();
+builder.Services.AddScoped<IDuplicateDetectionService, DuplicateDetectionService>();
+builder.Services.AddScoped<ISmartCategorizationService, SmartCategorizationService>();
+builder.Services.AddScoped<ISpendingPatternService, SpendingPatternService>();
+builder.Services.AddScoped<IAutomatedAlertsService, AutomatedAlertsService>();
 
 // Add Background Services
 builder.Services.AddHostedService<BillReminderBackgroundService>();
+builder.Services.AddHostedService<BillPaymentSchedulingService>();
+builder.Services.AddHostedService<BankAccountSyncBackgroundService>();
+builder.Services.AddHostedService<SavingsInterestBackgroundService>();
 
 var app = builder.Build();
 

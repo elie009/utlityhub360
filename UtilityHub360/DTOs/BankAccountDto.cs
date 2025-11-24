@@ -187,6 +187,9 @@ namespace UtilityHub360.DTOs
 
         [StringLength(450)]
         public string? LoanId { get; set; } // Reference to loan if category is loan-related
+
+        [StringLength(450)]
+        public string? ToBankAccountId { get; set; } // Destination account for bank transfer transactions
     }
 
     public class BankAccountSummaryDto
@@ -248,7 +251,7 @@ namespace UtilityHub360.DTOs
         public Dictionary<string, decimal> SpendingByCategory { get; set; } = new Dictionary<string, decimal>();
     }
 
-    public class CreateExpenseDto
+    public class CreateBankAccountExpenseDto
     {
         [Required]
         [StringLength(450)]

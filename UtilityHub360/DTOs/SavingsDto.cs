@@ -12,6 +12,15 @@ namespace UtilityHub360.DTOs
         [StringLength(50)]
         public string SavingsType { get; set; } = string.Empty; // EMERGENCY, VACATION, INVESTMENT, etc.
 
+        [StringLength(50)]
+        public string? AccountType { get; set; } // HIGH_YIELD, CD, MONEY_MARKET, REGULAR, etc.
+
+        [Range(0, 1, ErrorMessage = "Interest rate must be between 0 and 1 (e.g., 0.045 for 4.5%)")]
+        public decimal? InterestRate { get; set; } // Annual interest rate (e.g., 0.0450 for 4.5%)
+
+        [StringLength(50)]
+        public string? InterestCompoundingFrequency { get; set; } // DAILY, MONTHLY, QUARTERLY, ANNUALLY
+
         [Required]
         [Range(0.01, double.MaxValue, ErrorMessage = "Target amount must be greater than 0")]
         public decimal TargetAmount { get; set; }
@@ -36,6 +45,11 @@ namespace UtilityHub360.DTOs
         public string Id { get; set; } = string.Empty;
         public string AccountName { get; set; } = string.Empty;
         public string SavingsType { get; set; } = string.Empty;
+        public string? AccountType { get; set; } // HIGH_YIELD, CD, MONEY_MARKET, REGULAR, etc.
+        public decimal? InterestRate { get; set; }
+        public string? InterestCompoundingFrequency { get; set; }
+        public DateTime? LastInterestCalculationDate { get; set; }
+        public DateTime? NextInterestCalculationDate { get; set; }
         public decimal TargetAmount { get; set; }
         public decimal CurrentBalance { get; set; }
         public string Currency { get; set; } = string.Empty;

@@ -426,6 +426,100 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<VarianceDashboardDto>> GetVarianceDashboardAsync(string userId)
+        {
+            try
+            {
+                // Get all bills with provider and billType (required for variance calculation)
+                var bills = await _context.Bills
+                    .Where(b => b.UserId == userId && 
+                               !string.IsNullOrEmpty(b.Provider) && 
+                               !string.IsNullOrEmpty(b.BillType))
+                    .ToListAsync();
+
+                var variances = new List<BillVarianceDto>();
+                decimal totalActual = 0;
+                decimal totalEstimated = 0;
+                decimal totalVariance = 0;
+                int overBudgetCount = 0;
+                int slightlyOverCount = 0;
+                int onTargetCount = 0;
+                int underBudgetCount = 0;
+                int noDataCount = 0;
+
+                // Calculate variance for each bill
+                foreach (var bill in bills)
+                {
+                    try
+                    {
+                        var varianceResult = await CalculateVarianceAsync(bill.Id, userId);
+                        if (varianceResult.Success && varianceResult.Data != null)
+                        {
+                            var variance = varianceResult.Data;
+                            variances.Add(variance);
+
+                            // Aggregate statistics (only for bills with data)
+                            if (variance.Status != "no_data")
+                            {
+                                totalActual += variance.ActualAmount;
+                                totalEstimated += variance.EstimatedAmount;
+                                totalVariance += variance.Variance;
+
+                                // Count by status
+                                switch (variance.Status.ToLower())
+                                {
+                                    case "over_budget":
+                                        overBudgetCount++;
+                                        break;
+                                    case "slightly_over":
+                                        slightlyOverCount++;
+                                        break;
+                                    case "on_target":
+                                        onTargetCount++;
+                                        break;
+                                    case "under_budget":
+                                        underBudgetCount++;
+                                        break;
+                                }
+                            }
+                            else
+                            {
+                                noDataCount++;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Skip bills that fail variance calculation
+                        noDataCount++;
+                        continue;
+                    }
+                }
+
+                var dashboard = new VarianceDashboardDto
+                {
+                    TotalActualAmount = totalActual,
+                    TotalEstimatedAmount = totalEstimated,
+                    TotalVariance = totalVariance,
+                    TotalBillsAnalyzed = variances.Count,
+                    OverBudgetCount = overBudgetCount,
+                    SlightlyOverCount = slightlyOverCount,
+                    OnTargetCount = onTargetCount,
+                    UnderBudgetCount = underBudgetCount,
+                    NoDataCount = noDataCount,
+                    Variances = variances,
+                    GeneratedAt = DateTime.UtcNow
+                };
+
+                return ApiResponse<VarianceDashboardDto>.SuccessResult(dashboard);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<VarianceDashboardDto>.ErrorResult(
+                    $"Failed to get variance dashboard: {ex.Message}");
+            }
+        }
+
         #endregion
 
         #region Budget Management

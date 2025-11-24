@@ -22,6 +22,20 @@ namespace UtilityHub360.DTOs
         
         // Next payment due date (from RepaymentSchedule)
         public DateTime? NextDueDate { get; set; }
+
+        // New fields for enhanced loan management
+        public string LoanType { get; set; } = "PERSONAL"; // PERSONAL, MORTGAGE, AUTO, STUDENT, BUSINESS, etc.
+        public string? RefinancedFromLoanId { get; set; }
+        public string? RefinancedToLoanId { get; set; }
+        public DateTime? RefinancingDate { get; set; }
+        public decimal? EffectiveInterestRate { get; set; }
+        public decimal? TotalInterest { get; set; }
+        public decimal? DownPayment { get; set; }
+        public decimal? ProcessingFee { get; set; }
+        public decimal? ActualFinancedAmount { get; set; }
+        public string? InterestComputationMethod { get; set; }
+        public string? PaymentFrequency { get; set; }
+        public DateTime? StartDate { get; set; }
     }
 
     public class CreateLoanDto

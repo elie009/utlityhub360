@@ -50,6 +50,9 @@ namespace UtilityHub360.Services
             string billId, 
             string userId);
 
+        Task<ApiResponse<VarianceDashboardDto>> GetVarianceDashboardAsync(
+            string userId);
+
         // Budget Management
         Task<ApiResponse<BudgetSettingDto>> CreateBudgetAsync(
             CreateBudgetSettingDto budgetDto, 

@@ -47,6 +47,17 @@ namespace UtilityHub360.DTOs
 
         [StringLength(1000)]
         public string? AdditionalInfo { get; set; }
+
+        // New fields for loan type and refinancing
+        [StringLength(50)]
+        public string LoanType { get; set; } = "PERSONAL"; // PERSONAL, MORTGAGE, AUTO, STUDENT, BUSINESS, etc.
+
+        [StringLength(450)]
+        public string? RefinancedFromLoanId { get; set; } // If this is a refinancing application
+
+        public decimal? DownPayment { get; set; }
+        public decimal? ProcessingFee { get; set; }
+        public string? InterestComputationMethod { get; set; } // FLAT_RATE, AMORTIZED
     }
 
     public class ReviewLoanApplicationDto

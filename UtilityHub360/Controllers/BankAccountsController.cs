@@ -811,7 +811,7 @@ namespace UtilityHub360.Controllers
         /// Create a new expense transaction
         /// </summary>
         [HttpPost("expenses")]
-        public async Task<ActionResult<ApiResponse<BankTransactionDto>>> CreateExpense([FromBody] CreateExpenseDto expenseDto)
+        public async Task<ActionResult<ApiResponse<BankTransactionDto>>> CreateExpense([FromBody] CreateBankAccountExpenseDto expenseDto)
         {
             try
             {

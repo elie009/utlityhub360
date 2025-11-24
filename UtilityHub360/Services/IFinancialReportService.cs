@@ -16,6 +16,9 @@ namespace UtilityHub360.Services
         Task<ApiResponse<LoanReportDto>> GetLoanReportAsync(string userId, ReportQueryDto query);
         Task<ApiResponse<SavingsReportDto>> GetSavingsReportAsync(string userId, ReportQueryDto query);
         Task<ApiResponse<NetWorthReportDto>> GetNetWorthReportAsync(string userId, ReportQueryDto query);
+        Task<ApiResponse<BalanceSheetDto>> GetBalanceSheetAsync(string userId, DateTime? asOfDate = null);
+        Task<ApiResponse<CashFlowStatementDto>> GetCashFlowStatementAsync(string userId, DateTime? startDate = null, DateTime? endDate = null, string period = "MONTHLY");
+        Task<ApiResponse<IncomeStatementDto>> GetIncomeStatementAsync(string userId, DateTime? startDate = null, DateTime? endDate = null, string period = "MONTHLY", bool includeComparison = false);
         
         // Summary & Dashboard
         Task<ApiResponse<ReportFinancialSummaryDto>> GetFinancialSummaryAsync(string userId, DateTime? date = null);
@@ -23,6 +26,7 @@ namespace UtilityHub360.Services
         // Insights & Predictions
         Task<ApiResponse<List<FinancialInsightDto>>> GetFinancialInsightsAsync(string userId, DateTime? date = null);
         Task<ApiResponse<List<FinancialPredictionDto>>> GetFinancialPredictionsAsync(string userId);
+        Task<ApiResponse<CashFlowProjectionDto>> GetCashFlowProjectionAsync(string userId, int monthsAhead = 6);
         
         // Full Report
         Task<ApiResponse<FullFinancialReportDto>> GetFullFinancialReportAsync(string userId, string period = "MONTHLY", bool includeComparison = false, bool includeInsights = false, bool includePredictions = false, bool includeTransactions = false);
@@ -36,6 +40,12 @@ namespace UtilityHub360.Services
         // Export Functionality
         Task<byte[]> ExportReportToPdfAsync(string userId, ExportReportDto exportDto);
         Task<byte[]> ExportReportToCsvAsync(string userId, ExportReportDto exportDto);
+        
+        // Financial Ratios
+        Task<ApiResponse<FinancialRatiosDto>> GetFinancialRatiosAsync(string userId, DateTime? asOfDate = null);
+        
+        // Tax Reporting
+        Task<ApiResponse<TaxReportDto>> GetTaxReportAsync(string userId, int taxYear, DateTime? startDate = null, DateTime? endDate = null);
     }
 }
 

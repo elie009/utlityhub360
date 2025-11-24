@@ -76,6 +76,22 @@ namespace UtilityHub360.Entities
 
         public DateTime? StartDate { get; set; } // Loan start date for interest calculation
 
+        // Loan type field
+        [StringLength(50)]
+        public string LoanType { get; set; } = "PERSONAL"; // PERSONAL, MORTGAGE, AUTO, STUDENT, BUSINESS, CREDIT_CARD, LINE_OF_CREDIT, OTHER
+
+        // Refinancing tracking fields
+        [StringLength(450)]
+        public string? RefinancedFromLoanId { get; set; } // ID of the loan that was refinanced (if this is a refinanced loan)
+
+        [StringLength(450)]
+        public string? RefinancedToLoanId { get; set; } // ID of the loan that refinanced this loan (if this loan was refinanced)
+
+        public DateTime? RefinancingDate { get; set; } // Date when refinancing occurred
+
+        [Column(TypeName = "decimal(5,2)")]
+        public decimal? EffectiveInterestRate { get; set; } // Calculated effective interest rate (APR) including fees
+
         // Due date information - TEMPORARILY COMMENTED OUT
         // public DateTime? NextDueDate { get; set; }
         
@@ -85,6 +101,13 @@ namespace UtilityHub360.Entities
         // Navigation properties
         [ForeignKey("UserId")]
         public virtual User User { get; set; } = null!;
+
+        // Navigation properties for refinancing
+        [ForeignKey("RefinancedFromLoanId")]
+        public virtual Loan? RefinancedFromLoan { get; set; }
+
+        [ForeignKey("RefinancedToLoanId")]
+        public virtual Loan? RefinancedToLoan { get; set; }
 
         public virtual ICollection<RepaymentSchedule> RepaymentSchedules { get; set; } = new List<RepaymentSchedule>();
         public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();

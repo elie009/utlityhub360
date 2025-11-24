@@ -310,7 +310,7 @@ namespace UtilityHub360.Controllers
         // Bill Management Endpoints
 
         [HttpPut("{billId}/mark-paid")]
-        public async Task<ActionResult<ApiResponse<BillDto>>> MarkBillAsPaid(string billId, [FromBody] string? notes = null)
+        public async Task<ActionResult<ApiResponse<BillDto>>> MarkBillAsPaid(string billId, [FromBody] MarkBillPaidDto? request = null)
         {
             try
             {
@@ -321,7 +321,9 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<BillDto>.ErrorResult("User not authenticated"));
                 }
 
-                var result = await _billService.MarkBillAsPaidAsync(billId, userId, notes);
+                var notes = request?.Notes;
+                var bankAccountId = request?.BankAccountId;
+                var result = await _billService.MarkBillAsPaidAsync(billId, userId, notes, bankAccountId);
                 
                 if (result.Success)
                 {
@@ -650,6 +652,27 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<BillVarianceDto>.ErrorResult($"Failed to calculate variance: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get variance dashboard with aggregated variance data for all bills
+        /// </summary>
+        [HttpGet("analytics/variance-dashboard")]
+        public async Task<ActionResult<ApiResponse<VarianceDashboardDto>>> GetVarianceDashboard()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<VarianceDashboardDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billAnalyticsService.GetVarianceDashboardAsync(userId);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<VarianceDashboardDto>.ErrorResult($"Failed to get variance dashboard: {ex.Message}"));
             }
         }
 
@@ -1293,6 +1316,95 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<BillDto>.ErrorResult($"Failed to update monthly bill: {ex.Message}"));
+            }
+        }
+
+        // ============================================
+        // SCHEDULED PAYMENT ENDPOINTS
+        // ============================================
+
+        [HttpPost("{billId}/schedule-payment")]
+        public async Task<ActionResult<ApiResponse<BillDto>>> ConfigureScheduledPayment(
+            string billId,
+            [FromBody] ConfigureScheduledPaymentDto config)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BillDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billService.ConfigureScheduledPaymentAsync(billId, userId, config);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillDto>.ErrorResult($"Failed to configure scheduled payment: {ex.Message}"));
+            }
+        }
+
+        [HttpGet("scheduled-payments")]
+        public async Task<ActionResult<ApiResponse<List<ScheduledPaymentDto>>>> GetScheduledPayments()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<List<ScheduledPaymentDto>>.ErrorResult("User not authenticated"));
+
+                var result = await _billService.GetScheduledPaymentsAsync(userId);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<ScheduledPaymentDto>>.ErrorResult($"Failed to get scheduled payments: {ex.Message}"));
+            }
+        }
+
+        // ============================================
+        // BILL APPROVAL ENDPOINTS
+        // ============================================
+
+        [HttpPost("{billId}/approve")]
+        public async Task<ActionResult<ApiResponse<BillDto>>> ApproveBill(
+            string billId,
+            [FromBody] BillApprovalDto approval)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BillDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billService.ApproveBillAsync(billId, userId, approval);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillDto>.ErrorResult($"Failed to approve bill: {ex.Message}"));
+            }
+        }
+
+        // ============================================
+        // PAYMENT HISTORY REPORTS
+        // ============================================
+
+        [HttpGet("payment-history-report")]
+        public async Task<ActionResult<ApiResponse<BillPaymentHistoryReportDto>>> GetPaymentHistoryReport(
+            [FromQuery] string period = "month")
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<BillPaymentHistoryReportDto>.ErrorResult("User not authenticated"));
+
+                var result = await _billService.GetBillPaymentHistoryReportAsync(userId, period);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BillPaymentHistoryReportDto>.ErrorResult($"Failed to get payment history report: {ex.Message}"));
             }
         }
     }

@@ -190,5 +190,30 @@ namespace UtilityHub360.DTOs
         public List<BillAlertDto> Alerts { get; set; } = new();
         public BillAnalyticsDto Summary { get; set; } = new();
     }
+
+    /// <summary>
+    /// DTO for variance dashboard with aggregated variance data
+    /// </summary>
+    public class VarianceDashboardDto
+    {
+        // Summary Statistics
+        public decimal TotalActualAmount { get; set; }
+        public decimal TotalEstimatedAmount { get; set; }
+        public decimal TotalVariance { get; set; }
+        public int TotalBillsAnalyzed { get; set; }
+        
+        // Status Breakdown
+        public int OverBudgetCount { get; set; }
+        public int SlightlyOverCount { get; set; }
+        public int OnTargetCount { get; set; }
+        public int UnderBudgetCount { get; set; }
+        public int NoDataCount { get; set; }
+        
+        // Individual Variances
+        public List<BillVarianceDto> Variances { get; set; } = new();
+        
+        // Generated at timestamp
+        public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
+    }
 }
 

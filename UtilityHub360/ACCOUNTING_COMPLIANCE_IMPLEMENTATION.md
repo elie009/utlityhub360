@@ -1,7 +1,7 @@
 # Accounting Compliance Implementation
 
 ## Overview
-This document outlines the implementation of accounting standards compliance for the UtilityHub360 system. The system now follows proper double-entry bookkeeping principles for all financial transactions.
+This document outlines the implementation of accounting standards compliance for the UtilityHub360 system. The system now follows proper double-entry bookkeeping principles for all financial transactions and implements accrual accounting.
 
 ## Compliance Status: ✅ FULLY COMPLIANT
 
@@ -188,10 +188,66 @@ This document outlines the implementation of accounting standards compliance for
 - [ ] Verify all balances are updated correctly
 - [ ] Verify audit trail is complete
 
+### ✅ 7. Accrual Accounting
+- **Status**: ✅ Implemented
+- **Details**: 
+  - **Bills**: When a bill is created, accrual entry is created (Debit Expense, Credit Accounts Payable)
+  - **Bill Payments**: When a bill is paid, accrual entry is created (Debit Accounts Payable, Credit Cash)
+  - **Receivables**: When a receivable is created, accrual entry is created (Debit Accounts Receivable, Credit Revenue)
+  - **Receivable Payments**: When payment is received, accrual entry is created (Debit Cash, Credit Accounts Receivable)
+  - **Backward Compatibility**: Falls back to cash basis if no accrual entry exists
+- **Methods**: 
+  - `CreateBillAccrualEntryAsync()` - Creates accrual entry when bill is received
+  - `CreateBillPaymentFromPayableEntryAsync()` - Creates payment entry using Accounts Payable
+  - `CreateReceivableAccrualEntryAsync()` - Creates accrual entry when receivable is created
+  - `CreateReceivablePaymentEntryAsync()` - Creates payment entry using Accounts Receivable
+
+## Accrual Accounting Flow
+
+### Bill Accrual Flow
+```
+1. User creates bill
+2. BillService.CreateBillAsync():
+   - Creates Bill record
+   - Creates JournalEntry (BILL_ACCRUAL):
+     - Debit: Expense Account (EXPENSE)
+     - Credit: Accounts Payable (LIABILITY)
+   - Commits transaction
+
+3. User pays bill
+4. BillService.MarkBillAsPaidAsync() or MakeBillPaymentAsync():
+   - Checks for BILL_ACCRUAL entry
+   - If found, creates JournalEntry (BILL_PAYMENT_ACCRUAL):
+     - Debit: Accounts Payable (LIABILITY)
+     - Credit: Bank Account (ASSET)
+   - If not found, uses cash basis (backward compatibility)
+   - Commits transaction
+```
+
+### Receivable Accrual Flow
+```
+1. User creates receivable
+2. ReceivableService.CreateReceivableAsync():
+   - Creates Receivable record
+   - Creates JournalEntry (RECEIVABLE_ACCRUAL):
+     - Debit: Accounts Receivable (ASSET)
+     - Credit: Revenue Account (REVENUE)
+   - Commits transaction
+
+3. User receives payment
+4. ReceivableService.RecordPaymentAsync():
+   - Checks for RECEIVABLE_ACCRUAL entry
+   - If found, creates JournalEntry (RECEIVABLE_PAYMENT_ACCRUAL):
+     - Debit: Bank Account (ASSET)
+     - Credit: Accounts Receivable (ASSET)
+   - Commits transaction
+```
+
 ## Next Steps
 
-1. **Run Database Migration**: Execute the SQL migration script to add new columns
+1. **Run Database Migration**: Execute the SQL migration script to add ReceivableId column to JournalEntries table
 2. **Test Transactions**: Test all transaction types to ensure JournalEntries are created
+3. **Test Accrual Accounting**: Verify accrual entries are created for bills and receivables
 3. **Verify Balances**: Verify that all account balances are updated correctly
 4. **Audit Trail Review**: Review JournalEntry records to ensure complete audit trail
 5. **Performance Testing**: Test transaction performance with database transactions

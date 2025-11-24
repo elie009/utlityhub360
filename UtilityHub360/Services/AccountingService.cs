@@ -385,6 +385,64 @@ namespace UtilityHub360.Services
         }
 
         /// <summary>
+        /// Creates journal entry for income/credit transaction
+        /// Debit: Bank Account (Asset), Credit: Income Account (Revenue)
+        /// </summary>
+        public async Task<JournalEntry> CreateIncomeEntryAsync(
+            string userId,
+            decimal amount,
+            string category,
+            string? bankAccountName = null,
+            string? reference = null,
+            string? description = null,
+            DateTime? entryDate = null)
+        {
+            var incomeAccountName = GetIncomeAccountName(category);
+
+            var journalEntry = new JournalEntry
+            {
+                UserId = userId,
+                EntryType = "INCOME",
+                EntryDate = entryDate ?? DateTime.UtcNow,
+                Description = description ?? $"Income: {category}",
+                Reference = reference ?? $"INC-{DateTime.UtcNow:yyyyMMddHHmmss}",
+                TotalDebit = amount,
+                TotalCredit = amount,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            // Debit Bank Account (Asset)
+            journalEntry.JournalEntryLines.Add(new JournalEntryLine
+            {
+                AccountName = string.IsNullOrEmpty(bankAccountName) ? "Bank Account" : $"Bank Account - {bankAccountName}",
+                AccountType = "ASSET",
+                EntrySide = "DEBIT",
+                Amount = amount,
+                Description = description ?? $"Income: {category}",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            // Credit Income Account (Revenue)
+            journalEntry.JournalEntryLines.Add(new JournalEntryLine
+            {
+                AccountName = incomeAccountName,
+                AccountType = "REVENUE",
+                EntrySide = "CREDIT",
+                Amount = amount,
+                Description = description ?? $"Income: {category}",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            ValidateJournalEntry(journalEntry);
+            _context.JournalEntries.Add(journalEntry);
+            // Note: Don't call SaveChangesAsync here - let the caller handle it in the transaction
+            // await _context.SaveChangesAsync();
+
+            return journalEntry;
+        }
+
+        /// <summary>
         /// Creates journal entry for bank transfer
         /// Debit: Destination Bank Account (Asset), Credit: Source Bank Account (Asset)
         /// </summary>
@@ -397,6 +455,20 @@ namespace UtilityHub360.Services
             string? description = null,
             DateTime? entryDate = null)
         {
+            // Double-entry validation: Source and destination must be different
+            if (string.Equals(sourceAccountName, destinationAccountName, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Double-entry validation failed: Source and destination accounts cannot be the same for bank transfers. " +
+                    "A transfer requires two distinct accounts to maintain double-entry bookkeeping integrity.");
+            }
+
+            // Validate amount is positive
+            if (amount <= 0)
+            {
+                throw new ArgumentException("Transfer amount must be greater than zero", nameof(amount));
+            }
+
             var journalEntry = new JournalEntry
             {
                 UserId = userId,
@@ -499,6 +571,28 @@ namespace UtilityHub360.Services
         }
 
         /// <summary>
+        /// Maps category to income account name
+        /// </summary>
+        private string GetIncomeAccountName(string category)
+        {
+            var type = category.ToLower();
+
+            return type switch
+            {
+                var t when t.Contains("salary") || t.Contains("wage") || t.Contains("payroll") => "Salary Income",
+                var t when t.Contains("freelance") || t.Contains("contract") => "Freelance Income",
+                var t when t.Contains("business") => "Business Income",
+                var t when t.Contains("investment") || t.Contains("dividend") => "Investment Income",
+                var t when t.Contains("interest") => "Interest Income",
+                var t when t.Contains("rental") || t.Contains("rent") => "Rental Income",
+                var t when t.Contains("bonus") => "Bonus Income",
+                var t when t.Contains("gift") => "Gift Income",
+                var t when t.Contains("refund") => "Refund Income",
+                _ => "Other Income"
+            };
+        }
+
+        /// <summary>
         /// Gets all journal entries for a loan
         /// </summary>
         public async Task<List<JournalEntry>> GetLoanJournalEntriesAsync(string loanId)
@@ -532,6 +626,300 @@ namespace UtilityHub360.Services
                 .Where(je => je.SavingsAccountId == savingsAccountId)
                 .OrderBy(je => je.EntryDate)
                 .ToListAsync();
+        }
+
+        /// <summary>
+        /// Creates journal entry for interest income on savings account
+        /// Debit: Savings Account (Asset), Credit: Interest Income (Revenue)
+        /// </summary>
+        public async Task<JournalEntry> CreateInterestIncomeEntryAsync(
+            string savingsAccountId,
+            string userId,
+            decimal interestAmount,
+            string savingsAccountName,
+            decimal interestRate,
+            int periodDays,
+            string? reference = null,
+            string? description = null,
+            DateTime? entryDate = null)
+        {
+            var journalEntry = new JournalEntry
+            {
+                UserId = userId,
+                SavingsAccountId = savingsAccountId,
+                EntryType = "INTEREST_ACCRUAL",
+                EntryDate = entryDate ?? DateTime.UtcNow,
+                Description = description ?? $"Interest earned on {savingsAccountName} ({interestRate:P2}, {periodDays} days)",
+                Reference = reference ?? $"INT-{DateTime.UtcNow:yyyyMMddHHmmss}",
+                TotalDebit = interestAmount,
+                TotalCredit = interestAmount,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            // Debit Savings Account (Asset increases)
+            journalEntry.JournalEntryLines.Add(new JournalEntryLine
+            {
+                AccountName = $"Savings Account - {savingsAccountName}",
+                AccountType = "ASSET",
+                EntrySide = "DEBIT",
+                Amount = interestAmount,
+                Description = $"Interest earned ({interestRate:P2})",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            // Credit Interest Income (Revenue increases)
+            journalEntry.JournalEntryLines.Add(new JournalEntryLine
+            {
+                AccountName = "Interest Income",
+                AccountType = "REVENUE",
+                EntrySide = "CREDIT",
+                Amount = interestAmount,
+                Description = $"Interest earned on {savingsAccountName}",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            ValidateJournalEntry(journalEntry);
+            _context.JournalEntries.Add(journalEntry);
+            // Note: Don't call SaveChangesAsync here - let the caller handle it in the transaction
+
+            return journalEntry;
+        }
+
+        // ============================================
+        // ACCRUAL ACCOUNTING METHODS
+        // ============================================
+
+        /// <summary>
+        /// Creates accrual journal entry when a bill is received/created
+        /// Accrual Basis: Debit Expense Account, Credit Accounts Payable (Liability)
+        /// </summary>
+        public async Task<JournalEntry> CreateBillAccrualEntryAsync(
+            string billId,
+            string userId,
+            decimal amount,
+            string billName,
+            string billType,
+            string? reference = null,
+            string? description = null,
+            DateTime? entryDate = null)
+        {
+            var expenseAccountName = GetExpenseAccountName(billType);
+
+            var journalEntry = new JournalEntry
+            {
+                UserId = userId,
+                BillId = billId,
+                EntryType = "BILL_ACCRUAL",
+                EntryDate = entryDate ?? DateTime.UtcNow,
+                Description = description ?? $"Bill received: {billName}",
+                Reference = reference ?? $"BILL-ACCRUAL-{DateTime.UtcNow:yyyyMMddHHmmss}",
+                TotalDebit = amount,
+                TotalCredit = amount,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            // Debit Expense Account (Expense increases)
+            journalEntry.JournalEntryLines.Add(new JournalEntryLine
+            {
+                AccountName = expenseAccountName,
+                AccountType = "EXPENSE",
+                EntrySide = "DEBIT",
+                Amount = amount,
+                Description = $"Bill received: {billName}",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            // Credit Accounts Payable (Liability increases)
+            journalEntry.JournalEntryLines.Add(new JournalEntryLine
+            {
+                AccountName = "Accounts Payable",
+                AccountType = "LIABILITY",
+                EntrySide = "CREDIT",
+                Amount = amount,
+                Description = $"Bill received: {billName}",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            ValidateJournalEntry(journalEntry);
+            _context.JournalEntries.Add(journalEntry);
+            // Note: Don't call SaveChangesAsync here - let the caller handle it in the transaction
+
+            return journalEntry;
+        }
+
+        /// <summary>
+        /// Creates accrual journal entry when a bill is paid (using Accounts Payable)
+        /// Accrual Basis: Debit Accounts Payable (Liability), Credit Bank Account (Asset)
+        /// </summary>
+        public async Task<JournalEntry> CreateBillPaymentFromPayableEntryAsync(
+            string billId,
+            string userId,
+            decimal amount,
+            string billName,
+            string? bankAccountName = null,
+            string? reference = null,
+            string? description = null,
+            DateTime? entryDate = null)
+        {
+            var journalEntry = new JournalEntry
+            {
+                UserId = userId,
+                BillId = billId,
+                EntryType = "BILL_PAYMENT_ACCRUAL",
+                EntryDate = entryDate ?? DateTime.UtcNow,
+                Description = description ?? $"Payment for {billName}",
+                Reference = reference ?? $"BILL-PAY-ACCRUAL-{DateTime.UtcNow:yyyyMMddHHmmss}",
+                TotalDebit = amount,
+                TotalCredit = amount,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            // Debit Accounts Payable (Liability decreases)
+            journalEntry.JournalEntryLines.Add(new JournalEntryLine
+            {
+                AccountName = "Accounts Payable",
+                AccountType = "LIABILITY",
+                EntrySide = "DEBIT",
+                Amount = amount,
+                Description = $"Payment for {billName}",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            // Credit Bank Account (Asset decreases)
+            journalEntry.JournalEntryLines.Add(new JournalEntryLine
+            {
+                AccountName = string.IsNullOrEmpty(bankAccountName) ? "Bank Account" : $"Bank Account - {bankAccountName}",
+                AccountType = "ASSET",
+                EntrySide = "CREDIT",
+                Amount = amount,
+                Description = $"Payment for {billName}",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            ValidateJournalEntry(journalEntry);
+            _context.JournalEntries.Add(journalEntry);
+            // Note: Don't call SaveChangesAsync here - let the caller handle it in the transaction
+
+            return journalEntry;
+        }
+
+        /// <summary>
+        /// Creates accrual journal entry when a receivable is created
+        /// Accrual Basis: Debit Accounts Receivable (Asset), Credit Revenue Account
+        /// </summary>
+        public async Task<JournalEntry> CreateReceivableAccrualEntryAsync(
+            string receivableId,
+            string userId,
+            decimal amount,
+            string borrowerName,
+            string? revenueCategory = null,
+            string? reference = null,
+            string? description = null,
+            DateTime? entryDate = null)
+        {
+            var revenueAccountName = GetIncomeAccountName(revenueCategory ?? "receivable");
+
+            var journalEntry = new JournalEntry
+            {
+                UserId = userId,
+                ReceivableId = receivableId,
+                EntryType = "RECEIVABLE_ACCRUAL",
+                EntryDate = entryDate ?? DateTime.UtcNow,
+                Description = description ?? $"Receivable created: {borrowerName}",
+                Reference = reference ?? $"REC-ACCRUAL-{DateTime.UtcNow:yyyyMMddHHmmss}",
+                TotalDebit = amount,
+                TotalCredit = amount,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            // Debit Accounts Receivable (Asset increases)
+            journalEntry.JournalEntryLines.Add(new JournalEntryLine
+            {
+                AccountName = "Accounts Receivable",
+                AccountType = "ASSET",
+                EntrySide = "DEBIT",
+                Amount = amount,
+                Description = $"Receivable from {borrowerName}",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            // Credit Revenue Account (Revenue increases)
+            journalEntry.JournalEntryLines.Add(new JournalEntryLine
+            {
+                AccountName = revenueAccountName,
+                AccountType = "REVENUE",
+                EntrySide = "CREDIT",
+                Amount = amount,
+                Description = $"Revenue from {borrowerName}",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            ValidateJournalEntry(journalEntry);
+            _context.JournalEntries.Add(journalEntry);
+            // Note: Don't call SaveChangesAsync here - let the caller handle it in the transaction
+
+            return journalEntry;
+        }
+
+        /// <summary>
+        /// Creates accrual journal entry when payment is received for a receivable
+        /// Accrual Basis: Debit Bank Account (Asset), Credit Accounts Receivable (Asset)
+        /// </summary>
+        public async Task<JournalEntry> CreateReceivablePaymentEntryAsync(
+            string receivableId,
+            string userId,
+            decimal amount,
+            string borrowerName,
+            string? bankAccountName = null,
+            string? reference = null,
+            string? description = null,
+            DateTime? entryDate = null)
+        {
+            var journalEntry = new JournalEntry
+            {
+                UserId = userId,
+                ReceivableId = receivableId,
+                EntryType = "RECEIVABLE_PAYMENT_ACCRUAL",
+                EntryDate = entryDate ?? DateTime.UtcNow,
+                Description = description ?? $"Payment received from {borrowerName}",
+                Reference = reference ?? $"REC-PAY-ACCRUAL-{DateTime.UtcNow:yyyyMMddHHmmss}",
+                TotalDebit = amount,
+                TotalCredit = amount,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            // Debit Bank Account (Asset increases)
+            journalEntry.JournalEntryLines.Add(new JournalEntryLine
+            {
+                AccountName = string.IsNullOrEmpty(bankAccountName) ? "Bank Account" : $"Bank Account - {bankAccountName}",
+                AccountType = "ASSET",
+                EntrySide = "DEBIT",
+                Amount = amount,
+                Description = $"Payment received from {borrowerName}",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            // Credit Accounts Receivable (Asset decreases)
+            journalEntry.JournalEntryLines.Add(new JournalEntryLine
+            {
+                AccountName = "Accounts Receivable",
+                AccountType = "ASSET",
+                EntrySide = "CREDIT",
+                Amount = amount,
+                Description = $"Payment received from {borrowerName}",
+                CreatedAt = DateTime.UtcNow
+            });
+
+            ValidateJournalEntry(journalEntry);
+            _context.JournalEntries.Add(journalEntry);
+            // Note: Don't call SaveChangesAsync here - let the caller handle it in the transaction
+
+            return journalEntry;
         }
     }
 }

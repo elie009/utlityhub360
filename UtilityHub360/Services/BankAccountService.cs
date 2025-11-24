@@ -10,11 +10,25 @@ namespace UtilityHub360.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly IServiceProvider _serviceProvider;
+        private readonly AccountingService _accountingService;
+        private readonly ITransactionRulesService? _transactionRulesService;
+        private readonly IDuplicateDetectionService? _duplicateDetectionService;
+        private readonly ISmartCategorizationService? _smartCategorizationService;
 
-        public BankAccountService(ApplicationDbContext context, IServiceProvider serviceProvider)
+        public BankAccountService(
+            ApplicationDbContext context, 
+            IServiceProvider serviceProvider, 
+            AccountingService accountingService,
+            ITransactionRulesService? transactionRulesService = null,
+            IDuplicateDetectionService? duplicateDetectionService = null,
+            ISmartCategorizationService? smartCategorizationService = null)
         {
             _context = context;
             _serviceProvider = serviceProvider;
+            _accountingService = accountingService;
+            _transactionRulesService = transactionRulesService;
+            _duplicateDetectionService = duplicateDetectionService;
+            _smartCategorizationService = smartCategorizationService;
         }
 
         public async Task<ApiResponse<BankAccountDto>> CreateBankAccountAsync(CreateBankAccountDto createBankAccountDto, string userId)
@@ -107,7 +121,6 @@ namespace UtilityHub360.Services
             {
                 var bankAccount = await _context.BankAccounts
                     .Include(ba => ba.Transactions)
-                    .Include(ba => ba.Cards)
                     .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
 
                 if (bankAccount == null)
@@ -269,7 +282,6 @@ namespace UtilityHub360.Services
             {
                 var query = _context.BankAccounts
                     .Include(ba => ba.Transactions)
-                    .Include(ba => ba.Cards)
                     .Where(ba => ba.UserId == userId);
 
                 if (!includeInactive)
@@ -301,7 +313,6 @@ namespace UtilityHub360.Services
             {
                 var bankAccounts = await _context.BankAccounts
                     .Include(ba => ba.Transactions)
-                    .Include(ba => ba.Cards)
                     .Where(ba => ba.UserId == userId && ba.IsActive)
                     .ToListAsync();
 
@@ -521,7 +532,6 @@ namespace UtilityHub360.Services
             {
                 var bankAccounts = await _context.BankAccounts
                     .Include(ba => ba.Transactions)
-                    .Include(ba => ba.Cards)
                     .Where(ba => ba.UserId == userId && ba.IsActive)
                     .OrderByDescending(ba => ba.CurrentBalance)
                     .Take(limit)
@@ -609,7 +619,6 @@ namespace UtilityHub360.Services
             {
                 var bankAccounts = await _context.BankAccounts
                     .Include(ba => ba.Transactions)
-                    .Include(ba => ba.Cards)
                     .Where(ba => ba.UserId == userId && ba.IsConnected && ba.IsActive)
                     .OrderByDescending(ba => ba.CurrentBalance)
                     .ToListAsync();
@@ -666,6 +675,190 @@ namespace UtilityHub360.Services
                 {
                     return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found");
                 }
+
+                // ==================== CATEGORY VALIDATION ====================
+                // Validate category if provided (skip validation for special categories like [SAVINGS-...] or [LOAN-...])
+                if (!string.IsNullOrEmpty(createTransactionDto.Category) && 
+                    !createTransactionDto.Category.StartsWith("[") && 
+                    createTransactionDto.TransactionType?.ToUpper() != "CREDIT")
+                {
+                    // Check if category exists in TransactionCategories table
+                    var categoryExists = await _context.TransactionCategories
+                        .AnyAsync(c => c.UserId == userId && 
+                                     c.Name.ToUpper() == createTransactionDto.Category.ToUpper() && 
+                                     c.IsActive && 
+                                     !c.IsDeleted);
+
+                    if (!categoryExists)
+                    {
+                        // Try to find a similar category (case-insensitive)
+                        var similarCategory = await _context.TransactionCategories
+                            .FirstOrDefaultAsync(c => c.UserId == userId && 
+                                                     c.Name.ToUpper() == createTransactionDto.Category.ToUpper() && 
+                                                     !c.IsDeleted);
+
+                        if (similarCategory != null && !similarCategory.IsActive)
+                        {
+                            return ApiResponse<BankTransactionDto>.ErrorResult(
+                                $"Category '{createTransactionDto.Category}' exists but is inactive. Please activate it or choose a different category.");
+                        }
+
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            $"Category '{createTransactionDto.Category}' not found. Please create the category first or use an existing category.");
+                    }
+
+                    // Validate category type matches transaction type
+                    var category = await _context.TransactionCategories
+                        .FirstOrDefaultAsync(c => c.UserId == userId && 
+                                                 c.Name.ToUpper() == createTransactionDto.Category.ToUpper() && 
+                                                 c.IsActive && 
+                                                 !c.IsDeleted);
+
+                    if (category != null)
+                    {
+                        var transactionType = createTransactionDto.TransactionType?.ToUpper();
+                        var categoryType = category.Type?.ToUpper();
+
+                        // Validate type compatibility
+                        if (transactionType == "DEBIT" && categoryType == "INCOME")
+                        {
+                            return ApiResponse<BankTransactionDto>.ErrorResult(
+                                $"Category '{category.Name}' is an income category and cannot be used for debit transactions.");
+                        }
+                        if (transactionType == "CREDIT" && (categoryType == "EXPENSE" || categoryType == "BILL" || categoryType == "LOAN"))
+                        {
+                            return ApiResponse<BankTransactionDto>.ErrorResult(
+                                $"Category '{category.Name}' is an expense category and cannot be used for credit transactions.");
+                        }
+                    }
+                }
+                // ==================== END CATEGORY VALIDATION ====================
+
+                // ==================== DOUBLE-ENTRY VALIDATION FOR TRANSFERS ====================
+                // Detect if this is a bank transfer transaction
+                var categoryLower = (createTransactionDto.Category ?? "").ToLower();
+                bool isBankTransfer = !string.IsNullOrEmpty(createTransactionDto.ToBankAccountId) ||
+                                    categoryLower.Contains("transfer") || 
+                                    categoryLower == "transfer" ||
+                                    (!string.IsNullOrEmpty(createTransactionDto.Category) && 
+                                     createTransactionDto.Category.ToUpper() == "TRANSFER");
+
+                // If it's a transfer, validate double-entry accounting rules
+                if (isBankTransfer)
+                {
+                    // Validation 1: ToBankAccountId is required for transfers
+                    if (string.IsNullOrEmpty(createTransactionDto.ToBankAccountId))
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            "Destination bank account (ToBankAccountId) is required for bank transfer transactions");
+                    }
+
+                    // Validation 2: Source and destination accounts must be different
+                    if (createTransactionDto.BankAccountId == createTransactionDto.ToBankAccountId)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            "Source and destination accounts cannot be the same for bank transfers. Double-entry accounting requires two different accounts.");
+                    }
+
+                    // Validation 3: Destination account must exist and belong to user
+                    var destinationAccount = await _context.BankAccounts
+                        .FirstOrDefaultAsync(ba => ba.Id == createTransactionDto.ToBankAccountId && ba.UserId == userId);
+
+                    if (destinationAccount == null)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            "Destination bank account not found or does not belong to user");
+                    }
+
+                    // Validation 4: Amount must be positive for transfers
+                    if (createTransactionDto.Amount <= 0)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            "Transfer amount must be greater than zero");
+                    }
+
+                    // Validation 5: For DEBIT transfers, ensure source account has sufficient balance
+                    if (createTransactionDto.TransactionType?.ToUpper() == "DEBIT")
+                    {
+                        bool isSourceCreditCard = bankAccount.AccountType?.ToLower() == "credit_card";
+                        
+                        // For credit cards, check available credit (balance can be negative)
+                        // For regular accounts, check if balance is sufficient
+                        if (!isSourceCreditCard && bankAccount.CurrentBalance < createTransactionDto.Amount)
+                        {
+                            return ApiResponse<BankTransactionDto>.ErrorResult(
+                                $"Insufficient balance in source account. Current balance: {bankAccount.CurrentBalance:C}, Required: {createTransactionDto.Amount:C}");
+                        }
+                    }
+                }
+                // ==================== END DOUBLE-ENTRY VALIDATION ====================
+
+                // ==================== AUTOMATION FEATURES ====================
+                // Convert to CreateTransactionRequest for automation services
+                var transactionRequest = new CreateTransactionRequest
+                {
+                    BankAccountId = createTransactionDto.BankAccountId,
+                    TransactionType = createTransactionDto.TransactionType ?? "DEBIT",
+                    Amount = createTransactionDto.Amount,
+                    Description = createTransactionDto.Description ?? "",
+                    Category = createTransactionDto.Category,
+                    MerchantName = createTransactionDto.Merchant,
+                    TransactionDate = createTransactionDto.TransactionDate,
+                    ReferenceNumber = createTransactionDto.ReferenceNumber
+                };
+
+                // 1. Check for duplicates
+                if (_duplicateDetectionService != null)
+                {
+                    var duplicateCheck = await _duplicateDetectionService.CheckDuplicateAsync(transactionRequest, userId);
+                    if (duplicateCheck.IsDuplicate && duplicateCheck.Confidence > 0.9)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            $"This transaction appears to be a duplicate of an existing transaction. Confidence: {duplicateCheck.Confidence:P0}. {duplicateCheck.Reason}");
+                    }
+                }
+
+                // 2. Apply smart categorization if category not provided
+                if (string.IsNullOrEmpty(createTransactionDto.Category) && 
+                    createTransactionDto.TransactionType?.ToUpper() != "CREDIT" &&
+                    _smartCategorizationService != null)
+                {
+                    var categorySuggestion = await _smartCategorizationService.SuggestCategoryAsync(transactionRequest, userId);
+                    if (categorySuggestion.Confidence > 0.5)
+                    {
+                        createTransactionDto.Category = categorySuggestion.CategoryName;
+                        if (string.IsNullOrEmpty(createTransactionDto.Description))
+                        {
+                            createTransactionDto.Description = categorySuggestion.Reason ?? "";
+                        }
+                    }
+                }
+
+                // 3. Apply transaction rules
+                if (_transactionRulesService != null)
+                {
+                    var ruleResult = await _transactionRulesService.ApplyRulesAsync(transactionRequest, userId);
+                    if (ruleResult.Matched)
+                    {
+                        if (!string.IsNullOrEmpty(ruleResult.Category))
+                        {
+                            createTransactionDto.Category = ruleResult.Category;
+                        }
+                        if (ruleResult.Tags.Any())
+                        {
+                            // Tags could be stored in metadata or notes
+                            if (string.IsNullOrEmpty(createTransactionDto.Notes))
+                            {
+                                createTransactionDto.Notes = $"Tags: {string.Join(", ", ruleResult.Tags)}";
+                            }
+                        }
+                        if (!string.IsNullOrEmpty(ruleResult.Description))
+                        {
+                            createTransactionDto.Description = ruleResult.Description;
+                        }
+                    }
+                }
+                // ==================== END AUTOMATION FEATURES ====================
 
                 // Handle category-based references
                 string? billId = null;
@@ -725,12 +918,12 @@ namespace UtilityHub360.Services
                 // Fallback to category-based detection if no direct IDs provided
                 if (string.IsNullOrEmpty(billId) && string.IsNullOrEmpty(savingsAccountId) && string.IsNullOrEmpty(loanId) && !string.IsNullOrEmpty(createTransactionDto.Category))
                 {
-                    var categoryLower = createTransactionDto.Category.ToLower();
+                    var categoryLowerFallback = createTransactionDto.Category.ToLower();
                     
                     // Bill-related categories
-                    if (categoryLower.Contains("bill") || categoryLower.Contains("utility") || 
-                        categoryLower.Contains("rent") || categoryLower.Contains("insurance") ||
-                        categoryLower.Contains("subscription") || categoryLower.Contains("payment"))
+                    if (categoryLowerFallback.Contains("bill") || categoryLowerFallback.Contains("utility") || 
+                        categoryLowerFallback.Contains("rent") || categoryLowerFallback.Contains("insurance") ||
+                        categoryLowerFallback.Contains("subscription") || categoryLowerFallback.Contains("payment"))
                     {
                         if (!string.IsNullOrEmpty(createTransactionDto.BillId))
                         {
@@ -739,8 +932,8 @@ namespace UtilityHub360.Services
                         }
                     }
                     // Savings-related categories
-                    else if ((categoryLower.Contains("savings") || categoryLower.Contains("deposit") || 
-                             categoryLower.Contains("investment") || categoryLower.Contains("goal")) &&
+                    else if ((categoryLowerFallback.Contains("savings") || categoryLowerFallback.Contains("deposit") || 
+                             categoryLowerFallback.Contains("investment") || categoryLowerFallback.Contains("goal")) &&
                              !string.IsNullOrEmpty(createTransactionDto.SavingsAccountId) &&
                              createTransactionDto.SavingsAccountId != createTransactionDto.BankAccountId)
                     {
@@ -748,8 +941,8 @@ namespace UtilityHub360.Services
                         enhancedDescription = $"Savings - {createTransactionDto.Description}";
                     }
                     // Loan-related categories
-                    else if (categoryLower.Contains("loan") || categoryLower.Contains("repayment") || 
-                             categoryLower.Contains("debt") || categoryLower.Contains("installment"))
+                    else if (categoryLowerFallback.Contains("loan") || categoryLowerFallback.Contains("repayment") || 
+                             categoryLowerFallback.Contains("debt") || categoryLowerFallback.Contains("installment"))
                     {
                         if (!string.IsNullOrEmpty(createTransactionDto.LoanId))
                         {
@@ -905,10 +1098,139 @@ namespace UtilityHub360.Services
                     savingsAccount.UpdatedAt = DateTime.UtcNow;
                 }
 
-                await _context.SaveChangesAsync();
+                // Create double-entry journal entry based on transaction type
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    JournalEntry? journalEntry = null;
+                    var reference = payment.Reference ?? $"BANK_TXN_{Guid.NewGuid()}";
 
-                var transactionDto = MapPaymentToBankTransactionDto(payment);
-                return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Transaction created successfully");
+                    if (payment.TransactionType == "CREDIT")
+                    {
+                        // Income transaction: Debit Bank Account, Credit Income Account
+                        var category = payment.Category ?? "Other Income";
+                        journalEntry = await _accountingService.CreateIncomeEntryAsync(
+                            userId: userId,
+                            amount: payment.Amount,
+                            category: category,
+                            bankAccountName: bankAccount.AccountName,
+                            reference: reference,
+                            description: payment.Description,
+                            entryDate: payment.TransactionDate ?? DateTime.UtcNow
+                        );
+                    }
+                    else if (payment.TransactionType == "DEBIT")
+                    {
+                        // Check if this is a bank transfer (has toBankAccountId or category is TRANSFER)
+                        // Reuse the isBankTransfer variable from outer scope (already validated above)
+                        if (isBankTransfer && !string.IsNullOrEmpty(createTransactionDto.ToBankAccountId))
+                        {
+                            // Bank transfer: Debit Destination Account, Credit Source Account
+                            var destinationAccount = await _context.BankAccounts
+                                .FirstOrDefaultAsync(ba => ba.Id == createTransactionDto.ToBankAccountId && ba.UserId == userId);
+                            
+                            if (destinationAccount == null)
+                            {
+                                await transaction.RollbackAsync();
+                                return ApiResponse<BankTransactionDto>.ErrorResult("Destination bank account not found for transfer");
+                            }
+
+                            // Update destination account balance
+                            destinationAccount.CurrentBalance += payment.Amount;
+                            destinationAccount.UpdatedAt = DateTime.UtcNow;
+
+                            journalEntry = await _accountingService.CreateBankTransferEntryAsync(
+                                userId: userId,
+                                amount: payment.Amount,
+                                sourceAccountName: bankAccount.AccountName,
+                                destinationAccountName: destinationAccount.AccountName,
+                                reference: reference,
+                                description: payment.Description,
+                                entryDate: payment.TransactionDate ?? DateTime.UtcNow
+                            );
+                        }
+                        else if (!string.IsNullOrEmpty(billId))
+                        {
+                            // Bill payment: Debit Expense, Credit Bank Account
+                            var bill = await _context.Bills.FirstOrDefaultAsync(b => b.Id == billId);
+                            var billType = bill?.BillType ?? "Other";
+                            var billName = bill?.Provider ?? "Bill";
+                            journalEntry = await _accountingService.CreateBillPaymentEntryAsync(
+                                billId: billId,
+                                userId: userId,
+                                amount: payment.Amount,
+                                billName: billName,
+                                billType: billType,
+                                bankAccountName: bankAccount.AccountName,
+                                reference: reference,
+                                description: payment.Description,
+                                entryDate: payment.TransactionDate ?? DateTime.UtcNow
+                            );
+                        }
+                        else if (!string.IsNullOrEmpty(savingsAccountId))
+                        {
+                            // Savings deposit: Debit Savings Account, Credit Bank Account
+                            var savingsAccount = await _context.SavingsAccounts
+                                .FirstOrDefaultAsync(sa => sa.Id == savingsAccountId);
+                            if (savingsAccount != null)
+                            {
+                                journalEntry = await _accountingService.CreateSavingsDepositEntryAsync(
+                                    savingsAccountId: savingsAccountId,
+                                    userId: userId,
+                                    amount: payment.Amount,
+                                    savingsAccountName: savingsAccount.AccountName,
+                                    bankAccountName: bankAccount.AccountName,
+                                    reference: reference,
+                                    description: payment.Description,
+                                    entryDate: payment.TransactionDate ?? DateTime.UtcNow
+                                );
+                            }
+                        }
+                        else if (!string.IsNullOrEmpty(loanId))
+                        {
+                            // Loan payment: This should be handled by LoanService, but we can create expense entry
+                            // Note: Loan payments typically have principal and interest split, which is handled in LoanService
+                            // For now, create a general expense entry
+                            var category = payment.Category ?? "Loan Payment";
+                            journalEntry = await _accountingService.CreateExpenseEntryAsync(
+                                userId: userId,
+                                amount: payment.Amount,
+                                category: category,
+                                bankAccountName: bankAccount.AccountName,
+                                reference: reference,
+                                description: payment.Description,
+                                entryDate: payment.TransactionDate ?? DateTime.UtcNow
+                            );
+                        }
+                        else
+                        {
+                            // Regular expense: Debit Expense, Credit Bank Account
+                            var category = payment.Category ?? "General Expense";
+                            journalEntry = await _accountingService.CreateExpenseEntryAsync(
+                                userId: userId,
+                                amount: payment.Amount,
+                                category: category,
+                                bankAccountName: bankAccount.AccountName,
+                                reference: reference,
+                                description: payment.Description,
+                                entryDate: payment.TransactionDate ?? DateTime.UtcNow
+                            );
+                        }
+                    }
+
+                    // Save all changes including journal entry
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    var transactionDto = MapPaymentToBankTransactionDto(payment);
+                    return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Transaction created successfully with double-entry validation");
+                }
+                catch (Exception journalEx)
+                {
+                    await transaction.RollbackAsync();
+                    return ApiResponse<BankTransactionDto>.ErrorResult(
+                        $"Failed to create transaction with double-entry validation: {journalEx.Message}");
+                }
             }
             catch (Exception ex)
             {
@@ -1172,7 +1494,6 @@ namespace UtilityHub360.Services
             {
                 var bankAccounts = await _context.BankAccounts
                     .Include(ba => ba.Transactions)
-                    .Include(ba => ba.Cards)
                     .OrderByDescending(ba => ba.CreatedAt)
                     .Skip((page - 1) * limit)
                     .Take(limit)
@@ -1212,7 +1533,7 @@ namespace UtilityHub360.Services
             }
         }
 
-        public async Task<ApiResponse<BankTransactionDto>> CreateExpenseAsync(CreateExpenseDto expenseDto, string userId)
+        public async Task<ApiResponse<BankTransactionDto>> CreateExpenseAsync(CreateBankAccountExpenseDto expenseDto, string userId)
         {
             try
             {
@@ -1468,36 +1789,97 @@ namespace UtilityHub360.Services
         {
             var transactions = bankAccount.Transactions ?? new List<BankTransaction>();
             
-            // Load cards if not already loaded
-            if (bankAccount.Cards == null || !bankAccount.Cards.Any())
+            // Load cards if not already loaded (handle case where Cards table doesn't exist)
+            List<CardDto> cards = new List<CardDto>();
+            try
             {
-                await _context.Entry(bankAccount)
-                    .Collection(ba => ba.Cards)
-                    .LoadAsync();
-            }
-
-            var cards = bankAccount.Cards?
-                .Where(c => !c.IsDeleted)
-                .Select(c => new CardDto
+                // Try to load Cards collection - this will fail if Cards table doesn't exist
+                try
                 {
-                    Id = c.Id,
-                    BankAccountId = c.BankAccountId,
-                    UserId = c.UserId,
-                    CardName = c.CardName,
-                    CardType = c.CardType,
-                    CardBrand = c.CardBrand,
-                    Last4Digits = c.Last4Digits,
-                    CardholderName = c.CardholderName,
-                    ExpiryMonth = c.ExpiryMonth,
-                    ExpiryYear = c.ExpiryYear,
-                    IsPrimary = c.IsPrimary,
-                    IsActive = c.IsActive,
-                    Description = c.Description,
-                    CreatedAt = c.CreatedAt,
-                    UpdatedAt = c.UpdatedAt,
-                    AccountName = bankAccount.AccountName
-                })
-                .ToList() ?? new List<CardDto>();
+                    var isCardsLoaded = _context.Entry(bankAccount)
+                        .Collection(ba => ba.Cards)
+                        .IsLoaded;
+                    
+                    if (!isCardsLoaded)
+                    {
+                        await _context.Entry(bankAccount)
+                            .Collection(ba => ba.Cards)
+                            .LoadAsync();
+                    }
+                }
+                catch
+                {
+                    // If loading fails, Cards table likely doesn't exist - skip Cards
+                    return new BankAccountDto
+                    {
+                        Id = bankAccount.Id,
+                        UserId = bankAccount.UserId,
+                        AccountName = bankAccount.AccountName,
+                        AccountType = bankAccount.AccountType,
+                        InitialBalance = bankAccount.InitialBalance,
+                        CurrentBalance = bankAccount.CurrentBalance,
+                        Currency = bankAccount.Currency,
+                        Description = bankAccount.Description,
+                        FinancialInstitution = bankAccount.FinancialInstitution,
+                        AccountNumber = bankAccount.AccountNumber,
+                        RoutingNumber = bankAccount.RoutingNumber,
+                        SyncFrequency = bankAccount.SyncFrequency,
+                        IsConnected = bankAccount.IsConnected,
+                        ConnectionId = bankAccount.ConnectionId,
+                        LastSyncedAt = bankAccount.LastSyncedAt,
+                        CreatedAt = bankAccount.CreatedAt,
+                        UpdatedAt = bankAccount.UpdatedAt,
+                        IsActive = bankAccount.IsActive,
+                        Iban = bankAccount.Iban,
+                        SwiftCode = bankAccount.SwiftCode,
+                        TransactionCount = transactions.Count,
+                        TotalIncoming = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount),
+                        TotalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount),
+                        Cards = new List<CardDto>()
+                    };
+                }
+
+                // Access Cards property and map to DTOs (this might also trigger a query)
+                try
+                {
+                    var bankAccountCards = bankAccount.Cards;
+                    if (bankAccountCards != null)
+                    {
+                        cards = bankAccountCards
+                            .Where(c => !c.IsDeleted)
+                            .Select(c => new CardDto
+                            {
+                                Id = c.Id,
+                                BankAccountId = c.BankAccountId,
+                                UserId = c.UserId,
+                                CardName = c.CardName,
+                                CardType = c.CardType,
+                                CardBrand = c.CardBrand,
+                                Last4Digits = c.Last4Digits,
+                                CardholderName = c.CardholderName,
+                                ExpiryMonth = c.ExpiryMonth,
+                                ExpiryYear = c.ExpiryYear,
+                                IsPrimary = c.IsPrimary,
+                                IsActive = c.IsActive,
+                                Description = c.Description,
+                                CreatedAt = c.CreatedAt,
+                                UpdatedAt = c.UpdatedAt,
+                                AccountName = bankAccount.AccountName
+                            })
+                            .ToList();
+                    }
+                }
+                catch
+                {
+                    // Accessing Cards property failed - return empty list
+                    cards = new List<CardDto>();
+                }
+            }
+            catch (Exception)
+            {
+                // Cards table doesn't exist or Cards couldn't be accessed - return empty list
+                cards = new List<CardDto>();
+            }
             
             return new BankAccountDto
             {

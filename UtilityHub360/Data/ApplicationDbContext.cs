@@ -21,8 +21,14 @@ namespace UtilityHub360.Data
         public DbSet<Card> Cards { get; set; }
         public DbSet<Receivable> Receivables { get; set; }
         public DbSet<ReceivablePayment> ReceivablePayments { get; set; }
+        public DbSet<Vendor> Vendors { get; set; }
         public DbSet<SavingsAccount> SavingsAccounts { get; set; }
         public DbSet<SavingsTransaction> SavingsTransactions { get; set; }
+        
+        // Investment Tables
+        public DbSet<Investment> Investments { get; set; }
+        public DbSet<InvestmentPosition> InvestmentPositions { get; set; }
+        public DbSet<InvestmentTransaction> InvestmentTransactions { get; set; }
         public DbSet<UserProfile> UserProfiles { get; set; }
         public DbSet<IncomeSource> IncomeSources { get; set; }
         public DbSet<VariableExpense> VariableExpenses { get; set; }
@@ -41,6 +47,36 @@ namespace UtilityHub360.Data
         // Accounting Tables
         public DbSet<JournalEntry> JournalEntries { get; set; }
         public DbSet<JournalEntryLine> JournalEntryLines { get; set; }
+        
+        // Reconciliation Tables
+        public DbSet<BankStatement> BankStatements { get; set; }
+        public DbSet<BankStatementItem> BankStatementItems { get; set; }
+        public DbSet<Reconciliation> Reconciliations { get; set; }
+        public DbSet<ReconciliationMatch> ReconciliationMatches { get; set; }
+        
+        // Transaction Categories
+        public DbSet<TransactionCategory> TransactionCategories { get; set; }
+        
+        // Transaction Rules
+        public DbSet<TransactionRule> TransactionRules { get; set; }
+        
+        // Utilities
+        public DbSet<Utility> Utilities { get; set; }
+        
+        // Expense Management Tables
+        public DbSet<Expense> Expenses { get; set; }
+        public DbSet<ExpenseCategory> ExpenseCategories { get; set; }
+        public DbSet<ExpenseBudget> ExpenseBudgets { get; set; }
+        public DbSet<ExpenseReceipt> ExpenseReceipts { get; set; }
+        public DbSet<ExpenseApproval> ExpenseApprovals { get; set; }
+        
+        // Allocation Planning Tables
+        public DbSet<AllocationTemplate> AllocationTemplates { get; set; }
+        public DbSet<AllocationTemplateCategory> AllocationTemplateCategories { get; set; }
+        public DbSet<AllocationPlan> AllocationPlans { get; set; }
+        public DbSet<AllocationCategory> AllocationCategories { get; set; }
+        public DbSet<AllocationHistory> AllocationHistories { get; set; }
+        public DbSet<AllocationRecommendation> AllocationRecommendations { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -170,6 +206,18 @@ namespace UtilityHub360.Data
                 entity.Ignore(e => e.DeletedAt);
                 entity.Ignore(e => e.DeletedBy);
                 entity.Ignore(e => e.DeleteReason);
+
+                // Temporary: Ignore new properties until database migration is applied
+                // TODO: Remove these Ignore() calls after running add_bill_columns_SIMPLE.sql
+                entity.Ignore(e => e.IsScheduledPayment);
+                entity.Ignore(e => e.ScheduledPaymentBankAccountId);
+                entity.Ignore(e => e.ScheduledPaymentDaysBeforeDue);
+                entity.Ignore(e => e.LastScheduledPaymentAttempt);
+                entity.Ignore(e => e.ScheduledPaymentFailureReason);
+                entity.Ignore(e => e.ApprovalStatus);
+                entity.Ignore(e => e.ApprovedBy);
+                entity.Ignore(e => e.ApprovedAt);
+                entity.Ignore(e => e.ApprovalNotes);
             });
 
             // BankAccount configuration
@@ -487,6 +535,348 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.UserId);
                 entity.HasIndex(e => e.Role);
                 entity.HasIndex(e => e.Timestamp);
+            });
+
+            // BankStatement configuration
+            modelBuilder.Entity<BankStatement>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.BankAccount)
+                    .WithMany()
+                    .HasForeignKey(d => d.BankAccountId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.BankAccountId);
+                entity.HasIndex(e => new { e.BankAccountId, e.UserId }); // Composite index for common query pattern
+                entity.HasIndex(e => e.StatementStartDate);
+                entity.HasIndex(e => e.StatementEndDate);
+                entity.HasIndex(e => e.IsReconciled);
+            });
+
+            // BankStatementItem configuration
+            modelBuilder.Entity<BankStatementItem>(entity =>
+            {
+                entity.HasOne(d => d.BankStatement)
+                    .WithMany(p => p.StatementItems)
+                    .HasForeignKey(d => d.BankStatementId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.BankStatementId);
+                entity.HasIndex(e => e.TransactionDate);
+                entity.HasIndex(e => e.IsMatched);
+                entity.HasIndex(e => e.MatchedTransactionId);
+            });
+
+            // Reconciliation configuration
+            modelBuilder.Entity<Reconciliation>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.BankAccount)
+                    .WithMany()
+                    .HasForeignKey(d => d.BankAccountId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.BankStatement)
+                    .WithMany(p => p.Reconciliations)
+                    .HasForeignKey(d => d.BankStatementId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.BankAccountId);
+                entity.HasIndex(e => e.ReconciliationDate);
+                entity.HasIndex(e => e.Status);
+            });
+
+            // ReconciliationMatch configuration
+            modelBuilder.Entity<ReconciliationMatch>(entity =>
+            {
+                entity.HasOne(d => d.Reconciliation)
+                    .WithMany(p => p.Matches)
+                    .HasForeignKey(d => d.ReconciliationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.StatementItem)
+                    .WithMany()
+                    .HasForeignKey(d => d.StatementItemId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(e => e.ReconciliationId);
+                entity.HasIndex(e => e.SystemTransactionId);
+                entity.HasIndex(e => e.StatementItemId);
+                entity.HasIndex(e => e.MatchStatus);
+            });
+
+            // TransactionCategory configuration
+            modelBuilder.Entity<TransactionCategory>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.Type);
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => e.IsSystemCategory);
+                entity.HasIndex(e => new { e.UserId, e.Name }).IsUnique();
+            });
+
+            // Vendor configuration
+            modelBuilder.Entity<Vendor>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.Name);
+                entity.HasIndex(e => e.Category);
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // Utility configuration
+            modelBuilder.Entity<Utility>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.UtilityType);
+                entity.HasIndex(e => e.Provider);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.BillingDate);
+                entity.HasIndex(e => e.DueDate);
+                entity.HasIndex(e => new { e.UserId, e.UtilityType, e.Provider });
+            });
+
+            // Expense configuration
+            modelBuilder.Entity<Expense>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.Category)
+                    .WithMany(c => c.Expenses)
+                    .HasForeignKey(d => d.CategoryId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(d => d.Receipt)
+                    .WithMany()
+                    .HasForeignKey(d => d.ReceiptId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasOne(d => d.Budget)
+                    .WithMany(b => b.Expenses)
+                    .HasForeignKey(d => d.BudgetId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.CategoryId);
+                entity.HasIndex(e => e.ExpenseDate);
+                entity.HasIndex(e => e.ApprovalStatus);
+                entity.HasIndex(e => e.BudgetId);
+                entity.HasIndex(e => new { e.UserId, e.ExpenseDate });
+                entity.HasIndex(e => new { e.UserId, e.CategoryId, e.ExpenseDate });
+            });
+
+            // ExpenseCategory configuration
+            modelBuilder.Entity<ExpenseCategory>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.ParentCategory)
+                    .WithMany()
+                    .HasForeignKey(d => d.ParentCategoryId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.ParentCategoryId);
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => new { e.UserId, e.Name }).IsUnique();
+            });
+
+            // ExpenseBudget configuration
+            modelBuilder.Entity<ExpenseBudget>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.Category)
+                    .WithMany(c => c.Budgets)
+                    .HasForeignKey(d => d.CategoryId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.CategoryId);
+                entity.HasIndex(e => e.StartDate);
+                entity.HasIndex(e => e.EndDate);
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => new { e.UserId, e.CategoryId, e.StartDate, e.EndDate });
+            });
+
+            // ExpenseReceipt configuration
+            modelBuilder.Entity<ExpenseReceipt>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.Expense)
+                    .WithMany()
+                    .HasForeignKey(d => d.ExpenseId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.ExpenseId);
+                entity.HasIndex(e => e.IsOcrProcessed);
+            });
+
+            // ExpenseApproval configuration
+            modelBuilder.Entity<ExpenseApproval>(entity =>
+            {
+                entity.HasOne(d => d.Expense)
+                    .WithMany()
+                    .HasForeignKey(d => d.ExpenseId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.RequestedByUser)
+                    .WithMany()
+                    .HasForeignKey(d => d.RequestedBy)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(d => d.ApprovedByUser)
+                    .WithMany()
+                    .HasForeignKey(d => d.ApprovedBy)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(e => e.ExpenseId);
+                entity.HasIndex(e => e.RequestedBy);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.RequestedAt);
+            });
+
+            // AllocationTemplate configuration
+            modelBuilder.Entity<AllocationTemplate>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.IsSystemTemplate);
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // AllocationTemplateCategory configuration
+            modelBuilder.Entity<AllocationTemplateCategory>(entity =>
+            {
+                entity.HasOne(d => d.Template)
+                    .WithMany(t => t.Categories)
+                    .HasForeignKey(d => d.TemplateId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.TemplateId);
+            });
+
+            // AllocationPlan configuration
+            modelBuilder.Entity<AllocationPlan>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.Template)
+                    .WithMany()
+                    .HasForeignKey(d => d.TemplateId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => new { e.UserId, e.IsActive });
+            });
+
+            // AllocationCategory configuration
+            modelBuilder.Entity<AllocationCategory>(entity =>
+            {
+                entity.HasOne(d => d.Plan)
+                    .WithMany(p => p.Categories)
+                    .HasForeignKey(d => d.PlanId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.PlanId);
+            });
+
+            // AllocationHistory configuration
+            modelBuilder.Entity<AllocationHistory>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.Plan)
+                    .WithMany()
+                    .HasForeignKey(d => d.PlanId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.Category)
+                    .WithMany()
+                    .HasForeignKey(d => d.CategoryId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.PlanId);
+                entity.HasIndex(e => e.CategoryId);
+                entity.HasIndex(e => e.PeriodDate);
+                entity.HasIndex(e => new { e.UserId, e.PlanId, e.PeriodDate });
+            });
+
+            // AllocationRecommendation configuration
+            modelBuilder.Entity<AllocationRecommendation>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.Plan)
+                    .WithMany()
+                    .HasForeignKey(d => d.PlanId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.Category)
+                    .WithMany()
+                    .HasForeignKey(d => d.CategoryId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.PlanId);
+                entity.HasIndex(e => e.CategoryId);
+                entity.HasIndex(e => e.IsApplied);
+                entity.HasIndex(e => e.IsRead);
+                entity.HasIndex(e => e.Priority);
             });
 
             // Seed data

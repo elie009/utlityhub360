@@ -73,8 +73,17 @@ namespace UtilityHub360.Services
 
                 // Create loan from application using provided interest rate
                 var interestRate = application.InterestRate;
-                var interestMethod = "AMORTIZED"; // Default to amortized, can be made configurable
-                var actualFinancedAmount = application.Principal; // Will be adjusted if down payment is provided
+                var interestMethod = application.InterestComputationMethod ?? "AMORTIZED";
+                var downPayment = application.DownPayment ?? 0;
+                var processingFee = application.ProcessingFee ?? 0;
+                var loanType = application.LoanType ?? "PERSONAL";
+                var actualFinancedAmount = application.Principal - downPayment;
+                
+                if (actualFinancedAmount <= 0)
+                {
+                    return ApiResponse<LoanDto>.ErrorResult("Down payment cannot exceed principal amount");
+                }
+
                 var monthlyPayment = CalculateMonthlyPayment(actualFinancedAmount, interestRate, application.Term, interestMethod);
                 var totalAmount = monthlyPayment * application.Term;
                 
@@ -89,6 +98,15 @@ namespace UtilityHub360.Services
                     totalInterest = CalculateAmortizedInterest(actualFinancedAmount, interestRate, application.Term);
                 }
 
+                // Calculate effective interest rate (APR) including fees
+                var effectiveInterestRate = CalculateEffectiveInterestRate(
+                    application.Principal,
+                    interestRate,
+                    application.Term,
+                    processingFee,
+                    downPayment,
+                    interestMethod);
+
                 var loan = new Entities.Loan
                 {
                     UserId = userId,
@@ -101,13 +119,17 @@ namespace UtilityHub360.Services
                     TotalAmount = totalAmount,
                     RemainingBalance = totalAmount,
                     AppliedAt = DateTime.UtcNow,
-                    AdditionalInfo = application.AdditionalInfo
-                    // TEMPORARY: Commented out until database migration is applied
-                    // InterestComputationMethod = interestMethod,
-                    // TotalInterest = totalInterest,
-                    // ActualFinancedAmount = actualFinancedAmount,
-                    // PaymentFrequency = "MONTHLY",
-                    // StartDate = null // Will be set when disbursed
+                    AdditionalInfo = application.AdditionalInfo,
+                    InterestComputationMethod = interestMethod,
+                    TotalInterest = totalInterest,
+                    ActualFinancedAmount = actualFinancedAmount,
+                    DownPayment = downPayment,
+                    ProcessingFee = processingFee,
+                    PaymentFrequency = "MONTHLY",
+                    LoanType = loanType,
+                    RefinancedFromLoanId = application.RefinancedFromLoanId,
+                    EffectiveInterestRate = effectiveInterestRate,
+                    StartDate = null // Will be set when disbursed
                 };
 
                 _context.Loans.Add(loan);
@@ -136,7 +158,19 @@ namespace UtilityHub360.Services
                     ApprovedAt = loan.ApprovedAt,
                     DisbursedAt = loan.DisbursedAt,
                     CompletedAt = loan.CompletedAt,
-                    AdditionalInfo = loan.AdditionalInfo
+                    AdditionalInfo = loan.AdditionalInfo,
+                    LoanType = loan.LoanType,
+                    RefinancedFromLoanId = loan.RefinancedFromLoanId,
+                    RefinancedToLoanId = loan.RefinancedToLoanId,
+                    RefinancingDate = loan.RefinancingDate,
+                    EffectiveInterestRate = loan.EffectiveInterestRate,
+                    TotalInterest = loan.TotalInterest,
+                    DownPayment = loan.DownPayment,
+                    ProcessingFee = loan.ProcessingFee,
+                    ActualFinancedAmount = loan.ActualFinancedAmount,
+                    InterestComputationMethod = loan.InterestComputationMethod,
+                    PaymentFrequency = loan.PaymentFrequency,
+                    StartDate = loan.StartDate
                     // NextDueDate = loan.NextDueDate,
                     // FinalDueDate = loan.FinalDueDate
                 };
@@ -184,7 +218,19 @@ namespace UtilityHub360.Services
                     DisbursedAt = loan.DisbursedAt,
                     CompletedAt = loan.CompletedAt,
                     AdditionalInfo = loan.AdditionalInfo,
-                    NextDueDate = nextDueDate == default(DateTime) ? null : nextDueDate
+                    NextDueDate = nextDueDate == default(DateTime) ? null : nextDueDate,
+                    LoanType = loan.LoanType,
+                    RefinancedFromLoanId = loan.RefinancedFromLoanId,
+                    RefinancedToLoanId = loan.RefinancedToLoanId,
+                    RefinancingDate = loan.RefinancingDate,
+                    EffectiveInterestRate = loan.EffectiveInterestRate,
+                    TotalInterest = loan.TotalInterest,
+                    DownPayment = loan.DownPayment,
+                    ProcessingFee = loan.ProcessingFee,
+                    ActualFinancedAmount = loan.ActualFinancedAmount,
+                    InterestComputationMethod = loan.InterestComputationMethod,
+                    PaymentFrequency = loan.PaymentFrequency,
+                    StartDate = loan.StartDate
                 };
 
                 return ApiResponse<LoanDto>.SuccessResult(loanDto);
@@ -247,7 +293,19 @@ namespace UtilityHub360.Services
                     DisbursedAt = loan.DisbursedAt,
                     CompletedAt = loan.CompletedAt,
                     AdditionalInfo = loan.AdditionalInfo,
-                    NextDueDate = nextDueDates.FirstOrDefault(d => d.LoanId == loan.Id)?.NextDueDate
+                    NextDueDate = nextDueDates.FirstOrDefault(d => d.LoanId == loan.Id)?.NextDueDate,
+                    LoanType = loan.LoanType,
+                    RefinancedFromLoanId = loan.RefinancedFromLoanId,
+                    RefinancedToLoanId = loan.RefinancedToLoanId,
+                    RefinancingDate = loan.RefinancingDate,
+                    EffectiveInterestRate = loan.EffectiveInterestRate,
+                    TotalInterest = loan.TotalInterest,
+                    DownPayment = loan.DownPayment,
+                    ProcessingFee = loan.ProcessingFee,
+                    ActualFinancedAmount = loan.ActualFinancedAmount,
+                    InterestComputationMethod = loan.InterestComputationMethod,
+                    PaymentFrequency = loan.PaymentFrequency,
+                    StartDate = loan.StartDate
                 }).ToList();
 
                 var paginatedResponse = new PaginatedResponse<LoanDto>
@@ -789,18 +847,37 @@ namespace UtilityHub360.Services
                     interestAmount = 0;
                 }
 
-                // TEMPORARY: Commented out until database migration is applied
-                // Create journal entry for loan payment (Debit Loan Payable, Debit Interest Expense, Credit Cash)
-                // await _accountingService.CreateLoanPaymentEntryAsync(
-                //     loanId,
-                //     userId,
-                //     principalAmount,
-                //     interestAmount,
-                //     payment.Amount,
-                //     payment.Reference,
-                //     $"Loan payment via {payment.Method}");
+                // Use database transaction to ensure atomicity
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    // Get bank account if provided for accounting entry
+                    string? bankAccountName = null;
+                    if (!string.IsNullOrEmpty(payment.BankAccountId))
+                    {
+                        var bankAccount = await _context.BankAccounts
+                            .FirstOrDefaultAsync(ba => ba.Id == payment.BankAccountId && ba.UserId == userId);
+                        if (bankAccount != null)
+                        {
+                            bankAccountName = bankAccount.AccountName;
+                            // Update bank account balance (debit - money going out)
+                            bankAccount.CurrentBalance -= payment.Amount;
+                            bankAccount.UpdatedAt = DateTime.UtcNow;
+                        }
+                    }
 
-                // Create payment (combining both payment and loan activity tracking)
+                    // Create journal entry for loan payment (Debit Loan Payable, Debit Interest Expense, Credit Bank Account)
+                    await _accountingService.CreateLoanPaymentEntryAsync(
+                        loanId,
+                        userId,
+                        principalAmount,
+                        interestAmount,
+                        payment.Amount,
+                        bankAccountName,
+                        payment.Reference,
+                        $"Loan payment via {payment.Method}");
+
+                    // Create payment (combining both payment and loan activity tracking)
                 var newPayment = new Entities.Payment
                 {
                     LoanId = loanId,
@@ -823,33 +900,39 @@ namespace UtilityHub360.Services
                 // Update loan remaining balance
                 loan.RemainingBalance -= payment.Amount;
 
-                // Check if loan is fully paid
-                if (loan.RemainingBalance <= 0)
-                {
-                    loan.Status = "COMPLETED";
-                    loan.CompletedAt = DateTime.UtcNow;
+                    // Check if loan is fully paid
+                    if (loan.RemainingBalance <= 0)
+                    {
+                        loan.Status = "COMPLETED";
+                        loan.CompletedAt = DateTime.UtcNow;
+                    }
+
+                    // Update payment status to completed
+                    newPayment.Status = "COMPLETED";
+
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    var paymentDto = new PaymentDto
+                    {
+                        Id = newPayment.Id,
+                        LoanId = newPayment.LoanId,
+                        UserId = newPayment.UserId,
+                        Amount = newPayment.Amount,
+                        Method = newPayment.Method,
+                        Reference = newPayment.Reference,
+                        Status = newPayment.Status,
+                        ProcessedAt = newPayment.ProcessedAt,
+                        CreatedAt = newPayment.CreatedAt
+                    };
+
+                    return ApiResponse<PaymentDto>.SuccessResult(paymentDto, "Payment processed successfully");
                 }
-
-                await _context.SaveChangesAsync();
-
-                // Update payment status to completed
-                newPayment.Status = "COMPLETED";
-                await _context.SaveChangesAsync();
-
-                var paymentDto = new PaymentDto
+                catch (Exception ex)
                 {
-                    Id = newPayment.Id,
-                    LoanId = newPayment.LoanId,
-                    UserId = newPayment.UserId,
-                    Amount = newPayment.Amount,
-                    Method = newPayment.Method,
-                    Reference = newPayment.Reference,
-                    Status = newPayment.Status,
-                    ProcessedAt = newPayment.ProcessedAt,
-                    CreatedAt = newPayment.CreatedAt
-                };
-
-                return ApiResponse<PaymentDto>.SuccessResult(paymentDto, "Payment processed successfully");
+                    await transaction.RollbackAsync();
+                    return ApiResponse<PaymentDto>.ErrorResult($"Failed to process payment: {ex.Message}");
+                }
             }
             catch (Exception ex)
             {
@@ -934,6 +1017,45 @@ namespace UtilityHub360.Services
             var monthlyPayment = CalculateMonthlyPayment(principal, interestRate, term, "AMORTIZED");
             var totalPayable = monthlyPayment * term;
             return totalPayable - principal;
+        }
+
+        /// <summary>
+        /// Calculates effective interest rate (APR) including fees
+        /// Effective APR accounts for processing fees and other upfront costs
+        /// Formula: APR = ((Total Interest + Fees) / (Principal - Fees)) / (Term / 12) * 100
+        /// </summary>
+        private decimal CalculateEffectiveInterestRate(
+            decimal principal,
+            decimal interestRate,
+            int term,
+            decimal processingFee,
+            decimal downPayment,
+            string interestMethod = "AMORTIZED")
+        {
+            if (term <= 0) return 0;
+
+            var actualFinancedAmount = principal - downPayment;
+            if (actualFinancedAmount <= 0) return 0;
+
+            // Calculate total interest
+            decimal totalInterest;
+            if (interestMethod == "FLAT_RATE")
+            {
+                totalInterest = CalculateFlatRateInterest(actualFinancedAmount, interestRate, term);
+            }
+            else
+            {
+                totalInterest = CalculateAmortizedInterest(actualFinancedAmount, interestRate, term);
+            }
+
+            // Total cost = Interest + Processing Fee
+            var totalCost = totalInterest + processingFee;
+
+            // Effective APR = (Total Cost / Actual Financed Amount) / (Term in Years) * 100
+            var termInYears = term / 12m;
+            var effectiveRate = (totalCost / actualFinancedAmount) / termInYears * 100m;
+
+            return Math.Round(effectiveRate, 2);
         }
 
 
