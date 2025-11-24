@@ -4,6 +4,7 @@ using UtilityHub360.Data;
 using UtilityHub360.DTOs;
 using UtilityHub360.Entities;
 using UtilityHub360.Models;
+using System.Text.Json;
 
 namespace UtilityHub360.Services
 {
@@ -1430,7 +1431,7 @@ namespace UtilityHub360.Services
 
         private ReceiptDto MapToReceiptDto(ExpenseReceipt receipt)
         {
-            return new ReceiptDto
+            var dto = new ReceiptDto
             {
                 Id = receipt.Id,
                 UserId = receipt.UserId,
@@ -1443,7 +1444,6 @@ namespace UtilityHub360.Services
                 ExtractedAmount = receipt.ExtractedAmount,
                 ExtractedDate = receipt.ExtractedDate,
                 ExtractedMerchant = receipt.ExtractedMerchant,
-                ExtractedItems = receipt.ExtractedItems,
                 OcrText = receipt.OcrText,
                 IsOcrProcessed = receipt.IsOcrProcessed,
                 OcrProcessedAt = receipt.OcrProcessedAt,
@@ -1452,6 +1452,22 @@ namespace UtilityHub360.Services
                 CreatedAt = receipt.CreatedAt,
                 UpdatedAt = receipt.UpdatedAt
             };
+
+            // Parse extracted items from JSON string
+            if (!string.IsNullOrEmpty(receipt.ExtractedItems))
+            {
+                try
+                {
+                    var items = JsonSerializer.Deserialize<List<ReceiptItemDto>>(receipt.ExtractedItems);
+                    dto.ExtractedItems = items;
+                }
+                catch
+                {
+                    // Ignore parsing errors
+                }
+            }
+
+            return dto;
         }
 
         private async Task<ExpenseApprovalDto> MapToApprovalDtoAsync(ExpenseApproval approval)

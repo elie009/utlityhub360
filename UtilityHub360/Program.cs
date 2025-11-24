@@ -130,9 +130,13 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ILoanService, LoanService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IEnhancedNotificationService, NotificationService>();
+builder.Services.AddScoped<ISmsService, SmsService>();
 builder.Services.AddScoped<IBillService, BillService>();
 builder.Services.AddScoped<IVendorService, VendorService>();
 builder.Services.AddScoped<IBillAnalyticsService, BillAnalyticsService>();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddHttpContextAccessor(); // Required for AuditLogService
 builder.Services.AddScoped<IUtilityService, UtilityService>();
 builder.Services.AddScoped<IBankAccountService>(sp => 
 {
@@ -172,6 +176,9 @@ builder.Services.AddScoped<IDuplicateDetectionService, DuplicateDetectionService
 builder.Services.AddScoped<ISmartCategorizationService, SmartCategorizationService>();
 builder.Services.AddScoped<ISpendingPatternService, SpendingPatternService>();
 builder.Services.AddScoped<IAutomatedAlertsService, AutomatedAlertsService>();
+builder.Services.AddScoped<IFileStorageService, FileStorageService>();
+builder.Services.AddScoped<IOcrService, OcrService>();
+builder.Services.AddScoped<IReceiptService, ReceiptService>();
 
 // Add Background Services
 builder.Services.AddHostedService<BillReminderBackgroundService>();

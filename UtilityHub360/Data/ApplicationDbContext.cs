@@ -14,6 +14,9 @@ namespace UtilityHub360.Data
         public DbSet<RepaymentSchedule> RepaymentSchedules { get; set; }
         public DbSet<Payment> Payments { get; set; }
         public DbSet<Notification> Notifications { get; set; }
+        public DbSet<NotificationPreference> NotificationPreferences { get; set; }
+        public DbSet<NotificationTemplate> NotificationTemplates { get; set; }
+        public DbSet<NotificationHistory> NotificationHistories { get; set; }
         public DbSet<LoanApplication> LoanApplications { get; set; }
         public DbSet<Bill> Bills { get; set; }
         public DbSet<BankAccount> BankAccounts { get; set; }
@@ -77,6 +80,9 @@ namespace UtilityHub360.Data
         public DbSet<AllocationCategory> AllocationCategories { get; set; }
         public DbSet<AllocationHistory> AllocationHistories { get; set; }
         public DbSet<AllocationRecommendation> AllocationRecommendations { get; set; }
+        
+        // Audit Logging Tables
+        public DbSet<AuditLog> AuditLogs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -181,6 +187,61 @@ namespace UtilityHub360.Data
                     .WithMany(p => p.Notifications)
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.Template)
+                    .WithMany()
+                    .HasForeignKey(d => d.TemplateId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.Type);
+                entity.HasIndex(e => e.Channel);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.ScheduledFor);
+                entity.HasIndex(e => new { e.UserId, e.IsRead });
+            });
+
+            // NotificationPreference configuration
+            modelBuilder.Entity<NotificationPreference>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.NotificationType);
+                entity.HasIndex(e => new { e.UserId, e.NotificationType }).IsUnique();
+            });
+
+            // NotificationTemplate configuration
+            modelBuilder.Entity<NotificationTemplate>(entity =>
+            {
+                entity.HasIndex(e => e.NotificationType);
+                entity.HasIndex(e => e.Channel);
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => e.Name);
+            });
+
+            // NotificationHistory configuration
+            modelBuilder.Entity<NotificationHistory>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.Notification)
+                    .WithMany()
+                    .HasForeignKey(d => d.NotificationId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.NotificationId);
+                entity.HasIndex(e => e.Channel);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.SentAt);
+                entity.HasIndex(e => new { e.UserId, e.CreatedAt });
             });
 
             // LoanApplication configuration
@@ -877,6 +938,26 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.IsApplied);
                 entity.HasIndex(e => e.IsRead);
                 entity.HasIndex(e => e.Priority);
+            });
+
+            // AuditLog configuration
+            modelBuilder.Entity<AuditLog>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.SetNull); // Don't cascade delete to preserve audit trail
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.EntityType);
+                entity.HasIndex(e => e.EntityId);
+                entity.HasIndex(e => e.LogType);
+                entity.HasIndex(e => e.Action);
+                entity.HasIndex(e => e.CreatedAt);
+                entity.HasIndex(e => e.ComplianceType);
+                entity.HasIndex(e => new { e.UserId, e.CreatedAt });
+                entity.HasIndex(e => new { e.EntityType, e.EntityId });
+                entity.HasIndex(e => new { e.LogType, e.Severity });
             });
 
             // Seed data

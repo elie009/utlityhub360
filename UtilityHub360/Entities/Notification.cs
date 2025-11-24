@@ -31,9 +31,30 @@ namespace UtilityHub360.Entities
 
         public DateTime? ReadAt { get; set; }
 
+        // Enhanced fields
+        [StringLength(50)]
+        public string? Channel { get; set; } // IN_APP, EMAIL, SMS, PUSH
+
+        [StringLength(50)]
+        public string? Priority { get; set; } = "NORMAL"; // LOW, NORMAL, HIGH, URGENT
+
+        public DateTime? ScheduledFor { get; set; } // For scheduled notifications
+
+        [StringLength(450)]
+        public string? TemplateId { get; set; } // Reference to NotificationTemplate
+
+        [Column(TypeName = "nvarchar(max)")]
+        public string? TemplateVariables { get; set; } // JSON of variables used in template
+
+        [StringLength(50)]
+        public string? Status { get; set; } = "PENDING"; // PENDING, SENT, DELIVERED, FAILED
+
         // Navigation properties
         [ForeignKey("UserId")]
         public virtual User User { get; set; } = null!;
+
+        [ForeignKey("TemplateId")]
+        public virtual NotificationTemplate? Template { get; set; }
     }
 }
 

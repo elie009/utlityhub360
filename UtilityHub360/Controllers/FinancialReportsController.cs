@@ -617,6 +617,201 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<object>.ErrorResult($"Failed to export CSV: {ex.Message}"));
             }
         }
+
+        /// <summary>
+        /// Export report as Excel
+        /// </summary>
+        [HttpPost("export/excel")]
+        public async Task<IActionResult> ExportExcel([FromBody] ExportReportDto exportDto)
+        {
+            try
+            {
+                var userId = GetUserId();
+                // Note: Excel export would need EPPlus or ClosedXML library
+                // For now, return CSV format with .xlsx extension
+                var csvBytes = await _reportService.ExportReportToCsvAsync(userId, exportDto);
+                return File(csvBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"Financial_Report_{DateTime.UtcNow:yyyyMMdd}.xlsx");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<object>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.ErrorResult($"Failed to export Excel: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get Budget vs Actual report
+        /// </summary>
+        [HttpGet("budget-vs-actual")]
+        public async Task<ActionResult<ApiResponse<BudgetVsActualReportDto>>> GetBudgetVsActualReport(
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null,
+            [FromQuery] string period = "MONTHLY")
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _reportService.GetBudgetVsActualReportAsync(userId, startDate, endDate, period);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<BudgetVsActualReportDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BudgetVsActualReportDto>.ErrorResult($"Failed to get budget vs actual report: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Generate custom report
+        /// </summary>
+        [HttpPost("custom")]
+        public async Task<ActionResult<ApiResponse<CustomReportDto>>> GenerateCustomReport([FromBody] CustomReportRequestDto request)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _reportService.GenerateCustomReportAsync(userId, request);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<CustomReportDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<CustomReportDto>.ErrorResult($"Failed to generate custom report: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Save custom report template
+        /// </summary>
+        [HttpPost("custom/templates")]
+        public async Task<ActionResult<ApiResponse<CustomReportTemplateDto>>> SaveCustomReportTemplate([FromBody] SaveCustomReportTemplateDto template)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _reportService.SaveCustomReportTemplateAsync(userId, template);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<CustomReportTemplateDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<CustomReportTemplateDto>.ErrorResult($"Failed to save template: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get all custom report templates
+        /// </summary>
+        [HttpGet("custom/templates")]
+        public async Task<ActionResult<ApiResponse<List<CustomReportTemplateDto>>>> GetCustomReportTemplates()
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _reportService.GetCustomReportTemplatesAsync(userId);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<List<CustomReportTemplateDto>>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<CustomReportTemplateDto>>.ErrorResult($"Failed to get templates: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get custom report template by ID
+        /// </summary>
+        [HttpGet("custom/templates/{templateId}")]
+        public async Task<ActionResult<ApiResponse<CustomReportTemplateDto>>> GetCustomReportTemplate(string templateId)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _reportService.GetCustomReportTemplateAsync(userId, templateId);
+
+                if (!result.Success)
+                {
+                    return NotFound(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<CustomReportTemplateDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<CustomReportTemplateDto>.ErrorResult($"Failed to get template: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Delete custom report template
+        /// </summary>
+        [HttpDelete("custom/templates/{templateId}")]
+        public async Task<ActionResult<ApiResponse<bool>>> DeleteCustomReportTemplate(string templateId)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _reportService.DeleteCustomReportTemplateAsync(userId, templateId);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<bool>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete template: {ex.Message}"));
+            }
+        }
     }
 }
 

@@ -937,5 +937,173 @@ namespace UtilityHub360.DTOs
         public decimal TaxableIncome { get; set; }
         public decimal EstimatedTaxLiability { get; set; }
     }
+
+    // ==========================================
+    // BUDGET VS ACTUAL REPORT DTO
+    // ==========================================
+    
+    public class BudgetVsActualReportDto
+    {
+        public DateTime PeriodStart { get; set; }
+        public DateTime PeriodEnd { get; set; }
+        public string Period { get; set; } = "MONTHLY"; // MONTHLY, QUARTERLY, YEARLY
+        
+        // Summary
+        public decimal TotalBudget { get; set; }
+        public decimal TotalActual { get; set; }
+        public decimal TotalVariance { get; set; }
+        public decimal TotalVariancePercentage { get; set; }
+        
+        // Breakdown by Category
+        public List<BudgetVsActualCategoryDto> Categories { get; set; } = new();
+        
+        // Breakdown by Bill Provider
+        public List<BudgetVsActualBillDto> Bills { get; set; } = new();
+        
+        // Overall Status
+        public string OverallStatus { get; set; } = string.Empty; // "ON_TRACK", "OVER_BUDGET", "UNDER_BUDGET"
+        public List<string> Alerts { get; set; } = new();
+    }
+
+    public class BudgetVsActualCategoryDto
+    {
+        public string CategoryName { get; set; } = string.Empty;
+        public string CategoryType { get; set; } = string.Empty; // "BILL", "EXPENSE", "LOAN", etc.
+        public decimal BudgetAmount { get; set; }
+        public decimal ActualAmount { get; set; }
+        public decimal Variance { get; set; }
+        public decimal VariancePercentage { get; set; }
+        public string Status { get; set; } = string.Empty; // "ON_TRACK", "OVER_BUDGET", "UNDER_BUDGET"
+        public List<BudgetVsActualItemDto> Items { get; set; } = new();
+    }
+
+    public class BudgetVsActualBillDto
+    {
+        public string Provider { get; set; } = string.Empty;
+        public string BillType { get; set; } = string.Empty;
+        public decimal BudgetAmount { get; set; }
+        public decimal ActualAmount { get; set; }
+        public decimal Variance { get; set; }
+        public decimal VariancePercentage { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public int BillCount { get; set; }
+    }
+
+    public class BudgetVsActualItemDto
+    {
+        public string ItemName { get; set; } = string.Empty;
+        public decimal BudgetAmount { get; set; }
+        public decimal ActualAmount { get; set; }
+        public decimal Variance { get; set; }
+        public DateTime? Date { get; set; }
+    }
+
+    // ==========================================
+    // CUSTOM REPORT BUILDER DTOs
+    // ==========================================
+    
+    public class CustomReportRequestDto
+    {
+        [Required]
+        public string ReportName { get; set; } = string.Empty;
+        
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        
+        // Report Sections to Include
+        public bool IncludeIncome { get; set; } = true;
+        public bool IncludeExpenses { get; set; } = true;
+        public bool IncludeBills { get; set; } = true;
+        public bool IncludeLoans { get; set; } = true;
+        public bool IncludeSavings { get; set; } = true;
+        public bool IncludeNetWorth { get; set; } = true;
+        public bool IncludeBalanceSheet { get; set; } = false;
+        public bool IncludeIncomeStatement { get; set; } = false;
+        public bool IncludeCashFlowStatement { get; set; } = false;
+        public bool IncludeBudgetVsActual { get; set; } = false;
+        public bool IncludeTaxReport { get; set; } = false;
+        
+        // Filters
+        public List<string>? CategoryFilters { get; set; }
+        public List<string>? AccountFilters { get; set; }
+        public List<string>? BillTypeFilters { get; set; }
+        
+        // Grouping
+        public string GroupBy { get; set; } = "NONE"; // "NONE", "CATEGORY", "ACCOUNT", "MONTH", "QUARTER", "YEAR"
+        
+        // Comparison
+        public bool IncludeComparison { get; set; } = false;
+        public DateTime? ComparisonStartDate { get; set; }
+        public DateTime? ComparisonEndDate { get; set; }
+        
+        // Formatting
+        public string CurrencyFormat { get; set; } = "USD";
+        public string DateFormat { get; set; } = "MM/DD/YYYY";
+    }
+
+    public class CustomReportDto
+    {
+        public string ReportId { get; set; } = Guid.NewGuid().ToString();
+        public string ReportName { get; set; } = string.Empty;
+        public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
+        public DateTime PeriodStart { get; set; }
+        public DateTime PeriodEnd { get; set; }
+        
+        // Report Data
+        public Dictionary<string, object> ReportData { get; set; } = new();
+        
+        // Summary
+        public CustomReportSummaryDto Summary { get; set; } = new();
+        
+        // Sections (only included sections will be populated)
+        public IncomeReportDto? IncomeReport { get; set; }
+        public ExpenseReportDto? ExpenseReport { get; set; }
+        public BillsReportDto? BillsReport { get; set; }
+        public LoanReportDto? LoanReport { get; set; }
+        public SavingsReportDto? SavingsReport { get; set; }
+        public NetWorthReportDto? NetWorthReport { get; set; }
+        public BalanceSheetDto? BalanceSheet { get; set; }
+        public IncomeStatementDto? IncomeStatement { get; set; }
+        public CashFlowStatementDto? CashFlowStatement { get; set; }
+        public BudgetVsActualReportDto? BudgetVsActual { get; set; }
+        public TaxReportDto? TaxReport { get; set; }
+        
+        // Comparison Data
+        public Dictionary<string, object>? ComparisonData { get; set; }
+    }
+
+    public class CustomReportSummaryDto
+    {
+        public decimal TotalIncome { get; set; }
+        public decimal TotalExpenses { get; set; }
+        public decimal NetIncome { get; set; }
+        public decimal TotalAssets { get; set; }
+        public decimal TotalLiabilities { get; set; }
+        public decimal NetWorth { get; set; }
+        public int TransactionCount { get; set; }
+        public int BillCount { get; set; }
+        public int LoanCount { get; set; }
+    }
+
+    public class SaveCustomReportTemplateDto
+    {
+        [Required]
+        public string TemplateName { get; set; } = string.Empty;
+        
+        public string? Description { get; set; }
+        
+        [Required]
+        public CustomReportRequestDto ReportConfig { get; set; } = new();
+    }
+
+    public class CustomReportTemplateDto
+    {
+        public string TemplateId { get; set; } = string.Empty;
+        public string TemplateName { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public CustomReportRequestDto ReportConfig { get; set; } = new();
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
 }
 

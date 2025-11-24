@@ -13,10 +13,12 @@ namespace UtilityHub360.Controllers
     public class NotificationsController : ControllerBase
     {
         private readonly INotificationService _notificationService;
+        private readonly IEnhancedNotificationService _enhancedNotificationService;
 
-        public NotificationsController(INotificationService notificationService)
+        public NotificationsController(INotificationService notificationService, IEnhancedNotificationService enhancedNotificationService)
         {
             _notificationService = notificationService;
+            _enhancedNotificationService = enhancedNotificationService;
         }
 
         [HttpGet("user/{userId}")]
@@ -105,6 +107,90 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<int>.ErrorResult($"Failed to get unread notification count: {ex.Message}"));
+            }
+        }
+
+        // Enhanced notification endpoints
+        [HttpPost("send")]
+        public async Task<ActionResult<ApiResponse<NotificationDto>>> SendNotification([FromBody] SendNotificationRequestDto request)
+        {
+            try
+            {
+                var result = await _enhancedNotificationService.SendNotificationAsync(request);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<NotificationDto>.ErrorResult($"Failed to send notification: {ex.Message}"));
+            }
+        }
+
+        [HttpPost("send/bulk")]
+        public async Task<ActionResult<ApiResponse<List<NotificationDto>>>> SendBulkNotifications([FromBody] List<SendNotificationRequestDto> requests)
+        {
+            try
+            {
+                var result = await _enhancedNotificationService.SendBulkNotificationsAsync(requests);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<NotificationDto>>.ErrorResult($"Failed to send bulk notifications: {ex.Message}"));
+            }
+        }
+
+        [HttpGet("history")]
+        public async Task<ActionResult<ApiResponse<PaginatedResponse<NotificationHistoryDto>>>> GetNotificationHistory([FromQuery] NotificationHistoryQueryDto query)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<PaginatedResponse<NotificationHistoryDto>>.ErrorResult("User not authenticated"));
+                }
+
+                query.UserId = userId;
+                var result = await _enhancedNotificationService.GetNotificationHistoryAsync(userId, query);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<PaginatedResponse<NotificationHistoryDto>>.ErrorResult($"Failed to get history: {ex.Message}"));
+            }
+        }
+
+        [HttpGet("scheduled")]
+        public async Task<ActionResult<ApiResponse<List<NotificationDto>>>> GetScheduledNotifications()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<List<NotificationDto>>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _enhancedNotificationService.GetScheduledNotificationsAsync(userId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<NotificationDto>>.ErrorResult($"Failed to get scheduled notifications: {ex.Message}"));
+            }
+        }
+
+        [HttpPut("{notificationId}/cancel")]
+        public async Task<ActionResult<ApiResponse<bool>>> CancelScheduledNotification(string notificationId)
+        {
+            try
+            {
+                var result = await _enhancedNotificationService.CancelScheduledNotificationAsync(notificationId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to cancel scheduled notification: {ex.Message}"));
             }
         }
     }

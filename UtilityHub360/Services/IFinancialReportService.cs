@@ -46,6 +46,16 @@ namespace UtilityHub360.Services
         
         // Tax Reporting
         Task<ApiResponse<TaxReportDto>> GetTaxReportAsync(string userId, int taxYear, DateTime? startDate = null, DateTime? endDate = null);
+        
+        // Budget vs Actual
+        Task<ApiResponse<BudgetVsActualReportDto>> GetBudgetVsActualReportAsync(string userId, DateTime? startDate = null, DateTime? endDate = null, string period = "MONTHLY");
+        
+        // Custom Report Builder
+        Task<ApiResponse<CustomReportDto>> GenerateCustomReportAsync(string userId, CustomReportRequestDto request);
+        Task<ApiResponse<CustomReportTemplateDto>> SaveCustomReportTemplateAsync(string userId, SaveCustomReportTemplateDto template);
+        Task<ApiResponse<List<CustomReportTemplateDto>>> GetCustomReportTemplatesAsync(string userId);
+        Task<ApiResponse<CustomReportTemplateDto>> GetCustomReportTemplateAsync(string userId, string templateId);
+        Task<ApiResponse<bool>> DeleteCustomReportTemplateAsync(string userId, string templateId);
     }
 }
 

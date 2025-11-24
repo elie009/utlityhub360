@@ -299,29 +299,6 @@ namespace UtilityHub360.DTOs
         public bool? IsActive { get; set; }
     }
 
-    public class ReceiptDto
-    {
-        public string Id { get; set; } = string.Empty;
-        public string UserId { get; set; } = string.Empty;
-        public string? ExpenseId { get; set; }
-        public string FileName { get; set; } = string.Empty;
-        public string FilePath { get; set; } = string.Empty;
-        public string FileType { get; set; } = string.Empty;
-        public long FileSize { get; set; }
-        public string? OriginalFileName { get; set; }
-        public decimal? ExtractedAmount { get; set; }
-        public DateTime? ExtractedDate { get; set; }
-        public string? ExtractedMerchant { get; set; }
-        public string? ExtractedItems { get; set; }
-        public string? OcrText { get; set; }
-        public bool IsOcrProcessed { get; set; }
-        public DateTime? OcrProcessedAt { get; set; }
-        public string? ThumbnailPath { get; set; }
-        public string? Notes { get; set; }
-        public DateTime CreatedAt { get; set; }
-        public DateTime UpdatedAt { get; set; }
-    }
-
     public class ExpenseApprovalDto
     {
         public string Id { get; set; } = string.Empty;
