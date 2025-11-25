@@ -49,9 +49,8 @@ namespace UtilityHub360.DTOs
         [Range(1, int.MaxValue, ErrorMessage = "Term must be at least 1 month")]
         public int Term { get; set; }
 
-        [Required]
         [StringLength(500, ErrorMessage = "Purpose cannot exceed 500 characters")]
-        public string Purpose { get; set; } = string.Empty;
+        public string? Purpose { get; set; }
 
         [Required]
         [Range(0.01, double.MaxValue, ErrorMessage = "Monthly payment must be greater than 0")]

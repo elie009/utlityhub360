@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
+using System.Data;
 using System.Text.Json;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
@@ -7,6 +9,18 @@ using UtilityHub360.Models;
 
 namespace UtilityHub360.Services
 {
+    // Helper class for loading enhanced notification data via raw SQL
+    public class NotificationEnhancedData
+    {
+        public string Id { get; set; } = string.Empty;
+        public string? Channel { get; set; }
+        public string? Priority { get; set; }
+        public DateTime? ScheduledFor { get; set; }
+        public string? TemplateId { get; set; }
+        public string? TemplateVariables { get; set; }
+        public string? Status { get; set; }
+    }
+
     public class NotificationService : INotificationService, IEnhancedNotificationService
     {
         private readonly ApplicationDbContext _context;
@@ -56,24 +70,80 @@ namespace UtilityHub360.Services
                     .Take(limit)
                     .ToListAsync();
 
-                var notificationDtos = notifications.Select(notification => new NotificationDto
+                // Load enhanced columns using raw SQL since EF model snapshot doesn't include them yet
+                var notificationIds = notifications.Select(n => n.Id).ToList();
+                var enhancedData = new Dictionary<string, NotificationEnhancedData>();
+                
+                if (notificationIds.Any())
                 {
-                    Id = notification.Id,
-                    UserId = notification.UserId,
-                    Type = notification.Type,
-                    Title = notification.Title,
-                    Message = notification.Message,
-                    IsRead = notification.IsRead,
-                    CreatedAt = notification.CreatedAt,
-                    ReadAt = notification.ReadAt,
-                    Channel = notification.Channel,
-                    Priority = notification.Priority,
-                    ScheduledFor = notification.ScheduledFor,
-                    TemplateId = notification.TemplateId,
-                    TemplateVariables = !string.IsNullOrEmpty(notification.TemplateVariables)
-                        ? JsonSerializer.Deserialize<Dictionary<string, string>>(notification.TemplateVariables)
-                        : null,
-                    Status = notification.Status
+                    try
+                    {
+                        // Use direct SQL execution to load enhanced columns
+                        var connection = _context.Database.GetDbConnection();
+                        var wasOpen = connection.State == System.Data.ConnectionState.Open;
+                        if (!wasOpen) await connection.OpenAsync();
+                        
+                        using var command = connection.CreateCommand();
+                        // Build safe parameterized query
+                        var parameters = new List<object>();
+                        var placeholders = new List<string>();
+                        for (int i = 0; i < notificationIds.Count; i++)
+                        {
+                            placeholders.Add($"@p{i}");
+                            var param = command.CreateParameter();
+                            param.ParameterName = $"@p{i}";
+                            param.Value = notificationIds[i];
+                            command.Parameters.Add(param);
+                        }
+                        
+                        command.CommandText = $"SELECT Id, Channel, Priority, ScheduledFor, TemplateId, TemplateVariables, Status FROM Notifications WHERE Id IN ({string.Join(",", placeholders)})";
+                        
+                        using var reader = await command.ExecuteReaderAsync();
+                        while (await reader.ReadAsync())
+                        {
+                            var id = reader.GetString(0);
+                            enhancedData[id] = new NotificationEnhancedData
+                            {
+                                Id = id,
+                                Channel = reader.IsDBNull(1) ? null : reader.GetString(1),
+                                Priority = reader.IsDBNull(2) ? null : reader.GetString(2),
+                                ScheduledFor = reader.IsDBNull(3) ? (DateTime?)null : reader.GetDateTime(3),
+                                TemplateId = reader.IsDBNull(4) ? null : reader.GetString(4),
+                                TemplateVariables = reader.IsDBNull(5) ? null : reader.GetString(5),
+                                Status = reader.IsDBNull(6) ? null : reader.GetString(6)
+                            };
+                        }
+                        
+                        if (!wasOpen) await connection.CloseAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Failed to load enhanced notification data, using defaults");
+                    }
+                }
+
+                var notificationDtos = notifications.Select(notification =>
+                {
+                    var enhanced = enhancedData.ContainsKey(notification.Id) ? enhancedData[notification.Id] : null;
+                    return new NotificationDto
+                    {
+                        Id = notification.Id,
+                        UserId = notification.UserId,
+                        Type = notification.Type,
+                        Title = notification.Title,
+                        Message = notification.Message,
+                        IsRead = notification.IsRead,
+                        CreatedAt = notification.CreatedAt,
+                        ReadAt = notification.ReadAt,
+                        Channel = enhanced?.Channel,
+                        Priority = enhanced?.Priority ?? "NORMAL",
+                        ScheduledFor = enhanced?.ScheduledFor,
+                        TemplateId = enhanced?.TemplateId,
+                        TemplateVariables = !string.IsNullOrEmpty(enhanced?.TemplateVariables)
+                            ? JsonSerializer.Deserialize<Dictionary<string, string>>(enhanced.TemplateVariables)
+                            : null,
+                        Status = enhanced?.Status ?? "PENDING"
+                    };
                 }).ToList();
 
                 var paginatedResponse = new PaginatedResponse<NotificationDto>

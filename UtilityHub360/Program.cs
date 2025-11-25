@@ -179,6 +179,7 @@ builder.Services.AddScoped<IAutomatedAlertsService, AutomatedAlertsService>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddScoped<IOcrService, OcrService>();
 builder.Services.AddScoped<IReceiptService, ReceiptService>();
+builder.Services.AddScoped<ITicketService, TicketService>();
 
 // Add Background Services
 builder.Services.AddHostedService<BillReminderBackgroundService>();

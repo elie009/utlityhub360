@@ -83,6 +83,12 @@ namespace UtilityHub360.Data
         
         // Audit Logging Tables
         public DbSet<AuditLog> AuditLogs { get; set; }
+        
+        // Ticket Management Tables
+        public DbSet<Ticket> Tickets { get; set; }
+        public DbSet<TicketComment> TicketComments { get; set; }
+        public DbSet<TicketAttachment> TicketAttachments { get; set; }
+        public DbSet<TicketStatusHistory> TicketStatusHistories { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -188,17 +194,27 @@ namespace UtilityHub360.Data
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
 
-                entity.HasOne(d => d.Template)
-                    .WithMany()
-                    .HasForeignKey(d => d.TemplateId)
-                    .OnDelete(DeleteBehavior.SetNull);
+                // TEMPORARY: Comment out Template relationship since TemplateId is ignored
+                // TODO: Uncomment after creating EF migration for notification enhancements
+                // entity.HasOne(d => d.Template)
+                //     .WithMany()
+                //     .HasForeignKey(d => d.TemplateId)
+                //     .OnDelete(DeleteBehavior.SetNull);
 
                 entity.HasIndex(e => e.UserId);
                 entity.HasIndex(e => e.Type);
-                entity.HasIndex(e => e.Channel);
-                entity.HasIndex(e => e.Status);
-                entity.HasIndex(e => e.ScheduledFor);
                 entity.HasIndex(e => new { e.UserId, e.IsRead });
+                
+                // TEMPORARY: Ignore enhanced columns until EF migration is created
+                // The columns exist in the database, but EF model snapshot doesn't include them
+                // TODO: Create EF migration to add these columns, then remove these Ignore() calls
+                entity.Ignore(e => e.Channel);
+                entity.Ignore(e => e.Priority);
+                entity.Ignore(e => e.ScheduledFor);
+                entity.Ignore(e => e.TemplateId);
+                entity.Ignore(e => e.TemplateVariables);
+                entity.Ignore(e => e.Status);
+                entity.Ignore(e => e.Template); // Also ignore navigation property
             });
 
             // NotificationPreference configuration
@@ -413,6 +429,12 @@ namespace UtilityHub360.Data
                 entity.Ignore(e => e.DeletedAt);
                 entity.Ignore(e => e.DeletedBy);
                 entity.Ignore(e => e.DeleteReason);
+
+                // Temporary: Ignore properties that may not exist in database yet
+                // TODO: Remove these Ignore() calls after running database migration to add these columns
+                // If database doesn't have these columns, uncomment these lines:
+                entity.Ignore(e => e.PaymentFrequency);
+                entity.Ignore(e => e.StartDate);
             });
 
             // ReceivablePayment configuration

@@ -53,7 +53,17 @@ namespace UtilityHub360.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(ApiResponse<ReceivableDto>.ErrorResult($"Failed to create receivable: {ex.Message}"));
+                // Preserve inner exception details
+                var errorMessage = ex.Message;
+                if (ex.InnerException != null)
+                {
+                    errorMessage += $" | Inner: {ex.InnerException.Message}";
+                    if (ex.InnerException.InnerException != null)
+                    {
+                        errorMessage += $" | Inner2: {ex.InnerException.InnerException.Message}";
+                    }
+                }
+                return BadRequest(ApiResponse<ReceivableDto>.ErrorResult($"Failed to create receivable: {errorMessage}"));
             }
         }
 

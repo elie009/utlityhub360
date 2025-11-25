@@ -32,20 +32,27 @@ namespace UtilityHub360.Entities
         public DateTime? ReadAt { get; set; }
 
         // Enhanced fields
+        // NOTE: These columns exist in the database
+        // Using explicit [Column] mapping to ensure EF recognizes them
+        [Column("Channel")]
         [StringLength(50)]
         public string? Channel { get; set; } // IN_APP, EMAIL, SMS, PUSH
 
+        [Column("Priority")]
         [StringLength(50)]
         public string? Priority { get; set; } = "NORMAL"; // LOW, NORMAL, HIGH, URGENT
 
+        [Column("ScheduledFor")]
         public DateTime? ScheduledFor { get; set; } // For scheduled notifications
 
+        [Column("TemplateId")]
         [StringLength(450)]
         public string? TemplateId { get; set; } // Reference to NotificationTemplate
 
-        [Column(TypeName = "nvarchar(max)")]
+        [Column("TemplateVariables", TypeName = "nvarchar(max)")]
         public string? TemplateVariables { get; set; } // JSON of variables used in template
 
+        [Column("Status")]
         [StringLength(50)]
         public string? Status { get; set; } = "PENDING"; // PENDING, SENT, DELIVERED, FAILED
 

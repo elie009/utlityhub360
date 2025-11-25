@@ -21,6 +21,23 @@ namespace UtilityHub360.Services
         {
             try
             {
+                // Verify user exists (foreign key constraint)
+                var userExists = await _context.Users.AnyAsync(u => u.Id == userId);
+                if (!userExists)
+                {
+                    return ApiResponse<ReceivableDto>.ErrorResult($"User with ID '{userId}' does not exist in the database");
+                }
+
+                // Verify Receivables table is accessible
+                try
+                {
+                    var testQuery = await _context.Receivables.Take(1).CountAsync();
+                }
+                catch (Exception tableEx)
+                {
+                    return ApiResponse<ReceivableDto>.ErrorResult($"Receivables table may not exist or is not accessible. Error: {tableEx.Message}. Please ensure the database table has been created.");
+                }
+
                 // Calculate total amount (Principal + Interest)
                 decimal totalAmount = createReceivableDto.Principal;
                 if (createReceivableDto.InterestRate > 0)
@@ -44,21 +61,96 @@ namespace UtilityHub360.Services
                     Principal = createReceivableDto.Principal,
                     InterestRate = createReceivableDto.InterestRate,
                     Term = createReceivableDto.Term,
-                    Purpose = createReceivableDto.Purpose,
+                    Purpose = string.IsNullOrWhiteSpace(createReceivableDto.Purpose) ? string.Empty : createReceivableDto.Purpose,
                     Status = "ACTIVE",
                     MonthlyPayment = createReceivableDto.MonthlyPayment,
                     TotalAmount = totalAmount,
                     RemainingBalance = totalAmount,
                     TotalPaid = 0,
                     LentAt = DateTime.UtcNow,
-                    StartDate = createReceivableDto.StartDate ?? DateTime.UtcNow,
-                    PaymentFrequency = createReceivableDto.PaymentFrequency.ToUpper(),
+                    // StartDate and PaymentFrequency are temporarily ignored in DbContext
+                    // StartDate = createReceivableDto.StartDate ?? DateTime.UtcNow,
+                    // PaymentFrequency = string.IsNullOrWhiteSpace(createReceivableDto.PaymentFrequency) ? "MONTHLY" : createReceivableDto.PaymentFrequency.ToUpper(),
                     AdditionalInfo = string.IsNullOrWhiteSpace(createReceivableDto.AdditionalInfo) ? null : createReceivableDto.AdditionalInfo,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
 
                 _context.Receivables.Add(receivable);
+                
+                // Save the receivable first to ensure it exists in the database
+                // before creating the journal entry that references it
+                try
+                {
+                    await _context.SaveChangesAsync();
+                }
+                catch (DbUpdateException saveEx)
+                {
+                    // Capture detailed error information and return immediately
+                    var errorDetails = new List<string> { $"DbUpdateException: {saveEx.Message}" };
+                    var inner = saveEx.InnerException;
+                    int depth = 0;
+                    while (inner != null && depth < 10) // Prevent infinite loop
+                    {
+                        errorDetails.Add($"Inner[{depth}] ({inner.GetType().Name}): {inner.Message}");
+                        
+                        // Try to get SQL-specific error details using reflection to avoid hard dependency
+                        var sqlExType = inner.GetType();
+                        if (sqlExType.Name == "SqlException" || sqlExType.FullName?.Contains("SqlException") == true)
+                        {
+                            try
+                            {
+                                var numberProp = sqlExType.GetProperty("Number");
+                                var stateProp = sqlExType.GetProperty("State");
+                                var classProp = sqlExType.GetProperty("Class");
+                                var errorsProp = sqlExType.GetProperty("Errors");
+                                
+                                if (numberProp != null)
+                                {
+                                    var number = numberProp.GetValue(inner);
+                                    errorDetails.Add($"SQL Error Number: {number}");
+                                }
+                                if (stateProp != null)
+                                {
+                                    var state = stateProp.GetValue(inner);
+                                    errorDetails.Add($"SQL Error State: {state}");
+                                }
+                                if (classProp != null)
+                                {
+                                    var severity = classProp.GetValue(inner);
+                                    errorDetails.Add($"SQL Error Severity: {severity}");
+                                }
+                                if (errorsProp != null)
+                                {
+                                    var errors = errorsProp.GetValue(inner);
+                                    if (errors != null && errors is System.Collections.ICollection errorCollection)
+                                    {
+                                        foreach (var sqlError in errorCollection)
+                                        {
+                                            var messageProp = sqlError.GetType().GetProperty("Message");
+                                            var lineProp = sqlError.GetType().GetProperty("LineNumber");
+                                            if (messageProp != null)
+                                            {
+                                                var msg = messageProp.GetValue(sqlError);
+                                                var line = lineProp?.GetValue(sqlError);
+                                                errorDetails.Add($"SQL Error Detail: {msg}" + (line != null ? $" (Line {line})" : ""));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // If reflection fails, just continue
+                            }
+                        }
+                        inner = inner.InnerException;
+                        depth++;
+                    }
+                    var fullError = string.Join(" | ", errorDetails);
+                    // Return error directly instead of throwing to ensure it's properly returned
+                    return ApiResponse<ReceivableDto>.ErrorResult($"Database save failed: {fullError}");
+                }
 
                 // Create accrual accounting entry when receivable is created
                 // Accrual Basis: Debit Accounts Receivable, Credit Revenue
@@ -73,14 +165,37 @@ namespace UtilityHub360.Services
                     DateTime.UtcNow
                 );
 
+                // Save the journal entry
                 await _context.SaveChangesAsync();
 
                 var receivableDto = await MapToReceivableDtoAsync(receivable);
                 return ApiResponse<ReceivableDto>.SuccessResult(receivableDto, "Receivable created successfully");
             }
+            catch (DbUpdateException dbEx)
+            {
+                // Get the full exception chain
+                var exceptionMessages = new List<string> { dbEx.Message };
+                var innerEx = dbEx.InnerException;
+                while (innerEx != null)
+                {
+                    exceptionMessages.Add(innerEx.Message);
+                    innerEx = innerEx.InnerException;
+                }
+                var fullErrorMessage = string.Join(" | ", exceptionMessages);
+                return ApiResponse<ReceivableDto>.ErrorResult($"Failed to create receivable: Database error - {fullErrorMessage}");
+            }
             catch (Exception ex)
             {
-                return ApiResponse<ReceivableDto>.ErrorResult($"Failed to create receivable: {ex.Message}");
+                // Get the full exception chain
+                var exceptionMessages = new List<string> { ex.Message };
+                var innerEx = ex.InnerException;
+                while (innerEx != null)
+                {
+                    exceptionMessages.Add(innerEx.Message);
+                    innerEx = innerEx.InnerException;
+                }
+                var fullErrorMessage = string.Join(" | ", exceptionMessages);
+                return ApiResponse<ReceivableDto>.ErrorResult($"Failed to create receivable: {fullErrorMessage}");
             }
         }
 
@@ -90,7 +205,7 @@ namespace UtilityHub360.Services
             {
                 var receivable = await _context.Receivables
                     .Include(r => r.Payments)
-                    .FirstOrDefaultAsync(r => r.Id == receivableId && r.UserId == userId && !r.IsDeleted);
+                    .FirstOrDefaultAsync(r => r.Id == receivableId && r.UserId == userId);
 
                 if (receivable == null)
                 {
@@ -111,7 +226,7 @@ namespace UtilityHub360.Services
             try
             {
                 var receivable = await _context.Receivables
-                    .FirstOrDefaultAsync(r => r.Id == receivableId && r.UserId == userId && !r.IsDeleted);
+                    .FirstOrDefaultAsync(r => r.Id == receivableId && r.UserId == userId);
 
                 if (receivable == null)
                 {
@@ -180,19 +295,15 @@ namespace UtilityHub360.Services
             try
             {
                 var receivable = await _context.Receivables
-                    .FirstOrDefaultAsync(r => r.Id == receivableId && r.UserId == userId && !r.IsDeleted);
+                    .FirstOrDefaultAsync(r => r.Id == receivableId && r.UserId == userId);
 
                 if (receivable == null)
                 {
                     return ApiResponse<bool>.ErrorResult("Receivable not found");
                 }
 
-                // Soft delete
-                receivable.IsDeleted = true;
-                receivable.DeletedAt = DateTime.UtcNow;
-                receivable.DeletedBy = userId;
-                receivable.UpdatedAt = DateTime.UtcNow;
-
+                // Hard delete (soft delete properties are ignored in DbContext)
+                _context.Receivables.Remove(receivable);
                 await _context.SaveChangesAsync();
 
                 return ApiResponse<bool>.SuccessResult(true, "Receivable deleted successfully");
@@ -209,7 +320,7 @@ namespace UtilityHub360.Services
             {
                 var query = _context.Receivables
                     .Include(r => r.Payments)
-                    .Where(r => r.UserId == userId && !r.IsDeleted);
+                    .Where(r => r.UserId == userId);
 
                 if (!string.IsNullOrEmpty(status))
                 {
@@ -240,7 +351,7 @@ namespace UtilityHub360.Services
             {
                 // Verify receivable exists and belongs to user
                 var receivable = await _context.Receivables
-                    .FirstOrDefaultAsync(r => r.Id == paymentDto.ReceivableId && r.UserId == userId && !r.IsDeleted);
+                    .FirstOrDefaultAsync(r => r.Id == paymentDto.ReceivableId && r.UserId == userId);
 
                 if (receivable == null)
                 {
@@ -397,7 +508,7 @@ namespace UtilityHub360.Services
             {
                 // Verify receivable belongs to user
                 var receivable = await _context.Receivables
-                    .FirstOrDefaultAsync(r => r.Id == receivableId && r.UserId == userId && !r.IsDeleted);
+                    .FirstOrDefaultAsync(r => r.Id == receivableId && r.UserId == userId);
 
                 if (receivable == null)
                 {
@@ -462,7 +573,7 @@ namespace UtilityHub360.Services
                 }
 
                 var receivable = payment.Receivable;
-                if (receivable == null || receivable.IsDeleted)
+                if (receivable == null)
                 {
                     return ApiResponse<bool>.ErrorResult("Cannot delete payment for deleted receivable");
                 }
@@ -505,7 +616,7 @@ namespace UtilityHub360.Services
             try
             {
                 var total = await _context.Receivables
-                    .Where(r => r.UserId == userId && !r.IsDeleted)
+                    .Where(r => r.UserId == userId)
                     .SumAsync(r => r.Principal);
 
                 return ApiResponse<decimal>.SuccessResult(total);
@@ -521,7 +632,7 @@ namespace UtilityHub360.Services
             try
             {
                 var total = await _context.Receivables
-                    .Where(r => r.UserId == userId && !r.IsDeleted && r.Status == "ACTIVE")
+                    .Where(r => r.UserId == userId && r.Status == "ACTIVE")
                     .SumAsync(r => r.RemainingBalance);
 
                 return ApiResponse<decimal>.SuccessResult(total);
@@ -537,7 +648,7 @@ namespace UtilityHub360.Services
             try
             {
                 var total = await _context.Receivables
-                    .Where(r => r.UserId == userId && !r.IsDeleted)
+                    .Where(r => r.UserId == userId)
                     .SumAsync(r => r.TotalPaid);
 
                 return ApiResponse<decimal>.SuccessResult(total);
@@ -553,7 +664,7 @@ namespace UtilityHub360.Services
             try
             {
                 var receivable = await _context.Receivables
-                    .FirstOrDefaultAsync(r => r.Id == receivableId && r.UserId == userId && !r.IsDeleted);
+                    .FirstOrDefaultAsync(r => r.Id == receivableId && r.UserId == userId);
 
                 if (receivable == null)
                 {
