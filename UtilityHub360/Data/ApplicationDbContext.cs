@@ -89,6 +89,9 @@ namespace UtilityHub360.Data
         public DbSet<TicketComment> TicketComments { get; set; }
         public DbSet<TicketAttachment> TicketAttachments { get; set; }
         public DbSet<TicketStatusHistory> TicketStatusHistories { get; set; }
+        
+        // Month Closing Tables
+        public DbSet<ClosedMonth> ClosedMonths { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -132,6 +135,13 @@ namespace UtilityHub360.Data
             // Payment configuration (now includes bank transactions and bill payments)
             modelBuilder.Entity<Payment>(entity =>
             {
+                // TEMPORARY: Ignore soft delete columns until EF migration is created
+                // The columns may not exist in the database yet
+                // TODO: Create EF migration to add these columns, then remove these Ignore() calls
+                entity.Ignore(e => e.IsDeleted);
+                entity.Ignore(e => e.DeletedAt);
+                entity.Ignore(e => e.DeletedBy);
+                entity.Ignore(e => e.DeleteReason);
                 entity.HasOne(d => d.Loan)
                     .WithMany(p => p.Payments)
                     .HasForeignKey(d => d.LoanId)
@@ -176,13 +186,7 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.TransactionDate);
                 entity.HasIndex(e => e.IsBankTransaction);
                 entity.HasIndex(e => e.BankAccountId);
-
-                // Temporary: Ignore soft delete properties until migration is applied
-                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
-                entity.Ignore(e => e.IsDeleted);
-                entity.Ignore(e => e.DeletedAt);
-                entity.Ignore(e => e.DeletedBy);
-                entity.Ignore(e => e.DeleteReason);
+                entity.HasIndex(e => e.IsDeleted);
             });
 
 
@@ -277,12 +281,8 @@ namespace UtilityHub360.Data
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
 
-                // Temporary: Ignore soft delete properties until migration is applied
-                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
-                entity.Ignore(e => e.IsDeleted);
-                entity.Ignore(e => e.DeletedAt);
-                entity.Ignore(e => e.DeletedBy);
-                entity.Ignore(e => e.DeleteReason);
+                // Soft delete properties - columns now exist in database
+                entity.HasIndex(e => e.IsDeleted);
 
                 // Temporary: Ignore new properties until database migration is applied
                 // TODO: Remove these Ignore() calls after running add_bill_columns_SIMPLE.sql
@@ -308,12 +308,8 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => new { e.UserId, e.AccountName }).IsUnique();
                 entity.HasIndex(e => new { e.UserId, e.AccountNumber }).IsUnique();
 
-                // Temporary: Ignore soft delete properties until migration is applied
-                // TODO: Remove these Ignore() calls after running add_bankaccount_softdelete.sql
-                entity.Ignore(e => e.IsDeleted);
-                entity.Ignore(e => e.DeletedAt);
-                entity.Ignore(e => e.DeletedBy);
-                entity.Ignore(e => e.DeleteReason);
+                // Soft delete properties - columns now exist in database
+                entity.HasIndex(e => e.IsDeleted);
             });
 
             // BankTransaction configuration
@@ -331,13 +327,28 @@ namespace UtilityHub360.Data
 
                 entity.HasIndex(e => e.ExternalTransactionId);
                 entity.HasIndex(e => e.TransactionDate);
+                entity.HasIndex(e => e.IsDeleted);
+            });
 
-                // Temporary: Ignore soft delete properties until migration is applied
-                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
-                entity.Ignore(e => e.IsDeleted);
-                entity.Ignore(e => e.DeletedAt);
-                entity.Ignore(e => e.DeletedBy);
-                entity.Ignore(e => e.DeleteReason);
+            // ClosedMonth configuration
+            modelBuilder.Entity<ClosedMonth>(entity =>
+            {
+                entity.HasOne(d => d.BankAccount)
+                    .WithMany()
+                    .HasForeignKey(d => d.BankAccountId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.ClosedBy)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                // Unique constraint: One closed month per BankAccount/Year/Month combination
+                entity.HasIndex(e => new { e.BankAccountId, e.Year, e.Month }).IsUnique();
+                
+                entity.HasIndex(e => e.BankAccountId);
+                entity.HasIndex(e => new { e.Year, e.Month });
+                entity.HasIndex(e => e.ClosedAt);
             });
 
             // Card configuration
@@ -358,17 +369,20 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.IsActive);
                 entity.HasIndex(e => e.IsPrimary);
 
-                // Temporary: Ignore soft delete properties until migration is applied
-                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
-                entity.Ignore(e => e.IsDeleted);
-                entity.Ignore(e => e.DeletedAt);
-                entity.Ignore(e => e.DeletedBy);
-                entity.Ignore(e => e.DeleteReason);
+                // Soft delete properties - columns now exist in database
+                entity.HasIndex(e => e.IsDeleted);
             });
 
             // SavingsAccount configuration
             modelBuilder.Entity<SavingsAccount>(entity =>
             {
+                // TEMPORARY: Ignore soft delete columns until EF migration is created
+                // The columns may not exist in the database yet
+                // TODO: Create EF migration to add these columns, then remove these Ignore() calls
+                entity.Ignore(e => e.IsDeleted);
+                entity.Ignore(e => e.DeletedAt);
+                entity.Ignore(e => e.DeletedBy);
+                entity.Ignore(e => e.DeleteReason);
                 entity.HasOne(d => d.User)
                     .WithMany()
                     .HasForeignKey(d => d.UserId)
@@ -379,12 +393,7 @@ namespace UtilityHub360.Data
                 // NOTE: Make sure add_startdate_to_savings_accounts.sql migration has been run!
                 // If you get "Invalid column name 'StartDate'" error, run the migration first.
 
-                // Temporary: Ignore soft delete properties until migration is applied
-                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
-                entity.Ignore(e => e.IsDeleted);
-                entity.Ignore(e => e.DeletedAt);
-                entity.Ignore(e => e.DeletedBy);
-                entity.Ignore(e => e.DeleteReason);
+                // Soft delete properties - columns don't exist in database yet, so they're ignored above
             });
 
             // SavingsTransaction configuration
@@ -402,12 +411,8 @@ namespace UtilityHub360.Data
 
                 entity.HasIndex(e => e.TransactionDate);
 
-                // Temporary: Ignore soft delete properties until migration is applied
-                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
-                entity.Ignore(e => e.IsDeleted);
-                entity.Ignore(e => e.DeletedAt);
-                entity.Ignore(e => e.DeletedBy);
-                entity.Ignore(e => e.DeleteReason);
+                // Soft delete properties - columns now exist in database
+                entity.HasIndex(e => e.IsDeleted);
             });
 
             // Receivable configuration
@@ -423,12 +428,8 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.BorrowerName);
                 entity.HasIndex(e => e.LentAt);
 
-                // Temporary: Ignore soft delete properties until migration is applied
-                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
-                entity.Ignore(e => e.IsDeleted);
-                entity.Ignore(e => e.DeletedAt);
-                entity.Ignore(e => e.DeletedBy);
-                entity.Ignore(e => e.DeleteReason);
+                // Soft delete properties - columns now exist in database
+                entity.HasIndex(e => e.IsDeleted);
 
                 // Temporary: Ignore properties that may not exist in database yet
                 // TODO: Remove these Ignore() calls after running database migration to add these columns
@@ -488,12 +489,8 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.IsActive);
                 entity.HasIndex(e => new { e.UserId, e.Name }).IsUnique();
 
-                // Temporary: Ignore soft delete properties until migration is applied
-                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
-                entity.Ignore(e => e.IsDeleted);
-                entity.Ignore(e => e.DeletedAt);
-                entity.Ignore(e => e.DeletedBy);
-                entity.Ignore(e => e.DeleteReason);
+                // Soft delete properties - columns now exist in database
+                entity.HasIndex(e => e.IsDeleted);
             });
 
             // VariableExpense configuration
@@ -509,12 +506,8 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.ExpenseDate);
                 entity.HasIndex(e => new { e.UserId, e.ExpenseDate, e.Category });
 
-                // Temporary: Ignore soft delete properties until migration is applied
-                // TODO: Remove these Ignore() calls after running apply_soft_delete_migration.sql
-                entity.Ignore(e => e.IsDeleted);
-                entity.Ignore(e => e.DeletedAt);
-                entity.Ignore(e => e.DeletedBy);
-                entity.Ignore(e => e.DeleteReason);
+                // Soft delete properties - columns now exist in database
+                entity.HasIndex(e => e.IsDeleted);
             });
 
             // BudgetSetting configuration

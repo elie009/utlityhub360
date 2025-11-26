@@ -7,6 +7,8 @@ namespace UtilityHub360.Services
     {
         // Bank Statement Operations
         Task<ApiResponse<BankStatementDto>> ImportBankStatementAsync(ImportBankStatementDto importDto, string userId);
+        Task<ApiResponse<ExtractBankStatementResponseDto>> ExtractBankStatementFromFileAsync(Stream fileStream, string fileName, string bankAccountId, string userId);
+        Task<ApiResponse<ExtractBankStatementResponseDto>> AnalyzePDFWithAIAsync(Stream pdfStream, string fileName, string bankAccountId, string userId);
         Task<ApiResponse<BankStatementDto>> GetBankStatementAsync(string statementId, string userId);
         Task<ApiResponse<List<BankStatementDto>>> GetBankStatementsAsync(string bankAccountId, string userId);
         Task<ApiResponse<bool>> DeleteBankStatementAsync(string statementId, string userId);

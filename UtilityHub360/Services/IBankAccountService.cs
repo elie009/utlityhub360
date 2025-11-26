@@ -28,10 +28,13 @@ namespace UtilityHub360.Services
 
         // Bank Transactions
         Task<ApiResponse<BankTransactionDto>> CreateTransactionAsync(CreateBankTransactionDto createTransactionDto, string userId);
+        Task<ApiResponse<BankTransactionDto>> UpdateTransactionAsync(string transactionId, UpdateBankTransactionDto updateTransactionDto, string userId);
         Task<ApiResponse<List<BankTransactionDto>>> GetAccountTransactionsAsync(string bankAccountId, string userId, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null);
         Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? accountType = null, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null);
         Task<ApiResponse<BankTransactionDto>> GetTransactionAsync(string transactionId, string userId);
         Task<ApiResponse<bool>> DeleteTransactionAsync(string transactionId, string userId);
+        Task<ApiResponse<bool>> SoftDeleteTransactionAsync(string transactionId, string userId, string? reason = null);
+        Task<ApiResponse<BankTransactionDto>> RestoreTransactionAsync(string transactionId, string userId);
 
         // Transaction Analytics
         Task<ApiResponse<BankAccountAnalyticsDto>> GetTransactionAnalyticsAsync(string userId, string period = "month");
@@ -56,5 +59,10 @@ namespace UtilityHub360.Services
 
         // Text Analysis for Bank Transactions
         Task<ApiResponse<BankTransactionDto>> AnalyzeAndCreateTransactionAsync(AnalyzeTransactionTextDto analyzeDto, string userId);
+
+        // Month Closing Operations
+        Task<ApiResponse<ClosedMonthDto>> CloseMonthAsync(string bankAccountId, CloseMonthDto closeMonthDto, string userId);
+        Task<ApiResponse<List<ClosedMonthDto>>> GetClosedMonthsAsync(string bankAccountId, string userId);
+        Task<ApiResponse<bool>> IsMonthClosedAsync(string bankAccountId, int year, int month, string userId);
     }
 }

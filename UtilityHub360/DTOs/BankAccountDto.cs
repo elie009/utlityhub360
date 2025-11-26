@@ -192,6 +192,59 @@ namespace UtilityHub360.DTOs
         public string? ToBankAccountId { get; set; } // Destination account for bank transfer transactions
     }
 
+    public class UpdateBankTransactionDto
+    {
+        [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than 0")]
+        public decimal? Amount { get; set; }
+
+        [StringLength(20)]
+        public string? TransactionType { get; set; }
+
+        [StringLength(255, ErrorMessage = "Description cannot exceed 255 characters")]
+        public string? Description { get; set; }
+
+        [StringLength(100)]
+        public string? Category { get; set; }
+
+        [StringLength(100)]
+        public string? ReferenceNumber { get; set; }
+
+        [StringLength(100)]
+        public string? ExternalTransactionId { get; set; }
+
+        public DateTime? TransactionDate { get; set; }
+
+        [StringLength(500, ErrorMessage = "Notes cannot exceed 500 characters")]
+        public string? Notes { get; set; }
+
+        [StringLength(100)]
+        public string? Merchant { get; set; }
+
+        [StringLength(100)]
+        public string? Location { get; set; }
+
+        public bool? IsRecurring { get; set; }
+
+        [StringLength(50)]
+        public string? RecurringFrequency { get; set; }
+
+        [StringLength(10)]
+        public string? Currency { get; set; }
+
+        // Optional references for bills, savings, or other purposes
+        [StringLength(450)]
+        public string? BillId { get; set; }
+
+        [StringLength(450)]
+        public string? SavingsAccountId { get; set; }
+
+        [StringLength(450)]
+        public string? LoanId { get; set; }
+
+        [StringLength(450)]
+        public string? ToBankAccountId { get; set; } // Destination account for bank transfer transactions
+    }
+
     public class BankAccountSummaryDto
     {
         public decimal TotalBalance { get; set; }

@@ -3,19 +3,336 @@ using UtilityHub360.Data;
 using UtilityHub360.DTOs;
 using UtilityHub360.Entities;
 using UtilityHub360.Models;
+using System.Text;
+using System.Text.Json;
+using UglyToad.PdfPig;
+using System.Linq;
 
 namespace UtilityHub360.Services
 {
     public class ReconciliationService : IReconciliationService
     {
         private readonly ApplicationDbContext _context;
+        private readonly IBankStatementExtractionService _extractionService;
+        private readonly IAIAgentService _aiAgentService;
+        private readonly IOcrService _ocrService;
+        private readonly IBankAccountService _bankAccountService;
+        private readonly ILogger<ReconciliationService> _logger;
+        private readonly HttpClient _httpClient;
+        private readonly OpenAISettings _openAISettings;
 
-        public ReconciliationService(ApplicationDbContext context)
+        public ReconciliationService(
+            ApplicationDbContext context,
+            IBankStatementExtractionService extractionService,
+            IAIAgentService aiAgentService,
+            IOcrService ocrService,
+            IBankAccountService bankAccountService,
+            ILogger<ReconciliationService> logger,
+            OpenAISettings openAISettings)
         {
             _context = context;
+            _extractionService = extractionService;
+            _aiAgentService = aiAgentService;
+            _ocrService = ocrService;
+            _bankAccountService = bankAccountService;
+            _logger = logger;
+            _openAISettings = openAISettings;
+            _httpClient = new HttpClient();
+            
+            if (!string.IsNullOrEmpty(_openAISettings.ApiKey))
+            {
+                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_openAISettings.ApiKey}");
+            }
         }
 
         // ==================== BANK STATEMENT OPERATIONS ====================
+
+        public async Task<ApiResponse<ExtractBankStatementResponseDto>> ExtractBankStatementFromFileAsync(
+            Stream fileStream, 
+            string fileName, 
+            string bankAccountId, 
+            string userId)
+        {
+            try
+            {
+                // Use the extraction service which handles both CSV and PDF
+                var result = await _extractionService.ExtractFromFileAsync(fileStream, fileName, bankAccountId, userId);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error extracting bank statement from file");
+                return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult($"Failed to extract bank statement: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<ExtractBankStatementResponseDto>> AnalyzePDFWithAIAsync(
+            Stream pdfStream, 
+            string fileName, 
+            string bankAccountId, 
+            string userId)
+        {
+            try
+            {
+                // Verify bank account exists and belongs to user
+                var bankAccount = await _context.BankAccounts
+                    .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
+
+                if (bankAccount == null)
+                {
+                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("Bank account not found or does not belong to user");
+                }
+
+                // Step 1: Extract text from PDF - try multiple methods
+                pdfStream.Position = 0;
+                string extractedText = string.Empty;
+                string extractionMethod = "Unknown";
+                
+                // Check if stream is readable
+                if (pdfStream.Length == 0)
+                {
+                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("PDF file is empty or could not be read.");
+                }
+                
+                _logger.LogInformation($"Attempting to extract text from PDF: {fileName}, Size: {pdfStream.Length} bytes");
+                
+                // Try PdfPig first for direct text extraction (faster for text-based PDFs)
+                try
+                {
+                    pdfStream.Position = 0;
+                    var textBuilder = new StringBuilder();
+                    
+                    using (var document = PdfDocument.Open(pdfStream))
+                    {
+                        var pageCount = document.NumberOfPages;
+                        _logger.LogInformation($"PDF has {pageCount} pages");
+                        
+                        foreach (var page in document.GetPages())
+                        {
+                            try
+                            {
+                                var words = page.GetWords();
+                                if (words != null && words.Any())
+                                {
+                                    var pageText = string.Join(" ", words.Select(w => w.Text));
+                                    if (!string.IsNullOrWhiteSpace(pageText))
+                                    {
+                                        textBuilder.AppendLine(pageText);
+                                        _logger.LogInformation($"Extracted {pageText.Length} characters from page {page.Number}");
+                                    }
+                                }
+                            }
+                            catch (Exception pageEx)
+                            {
+                                _logger.LogWarning($"Error extracting text from PDF page {page.Number}: {pageEx.Message}");
+                            }
+                        }
+                    }
+                    
+                    extractedText = textBuilder.ToString();
+                    if (!string.IsNullOrWhiteSpace(extractedText))
+                    {
+                        extractionMethod = "PdfPig";
+                        _logger.LogInformation($"Successfully extracted {extractedText.Length} characters from PDF using PdfPig");
+                    }
+                }
+                catch (Exception pdfPigEx)
+                {
+                    _logger.LogWarning($"PdfPig extraction failed: {pdfPigEx.Message}. Trying OCR fallback.");
+                }
+                
+                // Fallback: Try OCR service for image-based (scanned) PDFs
+                if (string.IsNullOrWhiteSpace(extractedText))
+                {
+                    try
+                    {
+                        pdfStream.Position = 0;
+                        _logger.LogInformation("Attempting OCR extraction...");
+                        var ocrResult = await _ocrService.ProcessPdfAsync(pdfStream);
+                        
+                        if (ocrResult != null && !string.IsNullOrWhiteSpace(ocrResult.FullText))
+                        {
+                            extractedText = ocrResult.FullText;
+                            extractionMethod = ocrResult.Provider ?? "OCR";
+                            _logger.LogInformation($"Successfully extracted {extractedText.Length} characters from PDF using {extractionMethod}");
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"OCR returned empty text. Confidence: {ocrResult?.Confidence ?? 0}");
+                        }
+                    }
+                    catch (Exception ocrEx)
+                    {
+                        _logger.LogError(ocrEx, $"OCR service failed: {ocrEx.Message}");
+                    }
+                }
+                
+                // If still no text, return error with helpful message
+                if (string.IsNullOrWhiteSpace(extractedText))
+                {
+                    _logger.LogError($"Failed to extract text from PDF after trying both PdfPig and OCR methods. File: {fileName}, Size: {pdfStream.Length} bytes");
+                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(
+                        "Could not extract text from PDF. Possible reasons:\n" +
+                        "1. The PDF is password-protected (please remove password)\n" +
+                        "2. The PDF is corrupted\n" +
+                        "3. The PDF contains only images without text (scanned document - OCR may not be configured)\n" +
+                        "4. The PDF format is not supported\n\n" +
+                        "Please try:\n" +
+                        "- Converting the PDF to a CSV file\n" +
+                        "- Ensuring the PDF is not password-protected\n" +
+                        "- Using a text-based PDF (not just scanned images)");
+                }
+
+                // Step 2: Use AI Agent to analyze and extract transactions
+                if (string.IsNullOrEmpty(_openAISettings.ApiKey))
+                {
+                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("OpenAI API key not configured. AI analysis is not available.");
+                }
+
+                var prompt = $@"You are a financial data extraction expert. Analyze this bank statement PDF text and extract ALL transactions accurately.
+
+CRITICAL INSTRUCTIONS:
+1. Extract transactions EXACTLY as they appear in the text below
+2. DO NOT generate sample data or example transactions
+3. DO NOT use dates from previous years (2023, 2024) unless they appear in the text
+4. Use ONLY the actual data provided in the bank statement text
+5. Preserve exact amounts, dates, and descriptions from the statement
+6. If a field is missing, leave it empty or use empty string
+
+Bank Statement Text (first 20000 characters):
+{extractedText.Substring(0, Math.Min(extractedText.Length, 20000))}
+
+Extract ALL transactions and return a JSON object with this exact structure:
+
+{{
+  ""statementName"": ""string (extract from statement or use filename)"",
+  ""statementStartDate"": ""YYYY-MM-DD (earliest transaction date)"",
+  ""statementEndDate"": ""YYYY-MM-DD (latest transaction date)"",
+  ""openingBalance"": number (if available in statement),
+  ""closingBalance"": number (if available in statement),
+  ""transactions"": [
+    {{
+      ""transactionDate"": ""YYYY-MM-DD (use EXACT date from statement)"",
+      ""amount"": number (always positive, use EXACT amount from statement),
+      ""transactionType"": ""DEBIT"" or ""CREDIT"" (based on statement),
+      ""description"": ""string (use EXACT description from statement)"",
+      ""referenceNumber"": ""string (if available in statement)"",
+      ""merchant"": ""string (extract from description if possible)"",
+      ""category"": ""string (optional, infer from description)"",
+      ""balanceAfterTransaction"": number (if available in statement)
+    }}
+  ]
+}}
+
+IMPORTANT: 
+- Extract ONLY transactions that appear in the text above
+- Use exact dates, amounts, and descriptions from the statement
+- Do NOT invent or generate sample data
+- Return ONLY valid JSON, no explanations or additional text";
+
+                var messages = new List<object>
+                {
+                    new { role = "system", content = "You are a financial data extraction expert. Extract bank statement transactions accurately from the provided text. Return only valid JSON with the exact structure specified. Never generate sample or example data." },
+                    new { role = "user", content = prompt }
+                };
+
+                var openAIRequest = new
+                {
+                    model = "gpt-4o-mini",
+                    messages = messages,
+                    temperature = 0.1, // Very low temperature for accuracy
+                    max_tokens = 4000,
+                    response_format = new { type = "json_object" }
+                };
+
+                var json = JsonSerializer.Serialize(openAIRequest);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var httpResponse = await _httpClient.PostAsync("https://api.openai.com/v1/chat/completions", content);
+                var responseContent = await httpResponse.Content.ReadAsStringAsync();
+
+                if (!httpResponse.IsSuccessStatusCode)
+                {
+                    _logger.LogError($"OpenAI API error: {httpResponse.StatusCode} - {responseContent}");
+                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(
+                        $"AI analysis failed: {httpResponse.StatusCode}. Please try again or use manual entry.");
+                }
+
+                var openAIResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                var choices = openAIResponse.GetProperty("choices");
+                var firstChoice = choices[0];
+                var message = firstChoice.GetProperty("message");
+                var aiResponseText = message.GetProperty("content").GetString() ?? "";
+
+                // Parse AI response
+                var aiResult = JsonSerializer.Deserialize<JsonElement>(aiResponseText);
+                
+                var result = new ExtractBankStatementResponseDto
+                {
+                    StatementName = aiResult.TryGetProperty("statementName", out var name) ? name.GetString() ?? fileName : fileName,
+                    StatementStartDate = aiResult.TryGetProperty("statementStartDate", out var startDate) && 
+                        DateTime.TryParse(startDate.GetString(), out var sd) ? sd : null,
+                    StatementEndDate = aiResult.TryGetProperty("statementEndDate", out var endDate) && 
+                        DateTime.TryParse(endDate.GetString(), out var ed) ? ed : null,
+                    OpeningBalance = aiResult.TryGetProperty("openingBalance", out var openBal) ? 
+                        openBal.GetDecimal() : null,
+                    ClosingBalance = aiResult.TryGetProperty("closingBalance", out var closeBal) ? 
+                        closeBal.GetDecimal() : null,
+                    ImportFormat = "PDF",
+                    ImportSource = fileName,
+                    StatementItems = new List<BankStatementItemImportDto>(),
+                    ExtractedText = extractedText.Substring(0, Math.Min(extractedText.Length, 5000)) // Include first 5000 chars for debugging
+                };
+
+                if (aiResult.TryGetProperty("transactions", out var transactions))
+                {
+                    foreach (var trans in transactions.EnumerateArray())
+                    {
+                        try
+                        {
+                            var transactionDateStr = trans.GetProperty("transactionDate").GetString();
+                            if (string.IsNullOrEmpty(transactionDateStr) || !DateTime.TryParse(transactionDateStr, out var transactionDate))
+                            {
+                                _logger.LogWarning($"Skipping transaction with invalid date: {transactionDateStr}");
+                                continue;
+                            }
+
+                            var item = new BankStatementItemImportDto
+                            {
+                                TransactionDate = transactionDate,
+                                Amount = trans.GetProperty("amount").GetDecimal(),
+                                TransactionType = trans.GetProperty("transactionType").GetString() ?? "DEBIT",
+                                Description = trans.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "",
+                                ReferenceNumber = trans.TryGetProperty("referenceNumber", out var refNum) ? refNum.GetString() ?? "" : "",
+                                Merchant = trans.TryGetProperty("merchant", out var merch) ? merch.GetString() ?? "" : "",
+                                Category = trans.TryGetProperty("category", out var cat) ? cat.GetString() ?? "" : "",
+                                BalanceAfterTransaction = trans.TryGetProperty("balanceAfterTransaction", out var bal) ? bal.GetDecimal() : 0
+                            };
+                            result.StatementItems.Add(item);
+                        }
+                        catch (Exception itemEx)
+                        {
+                            _logger.LogWarning($"Error parsing transaction item: {itemEx.Message}");
+                            // Continue with next transaction
+                        }
+                    }
+                }
+
+                if (result.StatementItems.Count == 0)
+                {
+                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(
+                        "No transactions found in PDF. The PDF format may not be supported, or the AI could not extract valid transactions.");
+                }
+
+                _logger.LogInformation($"AI successfully extracted {result.StatementItems.Count} transactions from PDF");
+                return ApiResponse<ExtractBankStatementResponseDto>.SuccessResult(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error analyzing PDF with AI");
+                return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult($"Failed to analyze PDF with AI: {ex.Message}");
+            }
+        }
 
         public async Task<ApiResponse<BankStatementDto>> ImportBankStatementAsync(ImportBankStatementDto importDto, string userId)
         {
@@ -75,6 +392,9 @@ namespace UtilityHub360.Services
 
                 // Try auto-matching
                 await AutoMatchStatementItemsAsync(bankStatement.Id, userId);
+
+                // Auto-create transactions from unmatched items
+                await CreateTransactionsFromUnmatchedItemsAsync(bankStatement.Id, userId);
 
                 // Reload with items
                 var result = await GetBankStatementAsync(bankStatement.Id, userId);
@@ -855,6 +1175,155 @@ namespace UtilityHub360.Services
             statement.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+        }
+
+        private async Task CreateTransactionsFromUnmatchedItemsAsync(string statementId, string userId)
+        {
+            try
+            {
+                var statement = await _context.BankStatements
+                    .Include(s => s.StatementItems)
+                    .FirstOrDefaultAsync(s => s.Id == statementId);
+
+                if (statement == null)
+                {
+                    _logger.LogWarning($"Bank statement {statementId} not found for creating transactions");
+                    return;
+                }
+
+                // Get all unmatched items
+                var unmatchedItems = statement.StatementItems
+                    .Where(i => !i.IsMatched)
+                    .ToList();
+
+                if (!unmatchedItems.Any())
+                {
+                    _logger.LogInformation($"No unmatched items to create transactions from for statement {statementId}");
+                    return;
+                }
+
+                _logger.LogInformation($"Creating {unmatchedItems.Count} transactions from unmatched statement items");
+
+                int createdCount = 0;
+                int failedCount = 0;
+
+                foreach (var item in unmatchedItems)
+                {
+                    try
+                    {
+                        // Get bank account currency
+                        var bankAccount = await _context.BankAccounts
+                            .FirstOrDefaultAsync(ba => ba.Id == statement.BankAccountId);
+                        
+                        if (bankAccount == null)
+                        {
+                            _logger.LogWarning($"Bank account {statement.BankAccountId} not found for statement item {item.Id}");
+                            failedCount++;
+                            continue;
+                        }
+
+                        // Auto-create category if it doesn't exist (for reconciliation imports)
+                        if (!string.IsNullOrWhiteSpace(item.Category) && 
+                            item.TransactionType?.ToUpper() != "CREDIT")
+                        {
+                            var categoryExists = await _context.TransactionCategories
+                                .AnyAsync(c => c.UserId == userId && 
+                                             c.Name.ToUpper() == item.Category.ToUpper() && 
+                                             !c.IsDeleted);
+
+                            if (!categoryExists)
+                            {
+                                // Auto-create the category for reconciliation imports
+                                var newCategory = new TransactionCategory
+                                {
+                                    UserId = userId,
+                                    Name = item.Category,
+                                    Description = $"Auto-created from bank statement import",
+                                    Type = "EXPENSE", // Default to expense for DEBIT transactions
+                                    IsActive = true,
+                                    IsSystemCategory = false,
+                                    DisplayOrder = 0,
+                                    CreatedAt = DateTime.UtcNow,
+                                    UpdatedAt = DateTime.UtcNow
+                                };
+
+                                _context.TransactionCategories.Add(newCategory);
+                                await _context.SaveChangesAsync();
+                                _logger.LogInformation($"Auto-created category '{item.Category}' for statement import");
+                            }
+                        }
+
+                        // Create transaction DTO from statement item
+                        // For reconciliation imports, we should skip month closure check and allow empty categories
+                        // as these are historical transactions being imported
+                        var createTransactionDto = new CreateBankTransactionDto
+                        {
+                            BankAccountId = statement.BankAccountId,
+                            Amount = item.Amount,
+                            TransactionType = item.TransactionType,
+                            Description = item.Description ?? "Bank Statement Transaction",
+                            Category = string.IsNullOrWhiteSpace(item.Category) ? null : item.Category,
+                            ReferenceNumber = item.ReferenceNumber ?? $"STMT_{item.Id.Substring(0, Math.Min(8, item.Id.Length))}",
+                            TransactionDate = item.TransactionDate,
+                            Merchant = item.Merchant,
+                            Currency = bankAccount.Currency ?? "USD",
+                            Notes = $"Imported from bank statement: {statement.StatementName}"
+                        };
+
+                        // Create transaction using BankAccountService
+                        var transactionResult = await _bankAccountService.CreateTransactionAsync(createTransactionDto, userId);
+
+                        if (transactionResult.Success && transactionResult.Data != null)
+                        {
+                            // Mark statement item as matched
+                            item.IsMatched = true;
+                            item.MatchedTransactionId = transactionResult.Data.Id;
+                            item.MatchedTransactionType = "Payment";
+                            item.MatchedAt = DateTime.UtcNow;
+                            item.MatchedBy = userId;
+                            item.UpdatedAt = DateTime.UtcNow;
+
+                            createdCount++;
+                            _logger.LogInformation($"Created transaction {transactionResult.Data.Id} from statement item {item.Id}");
+                        }
+                        else
+                        {
+                            var errorMessage = transactionResult.Message ?? "Unknown error";
+                            _logger.LogWarning($"Failed to create transaction from statement item {item.Id}: {errorMessage}");
+                            
+                            // Log detailed error information
+                            if (transactionResult.Errors != null && transactionResult.Errors.Any())
+                            {
+                                _logger.LogWarning($"Transaction creation errors for item {item.Id}: {string.Join(", ", transactionResult.Errors)}");
+                            }
+                            
+                            // Log transaction details for debugging
+                            _logger.LogWarning($"Failed transaction details - Amount: {item.Amount}, Type: {item.TransactionType}, Date: {item.TransactionDate}, Category: {item.Category}, Description: {item.Description}");
+                            
+                            failedCount++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Error creating transaction from statement item {item.Id}");
+                        failedCount++;
+                    }
+                }
+
+                // Update statement matched counts
+                statement.MatchedTransactions = statement.StatementItems.Count(i => i.IsMatched);
+                statement.UnmatchedTransactions = statement.TotalTransactions - statement.MatchedTransactions;
+                statement.UpdatedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation($"Created {createdCount} transactions from unmatched items. {failedCount} failed.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error creating transactions from unmatched items for statement {statementId}");
+                // Don't throw - allow import to succeed even if transaction creation fails
+            }
         }
 
         private decimal CalculateMatchScore(Payment transaction, BankStatementItem item)

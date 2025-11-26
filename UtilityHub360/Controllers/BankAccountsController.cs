@@ -611,6 +611,98 @@ namespace UtilityHub360.Controllers
         }
 
         /// <summary>
+        /// Update a bank transaction
+        /// </summary>
+        [HttpPut("transactions/{transactionId}")]
+        public async Task<ActionResult<ApiResponse<BankTransactionDto>>> UpdateTransaction(
+            string transactionId,
+            [FromBody] UpdateBankTransactionDto updateTransactionDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<BankTransactionDto>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _bankAccountService.UpdateTransactionAsync(transactionId, updateTransactionDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BankTransactionDto>.ErrorResult($"Failed to update transaction: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Hide (soft delete) a bank transaction
+        /// </summary>
+        [HttpPut("transactions/{transactionId}/hide")]
+        public async Task<ActionResult<ApiResponse<bool>>> HideTransaction(
+            string transactionId,
+            [FromBody] HideTransactionDto? hideDto = null)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+                }
+
+                var reason = hideDto?.Reason;
+                var result = await _bankAccountService.SoftDeleteTransactionAsync(transactionId, userId, reason);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to hide transaction: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Restore a hidden (soft-deleted) bank transaction
+        /// </summary>
+        [HttpPut("transactions/{transactionId}/restore")]
+        public async Task<ActionResult<ApiResponse<BankTransactionDto>>> RestoreTransaction(string transactionId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<BankTransactionDto>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _bankAccountService.RestoreTransactionAsync(transactionId, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BankTransactionDto>.ErrorResult($"Failed to restore transaction: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
         /// Get a specific transaction
         /// </summary>
         [HttpGet("transactions/{transactionId}")]
@@ -1001,6 +1093,103 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<BankTransactionDto>.ErrorResult($"Failed to analyze and create transaction: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Close a month for a bank account (prevents transaction modifications for that month)
+        /// </summary>
+        [HttpPost("{bankAccountId}/close-month")]
+        public async Task<ActionResult<ApiResponse<ClosedMonthDto>>> CloseMonth(string bankAccountId, [FromBody] CloseMonthDto closeMonthDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<ClosedMonthDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (closeMonthDto == null)
+                {
+                    return BadRequest(ApiResponse<ClosedMonthDto>.ErrorResult("Close month data is required"));
+                }
+
+                var result = await _bankAccountService.CloseMonthAsync(bankAccountId, closeMonthDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<ClosedMonthDto>.ErrorResult($"Failed to close month: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get all closed months for a bank account
+        /// </summary>
+        [HttpGet("{bankAccountId}/closed-months")]
+        public async Task<ActionResult<ApiResponse<List<ClosedMonthDto>>>> GetClosedMonths(string bankAccountId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<List<ClosedMonthDto>>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _bankAccountService.GetClosedMonthsAsync(bankAccountId, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<List<ClosedMonthDto>>.ErrorResult($"Failed to get closed months: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Check if a specific month is closed for a bank account
+        /// </summary>
+        [HttpGet("{bankAccountId}/is-month-closed")]
+        public async Task<ActionResult<ApiResponse<bool>>> IsMonthClosed(string bankAccountId, [FromQuery] int year, [FromQuery] int month)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+                }
+
+                if (month < 1 || month > 12)
+                {
+                    return BadRequest(ApiResponse<bool>.ErrorResult("Month must be between 1 and 12"));
+                }
+
+                var result = await _bankAccountService.IsMonthClosedAsync(bankAccountId, year, month, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to check month closure status: {ex.Message}"));
             }
         }
     }

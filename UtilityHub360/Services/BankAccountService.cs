@@ -119,14 +119,119 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var bankAccount = await _context.BankAccounts
-                    .Include(ba => ba.Transactions)
-                    .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
+                // Use projection to avoid reading soft delete columns
+                var bankAccountData = await _context.BankAccounts
+                    .AsNoTracking()
+                    .Where(ba => ba.Id == bankAccountId && ba.UserId == userId)
+                    .Select(ba => new
+                    {
+                        ba.Id,
+                        ba.UserId,
+                        ba.AccountName,
+                        ba.AccountType,
+                        ba.InitialBalance,
+                        ba.CurrentBalance,
+                        ba.Currency,
+                        ba.Description,
+                        ba.FinancialInstitution,
+                        ba.AccountNumber,
+                        ba.RoutingNumber,
+                        ba.SyncFrequency,
+                        ba.IsConnected,
+                        ba.ConnectionId,
+                        ba.LastSyncedAt,
+                        ba.CreatedAt,
+                        ba.UpdatedAt,
+                        ba.IsActive,
+                        ba.Iban,
+                        ba.SwiftCode
+                    })
+                    .FirstOrDefaultAsync();
 
-                if (bankAccount == null)
+                if (bankAccountData == null)
                 {
                     return ApiResponse<BankAccountDto>.ErrorResult("Bank account not found");
                 }
+                
+                // Convert to BankAccount entity
+                var bankAccount = new BankAccount
+                {
+                    Id = bankAccountData.Id,
+                    UserId = bankAccountData.UserId,
+                    AccountName = bankAccountData.AccountName,
+                    AccountType = bankAccountData.AccountType,
+                    InitialBalance = bankAccountData.InitialBalance,
+                    CurrentBalance = bankAccountData.CurrentBalance,
+                    Currency = bankAccountData.Currency,
+                    Description = bankAccountData.Description,
+                    FinancialInstitution = bankAccountData.FinancialInstitution,
+                    AccountNumber = bankAccountData.AccountNumber,
+                    RoutingNumber = bankAccountData.RoutingNumber,
+                    SyncFrequency = bankAccountData.SyncFrequency,
+                    IsConnected = bankAccountData.IsConnected,
+                    ConnectionId = bankAccountData.ConnectionId,
+                    LastSyncedAt = bankAccountData.LastSyncedAt,
+                    CreatedAt = bankAccountData.CreatedAt,
+                    UpdatedAt = bankAccountData.UpdatedAt,
+                    IsActive = bankAccountData.IsActive,
+                    Iban = bankAccountData.Iban,
+                    SwiftCode = bankAccountData.SwiftCode,
+                    Transactions = new List<BankTransaction>()
+                };
+
+                // Load transactions separately using projection to avoid soft delete columns
+                var transactionsData = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(t => t.BankAccountId == bankAccountId)
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.BankAccountId,
+                        t.UserId,
+                        t.Amount,
+                        t.TransactionType,
+                        t.Description,
+                        t.Category,
+                        t.ReferenceNumber,
+                        t.ExternalTransactionId,
+                        t.TransactionDate,
+                        t.CreatedAt,
+                        t.UpdatedAt,
+                        t.Notes,
+                        t.Merchant,
+                        t.Location,
+                        t.IsRecurring,
+                        t.RecurringFrequency,
+                        t.Currency,
+                        t.BalanceAfterTransaction
+                    })
+                    .ToListAsync();
+                
+                // Convert to BankTransaction entities (filter out soft-deleted in memory)
+                var transactions = transactionsData.Select(t => new BankTransaction
+                {
+                    Id = t.Id,
+                    BankAccountId = t.BankAccountId,
+                    UserId = t.UserId,
+                    Amount = t.Amount,
+                    TransactionType = t.TransactionType,
+                    Description = t.Description,
+                    Category = t.Category,
+                    ReferenceNumber = t.ReferenceNumber,
+                    ExternalTransactionId = t.ExternalTransactionId,
+                    TransactionDate = t.TransactionDate,
+                    CreatedAt = t.CreatedAt,
+                    UpdatedAt = t.UpdatedAt,
+                    Notes = t.Notes,
+                    Merchant = t.Merchant,
+                    Location = t.Location,
+                    IsRecurring = t.IsRecurring,
+                    RecurringFrequency = t.RecurringFrequency,
+                    Currency = t.Currency,
+                    BalanceAfterTransaction = t.BalanceAfterTransaction,
+                    IsDeleted = false
+                }).ToList();
+                bankAccount.Transactions = transactions;
 
                 var bankAccountDto = await MapToBankAccountDtoAsync(bankAccount);
                 return ApiResponse<BankAccountDto>.SuccessResult(bankAccountDto);
@@ -280,8 +385,9 @@ namespace UtilityHub360.Services
         {
             try
             {
+                // Use projection to avoid reading soft delete columns that don't exist yet
                 var query = _context.BankAccounts
-                    .Include(ba => ba.Transactions)
+                    .AsNoTracking()
                     .Where(ba => ba.UserId == userId);
 
                 if (!includeInactive)
@@ -289,9 +395,121 @@ namespace UtilityHub360.Services
                     query = query.Where(ba => ba.IsActive);
                 }
 
-                var bankAccounts = await query
+                // Project to anonymous type to avoid materializing soft delete properties
+                var bankAccountsData = await query
+                    .Select(ba => new
+                    {
+                        ba.Id,
+                        ba.UserId,
+                        ba.AccountName,
+                        ba.AccountType,
+                        ba.InitialBalance,
+                        ba.CurrentBalance,
+                        ba.Currency,
+                        ba.Description,
+                        ba.FinancialInstitution,
+                        ba.AccountNumber,
+                        ba.RoutingNumber,
+                        ba.SyncFrequency,
+                        ba.IsConnected,
+                        ba.ConnectionId,
+                        ba.LastSyncedAt,
+                        ba.CreatedAt,
+                        ba.UpdatedAt,
+                        ba.IsActive,
+                        ba.Iban,
+                        ba.SwiftCode
+                    })
                     .OrderByDescending(ba => ba.CurrentBalance)
                     .ToListAsync();
+
+                // Convert to BankAccount entities for mapping
+                var bankAccountIds = bankAccountsData.Select(ba => ba.Id).ToList();
+                var bankAccounts = bankAccountsData.Select(ba => new BankAccount
+                {
+                    Id = ba.Id,
+                    UserId = ba.UserId,
+                    AccountName = ba.AccountName,
+                    AccountType = ba.AccountType,
+                    InitialBalance = ba.InitialBalance,
+                    CurrentBalance = ba.CurrentBalance,
+                    Currency = ba.Currency,
+                    Description = ba.Description,
+                    FinancialInstitution = ba.FinancialInstitution,
+                    AccountNumber = ba.AccountNumber,
+                    RoutingNumber = ba.RoutingNumber,
+                    SyncFrequency = ba.SyncFrequency,
+                    IsConnected = ba.IsConnected,
+                    ConnectionId = ba.ConnectionId,
+                    LastSyncedAt = ba.LastSyncedAt,
+                    CreatedAt = ba.CreatedAt,
+                    UpdatedAt = ba.UpdatedAt,
+                    IsActive = ba.IsActive,
+                    Iban = ba.Iban,
+                    SwiftCode = ba.SwiftCode,
+                    Transactions = new List<BankTransaction>()
+                }).ToList();
+
+                // Load transactions separately using projection to avoid soft delete columns
+                var transactionsData = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(t => bankAccountIds.Contains(t.BankAccountId))
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.BankAccountId,
+                        t.UserId,
+                        t.Amount,
+                        t.TransactionType,
+                        t.Description,
+                        t.Category,
+                        t.ReferenceNumber,
+                        t.ExternalTransactionId,
+                        t.TransactionDate,
+                        t.CreatedAt,
+                        t.UpdatedAt,
+                        t.Notes,
+                        t.Merchant,
+                        t.Location,
+                        t.IsRecurring,
+                        t.RecurringFrequency,
+                        t.Currency,
+                        t.BalanceAfterTransaction
+                    })
+                    .ToListAsync();
+                
+                // Convert to BankTransaction entities (without soft delete properties)
+                var transactions = transactionsData.Select(t => new BankTransaction
+                {
+                    Id = t.Id,
+                    BankAccountId = t.BankAccountId,
+                    UserId = t.UserId,
+                    Amount = t.Amount,
+                    TransactionType = t.TransactionType,
+                    Description = t.Description,
+                    Category = t.Category,
+                    ReferenceNumber = t.ReferenceNumber,
+                    ExternalTransactionId = t.ExternalTransactionId,
+                    TransactionDate = t.TransactionDate,
+                    CreatedAt = t.CreatedAt,
+                    UpdatedAt = t.UpdatedAt,
+                    Notes = t.Notes,
+                    Merchant = t.Merchant,
+                    Location = t.Location,
+                    IsRecurring = t.IsRecurring,
+                    RecurringFrequency = t.RecurringFrequency,
+                    Currency = t.Currency,
+                    BalanceAfterTransaction = t.BalanceAfterTransaction,
+                    IsDeleted = false // Set default since we're filtering these out anyway
+                }).ToList();
+                
+                // Attach transactions to bank accounts in memory
+                foreach (var account in bankAccounts)
+                {
+                    account.Transactions = transactions
+                        .Where(t => t.BankAccountId == account.Id)
+                        .ToList();
+                }
 
                 var bankAccountDtos = new List<BankAccountDto>();
                 foreach (var account in bankAccounts)
@@ -311,10 +529,122 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var bankAccounts = await _context.BankAccounts
-                    .Include(ba => ba.Transactions)
+                // Use projection to avoid reading soft delete columns that don't exist yet
+                var bankAccountsData = await _context.BankAccounts
+                    .AsNoTracking()
                     .Where(ba => ba.UserId == userId && ba.IsActive)
+                    .Select(ba => new
+                    {
+                        ba.Id,
+                        ba.UserId,
+                        ba.AccountName,
+                        ba.AccountType,
+                        ba.InitialBalance,
+                        ba.CurrentBalance,
+                        ba.Currency,
+                        ba.Description,
+                        ba.FinancialInstitution,
+                        ba.AccountNumber,
+                        ba.RoutingNumber,
+                        ba.SyncFrequency,
+                        ba.IsConnected,
+                        ba.ConnectionId,
+                        ba.LastSyncedAt,
+                        ba.CreatedAt,
+                        ba.UpdatedAt,
+                        ba.IsActive,
+                        ba.Iban,
+                        ba.SwiftCode
+                    })
                     .ToListAsync();
+
+                // Convert to BankAccount entities for mapping
+                var bankAccounts = bankAccountsData.Select(ba => new BankAccount
+                {
+                    Id = ba.Id,
+                    UserId = ba.UserId,
+                    AccountName = ba.AccountName,
+                    AccountType = ba.AccountType,
+                    InitialBalance = ba.InitialBalance,
+                    CurrentBalance = ba.CurrentBalance,
+                    Currency = ba.Currency,
+                    Description = ba.Description,
+                    FinancialInstitution = ba.FinancialInstitution,
+                    AccountNumber = ba.AccountNumber,
+                    RoutingNumber = ba.RoutingNumber,
+                    SyncFrequency = ba.SyncFrequency,
+                    IsConnected = ba.IsConnected,
+                    ConnectionId = ba.ConnectionId,
+                    LastSyncedAt = ba.LastSyncedAt,
+                    CreatedAt = ba.CreatedAt,
+                    UpdatedAt = ba.UpdatedAt,
+                    IsActive = ba.IsActive,
+                    Iban = ba.Iban,
+                    SwiftCode = ba.SwiftCode,
+                    Transactions = new List<BankTransaction>()
+                }).ToList();
+                
+                // Load transactions separately using projection to avoid soft delete columns
+                var bankAccountIds = bankAccounts.Select(ba => ba.Id).ToList();
+                var transactionsData = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(t => bankAccountIds.Contains(t.BankAccountId))
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.BankAccountId,
+                        t.UserId,
+                        t.Amount,
+                        t.TransactionType,
+                        t.Description,
+                        t.Category,
+                        t.ReferenceNumber,
+                        t.ExternalTransactionId,
+                        t.TransactionDate,
+                        t.CreatedAt,
+                        t.UpdatedAt,
+                        t.Notes,
+                        t.Merchant,
+                        t.Location,
+                        t.IsRecurring,
+                        t.RecurringFrequency,
+                        t.Currency,
+                        t.BalanceAfterTransaction
+                    })
+                    .ToListAsync();
+                
+                // Convert to BankTransaction entities (without soft delete properties)
+                var transactions = transactionsData.Select(t => new BankTransaction
+                {
+                    Id = t.Id,
+                    BankAccountId = t.BankAccountId,
+                    UserId = t.UserId,
+                    Amount = t.Amount,
+                    TransactionType = t.TransactionType,
+                    Description = t.Description,
+                    Category = t.Category,
+                    ReferenceNumber = t.ReferenceNumber,
+                    ExternalTransactionId = t.ExternalTransactionId,
+                    TransactionDate = t.TransactionDate,
+                    CreatedAt = t.CreatedAt,
+                    UpdatedAt = t.UpdatedAt,
+                    Notes = t.Notes,
+                    Merchant = t.Merchant,
+                    Location = t.Location,
+                    IsRecurring = t.IsRecurring,
+                    RecurringFrequency = t.RecurringFrequency,
+                    Currency = t.Currency,
+                    BalanceAfterTransaction = t.BalanceAfterTransaction,
+                    IsDeleted = false // Set default since we're filtering these out anyway
+                }).ToList();
+                
+                // Attach transactions to bank accounts in memory
+                foreach (var account in bankAccounts)
+                {
+                    account.Transactions = transactions
+                        .Where(t => t.BankAccountId == account.Id)
+                        .ToList();
+                }
 
                 if (!bankAccounts.Any())
                 {
@@ -342,19 +672,79 @@ namespace UtilityHub360.Services
                 // Calculate period dates based on frequency
                 var (periodStart, periodEnd) = GetPeriodDates(frequency);
 
-                // Get all transactions for the period (now from Payments table)
-                var allTransactions = await _context.Payments
+                // Get all transactions for the period (now from Payments table) using projection
+                var allTransactionsData = await _context.Payments
+                    .AsNoTracking()
                     .Where(p => p.UserId == userId && p.IsBankTransaction && 
                                p.TransactionDate >= periodStart && p.TransactionDate <= periodEnd)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.UserId,
+                        p.Amount,
+                        p.TransactionType,
+                        p.Description,
+                        p.Category,
+                        p.TransactionDate,
+                        p.ProcessedAt,
+                        p.CreatedAt,
+                        p.UpdatedAt
+                    })
                     .ToListAsync();
 
-                // Get current month transactions
+                // Convert to Payment-like objects for processing
+                var allTransactions = allTransactionsData.Select(p => new Payment
+                {
+                    Id = p.Id,
+                    UserId = p.UserId,
+                    Amount = p.Amount,
+                    TransactionType = p.TransactionType,
+                    Description = p.Description,
+                    Category = p.Category,
+                    TransactionDate = p.TransactionDate,
+                    ProcessedAt = p.ProcessedAt,
+                    CreatedAt = p.CreatedAt,
+                    UpdatedAt = p.UpdatedAt,
+                    IsDeleted = false // Set default since we're filtering these out anyway
+                }).ToList();
+
+                // Get current month transactions using projection
                 var currentMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
                 var currentMonthEnd = currentMonthStart.AddMonths(1).AddDays(-1);
-                var currentMonthTransactions = await _context.Payments
+                var currentMonthTransactionsData = await _context.Payments
+                    .AsNoTracking()
                     .Where(p => p.UserId == userId && p.IsBankTransaction && 
                                p.TransactionDate >= currentMonthStart && p.TransactionDate <= currentMonthEnd)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.UserId,
+                        p.Amount,
+                        p.TransactionType,
+                        p.Description,
+                        p.Category,
+                        p.TransactionDate,
+                        p.ProcessedAt,
+                        p.CreatedAt,
+                        p.UpdatedAt
+                    })
                     .ToListAsync();
+
+                // Convert to Payment-like objects for processing
+                var currentMonthTransactions = currentMonthTransactionsData.Select(p => new Payment
+                {
+                    Id = p.Id,
+                    UserId = p.UserId,
+                    Amount = p.Amount,
+                    TransactionType = p.TransactionType,
+                    Description = p.Description,
+                    Category = p.Category,
+                    TransactionDate = p.TransactionDate,
+                    ProcessedAt = p.ProcessedAt,
+                    CreatedAt = p.CreatedAt,
+                    UpdatedAt = p.UpdatedAt,
+                    IsDeleted = false // Set default since we're filtering these out anyway
+                }).ToList();
 
                 // Calculate total balance excluding credit cards (they represent debt, not assets)
                 var totalBalance = bankAccounts
@@ -438,10 +828,122 @@ namespace UtilityHub360.Services
             {
                 var (startDate, endDate) = GetPeriodDates(period);
 
-                var bankAccounts = await _context.BankAccounts
-                    .Include(ba => ba.Transactions)
+                // Use projection to avoid reading soft delete columns
+                var bankAccountsData = await _context.BankAccounts
+                    .AsNoTracking()
                     .Where(ba => ba.UserId == userId && ba.IsActive)
+                    .Select(ba => new
+                    {
+                        ba.Id,
+                        ba.UserId,
+                        ba.AccountName,
+                        ba.AccountType,
+                        ba.InitialBalance,
+                        ba.CurrentBalance,
+                        ba.Currency,
+                        ba.Description,
+                        ba.FinancialInstitution,
+                        ba.AccountNumber,
+                        ba.RoutingNumber,
+                        ba.SyncFrequency,
+                        ba.IsConnected,
+                        ba.ConnectionId,
+                        ba.LastSyncedAt,
+                        ba.CreatedAt,
+                        ba.UpdatedAt,
+                        ba.IsActive,
+                        ba.Iban,
+                        ba.SwiftCode
+                    })
                     .ToListAsync();
+                
+                // Convert to BankAccount entities
+                var bankAccounts = bankAccountsData.Select(ba => new BankAccount
+                {
+                    Id = ba.Id,
+                    UserId = ba.UserId,
+                    AccountName = ba.AccountName,
+                    AccountType = ba.AccountType,
+                    InitialBalance = ba.InitialBalance,
+                    CurrentBalance = ba.CurrentBalance,
+                    Currency = ba.Currency,
+                    Description = ba.Description,
+                    FinancialInstitution = ba.FinancialInstitution,
+                    AccountNumber = ba.AccountNumber,
+                    RoutingNumber = ba.RoutingNumber,
+                    SyncFrequency = ba.SyncFrequency,
+                    IsConnected = ba.IsConnected,
+                    ConnectionId = ba.ConnectionId,
+                    LastSyncedAt = ba.LastSyncedAt,
+                    CreatedAt = ba.CreatedAt,
+                    UpdatedAt = ba.UpdatedAt,
+                    IsActive = ba.IsActive,
+                    Iban = ba.Iban,
+                    SwiftCode = ba.SwiftCode,
+                    Transactions = new List<BankTransaction>()
+                }).ToList();
+                
+                // Load transactions separately using projection
+                var bankAccountIds = bankAccounts.Select(ba => ba.Id).ToList();
+                var allTransactionsData = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(t => bankAccountIds.Contains(t.BankAccountId) && 
+                               t.TransactionDate >= startDate && 
+                               t.TransactionDate <= endDate)
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.BankAccountId,
+                        t.UserId,
+                        t.Amount,
+                        t.TransactionType,
+                        t.Description,
+                        t.Category,
+                        t.ReferenceNumber,
+                        t.ExternalTransactionId,
+                        t.TransactionDate,
+                        t.CreatedAt,
+                        t.UpdatedAt,
+                        t.Notes,
+                        t.Merchant,
+                        t.Location,
+                        t.IsRecurring,
+                        t.RecurringFrequency,
+                        t.Currency,
+                        t.BalanceAfterTransaction
+                    })
+                    .ToListAsync();
+                
+                // Convert to BankTransaction entities
+                var filteredTransactions = allTransactionsData.Select(t => new BankTransaction
+                {
+                    Id = t.Id,
+                    BankAccountId = t.BankAccountId,
+                    UserId = t.UserId,
+                    Amount = t.Amount,
+                    TransactionType = t.TransactionType,
+                    Description = t.Description,
+                    Category = t.Category,
+                    ReferenceNumber = t.ReferenceNumber,
+                    ExternalTransactionId = t.ExternalTransactionId,
+                    TransactionDate = t.TransactionDate,
+                    CreatedAt = t.CreatedAt,
+                    UpdatedAt = t.UpdatedAt,
+                    Notes = t.Notes,
+                    Merchant = t.Merchant,
+                    Location = t.Location,
+                    IsRecurring = t.IsRecurring,
+                    RecurringFrequency = t.RecurringFrequency,
+                    Currency = t.Currency,
+                    BalanceAfterTransaction = t.BalanceAfterTransaction,
+                    IsDeleted = false
+                }).ToList();
+                foreach (var account in bankAccounts)
+                {
+                    account.Transactions = filteredTransactions
+                        .Where(t => t.BankAccountId == account.Id)
+                        .ToList();
+                }
 
                 var transactions = bankAccounts
                     .SelectMany(ba => ba.Transactions)
@@ -530,12 +1032,27 @@ namespace UtilityHub360.Services
         {
             try
             {
+                // Load bank accounts without Include and with AsNoTracking to avoid materializing soft delete properties
                 var bankAccounts = await _context.BankAccounts
-                    .Include(ba => ba.Transactions)
+                    .AsNoTracking()
                     .Where(ba => ba.UserId == userId && ba.IsActive)
                     .OrderByDescending(ba => ba.CurrentBalance)
                     .Take(limit)
                     .ToListAsync();
+                
+                // Load transactions separately
+                var bankAccountIds = bankAccounts.Select(ba => ba.Id).ToList();
+                var transactions = await _context.BankTransactions
+                    .Where(t => bankAccountIds.Contains(t.BankAccountId) && !t.IsDeleted)
+                    .ToListAsync();
+                
+                // Attach transactions to bank accounts in memory
+                foreach (var account in bankAccounts)
+                {
+                    account.Transactions = transactions
+                        .Where(t => t.BankAccountId == account.Id)
+                        .ToList();
+                }
 
                 var bankAccountDtos = new List<BankAccountDto>();
                 foreach (var account in bankAccounts)
@@ -617,11 +1134,26 @@ namespace UtilityHub360.Services
         {
             try
             {
+                // Load bank accounts without Include and with AsNoTracking to avoid materializing soft delete properties
                 var bankAccounts = await _context.BankAccounts
-                    .Include(ba => ba.Transactions)
+                    .AsNoTracking()
                     .Where(ba => ba.UserId == userId && ba.IsConnected && ba.IsActive)
                     .OrderByDescending(ba => ba.CurrentBalance)
                     .ToListAsync();
+                
+                // Load transactions separately
+                var bankAccountIds = bankAccounts.Select(ba => ba.Id).ToList();
+                var transactions = await _context.BankTransactions
+                    .Where(t => bankAccountIds.Contains(t.BankAccountId))
+                    .ToListAsync();
+                
+                // Attach transactions to bank accounts in memory (filter out soft-deleted)
+                foreach (var account in bankAccounts)
+                {
+                    account.Transactions = transactions
+                        .Where(t => t.BankAccountId == account.Id && !t.IsDeleted)
+                        .ToList();
+                }
 
                 var bankAccountDtos = new List<BankAccountDto>();
                 foreach (var account in bankAccounts)
@@ -676,6 +1208,23 @@ namespace UtilityHub360.Services
                     return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found");
                 }
 
+                // ==================== MONTH CLOSURE VALIDATION ====================
+                // Check if the transaction month is closed
+                var transactionDate = createTransactionDto.TransactionDate;
+                var isMonthClosed = await _context.ClosedMonths
+                    .AnyAsync(cm => cm.BankAccountId == createTransactionDto.BankAccountId &&
+                                   cm.Year == transactionDate.Year &&
+                                   cm.Month == transactionDate.Month);
+
+                if (isMonthClosed)
+                {
+                    var monthName = new[] { "", "January", "February", "March", "April", "May", "June",
+                                            "July", "August", "September", "October", "November", "December" }[transactionDate.Month];
+                    return ApiResponse<BankTransactionDto>.ErrorResult(
+                        $"Cannot create transaction. The month {monthName} {transactionDate.Year} is closed for this account.");
+                }
+                // ==================== END MONTH CLOSURE VALIDATION ====================
+
                 // ==================== CATEGORY VALIDATION ====================
                 // Validate category if provided (skip validation for special categories like [SAVINGS-...] or [LOAN-...])
                 if (!string.IsNullOrEmpty(createTransactionDto.Category) && 
@@ -703,8 +1252,32 @@ namespace UtilityHub360.Services
                                 $"Category '{createTransactionDto.Category}' exists but is inactive. Please activate it or choose a different category.");
                         }
 
-                        return ApiResponse<BankTransactionDto>.ErrorResult(
-                            $"Category '{createTransactionDto.Category}' not found. Please create the category first or use an existing category.");
+                        // Auto-create "Expenses" as a default category if it doesn't exist
+                        if (createTransactionDto.Category.Equals("Expenses", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var defaultExpensesCategory = new TransactionCategory
+                            {
+                                UserId = userId,
+                                Name = "Expenses",
+                                Description = "Default expense category for general transactions",
+                                Type = "EXPENSE",
+                                IsActive = true,
+                                IsSystemCategory = false,
+                                DisplayOrder = 0,
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow
+                            };
+
+                            _context.TransactionCategories.Add(defaultExpensesCategory);
+                            await _context.SaveChangesAsync();
+
+                            // Category is now created, continue with validation
+                        }
+                        else
+                        {
+                            return ApiResponse<BankTransactionDto>.ErrorResult(
+                                $"Category '{createTransactionDto.Category}' not found. Please create the category first or use an existing category.");
+                        }
                     }
 
                     // Validate category type matches transaction type
@@ -1238,24 +1811,344 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<BankTransactionDto>> UpdateTransactionAsync(string transactionId, UpdateBankTransactionDto updateTransactionDto, string userId)
+        {
+            try
+            {
+                // Find the payment record
+                var payment = await _context.Payments
+                    .Include(p => p.BankAccount)
+                    .FirstOrDefaultAsync(p => p.Id == transactionId && p.UserId == userId && p.IsBankTransaction);
+
+                if (payment == null)
+                {
+                    return ApiResponse<BankTransactionDto>.ErrorResult("Transaction not found");
+                }
+
+                var bankAccount = payment.BankAccount;
+                if (bankAccount == null)
+                {
+                    return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found for this transaction");
+                }
+
+                // Determine the transaction date to check (use new date if provided, otherwise old date)
+                var transactionDate = updateTransactionDto.TransactionDate ?? payment.TransactionDate ?? DateTime.UtcNow;
+                var oldTransactionDate = payment.TransactionDate ?? DateTime.UtcNow;
+
+                // ==================== MONTH CLOSURE VALIDATION ====================
+                // Check if the old transaction month is closed
+                var isOldMonthClosed = await _context.ClosedMonths
+                    .AnyAsync(cm => cm.BankAccountId == payment.BankAccountId &&
+                                   cm.Year == oldTransactionDate.Year &&
+                                   cm.Month == oldTransactionDate.Month);
+
+                if (isOldMonthClosed)
+                {
+                    var monthName = new[] { "", "January", "February", "March", "April", "May", "June",
+                                            "July", "August", "September", "October", "November", "December" }[oldTransactionDate.Month];
+                    return ApiResponse<BankTransactionDto>.ErrorResult(
+                        $"Cannot update transaction. The month {monthName} {oldTransactionDate.Year} is closed for this account.");
+                }
+
+                // Check if the new transaction month is closed (if date changed)
+                if (updateTransactionDto.TransactionDate.HasValue && 
+                    (oldTransactionDate.Year != transactionDate.Year || oldTransactionDate.Month != transactionDate.Month))
+                {
+                    var isNewMonthClosed = await _context.ClosedMonths
+                        .AnyAsync(cm => cm.BankAccountId == payment.BankAccountId &&
+                                       cm.Year == transactionDate.Year &&
+                                       cm.Month == transactionDate.Month);
+
+                    if (isNewMonthClosed)
+                    {
+                        var monthName = new[] { "", "January", "February", "March", "April", "May", "June",
+                                                "July", "August", "September", "October", "November", "December" }[transactionDate.Month];
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            $"Cannot move transaction to {monthName} {transactionDate.Year}. That month is closed for this account.");
+                    }
+                }
+                // ==================== END MONTH CLOSURE VALIDATION ====================
+
+                // Store old values for balance reversal
+                var oldAmount = payment.Amount;
+                var oldTransactionType = payment.TransactionType;
+                var oldBankAccountId = payment.BankAccountId;
+
+                // Reverse old balance impact
+                bool isCreditCard = bankAccount.AccountType?.ToLower() == "credit_card";
+                if (oldTransactionType == "CREDIT")
+                {
+                    bankAccount.CurrentBalance -= oldAmount;
+                }
+                else if (oldTransactionType == "DEBIT")
+                {
+                    bankAccount.CurrentBalance += oldAmount;
+                }
+
+                // Update payment fields
+                if (updateTransactionDto.Amount.HasValue)
+                {
+                    payment.Amount = updateTransactionDto.Amount.Value;
+                }
+
+                if (!string.IsNullOrEmpty(updateTransactionDto.TransactionType))
+                {
+                    payment.TransactionType = updateTransactionDto.TransactionType.ToUpper();
+                }
+
+                if (!string.IsNullOrEmpty(updateTransactionDto.Description))
+                {
+                    payment.Description = updateTransactionDto.Description;
+                }
+
+                if (updateTransactionDto.Category != null) // Allow clearing category
+                {
+                    payment.Category = updateTransactionDto.Category;
+                }
+
+                if (updateTransactionDto.ReferenceNumber != null)
+                {
+                    payment.Reference = updateTransactionDto.ReferenceNumber;
+                }
+
+                if (updateTransactionDto.ExternalTransactionId != null)
+                {
+                    payment.ExternalTransactionId = updateTransactionDto.ExternalTransactionId;
+                }
+
+                if (updateTransactionDto.TransactionDate.HasValue)
+                {
+                    payment.TransactionDate = updateTransactionDto.TransactionDate.Value;
+                    payment.ProcessedAt = updateTransactionDto.TransactionDate.Value;
+                }
+
+                if (updateTransactionDto.Notes != null)
+                {
+                    payment.Notes = updateTransactionDto.Notes;
+                }
+
+                if (updateTransactionDto.Merchant != null)
+                {
+                    payment.Merchant = updateTransactionDto.Merchant;
+                }
+
+                if (updateTransactionDto.Location != null)
+                {
+                    payment.Location = updateTransactionDto.Location;
+                }
+
+                if (updateTransactionDto.IsRecurring.HasValue)
+                {
+                    payment.IsRecurring = updateTransactionDto.IsRecurring.Value;
+                }
+
+                if (updateTransactionDto.RecurringFrequency != null)
+                {
+                    payment.RecurringFrequency = updateTransactionDto.RecurringFrequency;
+                }
+
+                if (!string.IsNullOrEmpty(updateTransactionDto.Currency))
+                {
+                    payment.Currency = updateTransactionDto.Currency.ToUpper();
+                }
+
+                if (!string.IsNullOrEmpty(updateTransactionDto.BillId))
+                {
+                    payment.BillId = updateTransactionDto.BillId;
+                }
+
+                if (!string.IsNullOrEmpty(updateTransactionDto.SavingsAccountId))
+                {
+                    payment.SavingsAccountId = updateTransactionDto.SavingsAccountId;
+                }
+
+                if (!string.IsNullOrEmpty(updateTransactionDto.LoanId))
+                {
+                    payment.LoanId = updateTransactionDto.LoanId;
+                }
+
+                payment.UpdatedAt = DateTime.UtcNow;
+
+                // Apply new balance impact
+                var newAmount = payment.Amount;
+                var newTransactionType = payment.TransactionType;
+
+                if (newTransactionType == "CREDIT")
+                {
+                    bankAccount.CurrentBalance += newAmount;
+                }
+                else if (newTransactionType == "DEBIT")
+                {
+                    bankAccount.CurrentBalance -= newAmount;
+                }
+
+                payment.BalanceAfterTransaction = bankAccount.CurrentBalance;
+                bankAccount.UpdatedAt = DateTime.UtcNow;
+
+                // Update BankTransaction record if it exists
+                var bankTransaction = await _context.BankTransactions
+                    .FirstOrDefaultAsync(bt => bt.Id == transactionId && bt.UserId == userId);
+
+                if (bankTransaction != null)
+                {
+                    if (updateTransactionDto.Amount.HasValue)
+                    {
+                        bankTransaction.Amount = updateTransactionDto.Amount.Value;
+                    }
+
+                    if (!string.IsNullOrEmpty(updateTransactionDto.TransactionType))
+                    {
+                        bankTransaction.TransactionType = updateTransactionDto.TransactionType.ToUpper();
+                    }
+
+                    if (!string.IsNullOrEmpty(updateTransactionDto.Description))
+                    {
+                        bankTransaction.Description = updateTransactionDto.Description;
+                    }
+
+                    if (updateTransactionDto.Category != null)
+                    {
+                        bankTransaction.Category = updateTransactionDto.Category;
+                    }
+
+                    if (updateTransactionDto.ReferenceNumber != null)
+                    {
+                        bankTransaction.ReferenceNumber = updateTransactionDto.ReferenceNumber;
+                    }
+
+                    if (updateTransactionDto.ExternalTransactionId != null)
+                    {
+                        bankTransaction.ExternalTransactionId = updateTransactionDto.ExternalTransactionId;
+                    }
+
+                    if (updateTransactionDto.TransactionDate.HasValue)
+                    {
+                        bankTransaction.TransactionDate = updateTransactionDto.TransactionDate.Value;
+                    }
+
+                    if (updateTransactionDto.Notes != null)
+                    {
+                        bankTransaction.Notes = updateTransactionDto.Notes;
+                    }
+
+                    if (updateTransactionDto.Merchant != null)
+                    {
+                        bankTransaction.Merchant = updateTransactionDto.Merchant;
+                    }
+
+                    if (updateTransactionDto.Location != null)
+                    {
+                        bankTransaction.Location = updateTransactionDto.Location;
+                    }
+
+                    if (updateTransactionDto.IsRecurring.HasValue)
+                    {
+                        bankTransaction.IsRecurring = updateTransactionDto.IsRecurring.Value;
+                    }
+
+                    if (updateTransactionDto.RecurringFrequency != null)
+                    {
+                        bankTransaction.RecurringFrequency = updateTransactionDto.RecurringFrequency;
+                    }
+
+                    if (!string.IsNullOrEmpty(updateTransactionDto.Currency))
+                    {
+                        bankTransaction.Currency = updateTransactionDto.Currency.ToUpper();
+                    }
+
+                    bankTransaction.BalanceAfterTransaction = bankAccount.CurrentBalance;
+                    bankTransaction.UpdatedAt = DateTime.UtcNow;
+                }
+
+                await _context.SaveChangesAsync();
+
+                var transactionDto = MapPaymentToBankTransactionDto(payment);
+                return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Transaction updated successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<BankTransactionDto>.ErrorResult($"Failed to update transaction: {ex.Message}");
+            }
+        }
+
         public async Task<ApiResponse<List<BankTransactionDto>>> GetAccountTransactionsAsync(string bankAccountId, string userId, int page = 1, int limit = 50)
         {
             try
             {
-                var bankAccount = await _context.BankAccounts
-                    .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
+                // Use projection to avoid reading soft delete columns
+                var bankAccountData = await _context.BankAccounts
+                    .AsNoTracking()
+                    .Where(ba => ba.Id == bankAccountId && ba.UserId == userId)
+                    .Select(ba => new { ba.Id })
+                    .FirstOrDefaultAsync();
 
-                if (bankAccount == null)
+                if (bankAccountData == null)
                 {
                     return ApiResponse<List<BankTransactionDto>>.ErrorResult("Bank account not found");
                 }
 
-                var payments = await _context.Payments
+                // Use projection to avoid reading soft delete columns
+                var paymentsData = await _context.Payments
+                    .AsNoTracking()
                     .Where(p => p.BankAccountId == bankAccountId && p.UserId == userId && p.IsBankTransaction)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.UserId,
+                        p.Amount,
+                        p.TransactionType,
+                        p.Description,
+                        p.Category,
+                        p.TransactionDate,
+                        p.ProcessedAt,
+                        p.CreatedAt,
+                        p.UpdatedAt,
+                        p.BankAccountId,
+                        p.Reference,
+                        p.Status,
+                        p.Method,
+                        p.Notes,
+                        p.Merchant,
+                        p.Location,
+                        p.IsRecurring,
+                        p.RecurringFrequency,
+                        p.Currency,
+                        p.BalanceAfterTransaction,
+                        p.ExternalTransactionId
+                    })
                     .OrderByDescending(p => p.TransactionDate ?? p.ProcessedAt)
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToListAsync();
+                
+                // Convert to Payment entities
+                var payments = paymentsData.Select(p => new Payment
+                {
+                    Id = p.Id,
+                    UserId = p.UserId,
+                    Amount = p.Amount,
+                    TransactionType = p.TransactionType,
+                    Description = p.Description,
+                    Category = p.Category,
+                    TransactionDate = p.TransactionDate,
+                    ProcessedAt = p.ProcessedAt,
+                    CreatedAt = p.CreatedAt,
+                    UpdatedAt = p.UpdatedAt,
+                    BankAccountId = p.BankAccountId,
+                    Reference = p.Reference,
+                    Status = p.Status,
+                    Method = p.Method,
+                    Notes = p.Notes,
+                    Merchant = p.Merchant,
+                    Location = p.Location,
+                    IsRecurring = p.IsRecurring,
+                    RecurringFrequency = p.RecurringFrequency,
+                    Currency = p.Currency,
+                    BalanceAfterTransaction = p.BalanceAfterTransaction,
+                    ExternalTransactionId = p.ExternalTransactionId,
+                    IsBankTransaction = true,
+                    IsDeleted = false
+                }).ToList();
 
                 var transactionDtos = payments.Select(MapPaymentToBankTransactionDto).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
@@ -1270,20 +2163,81 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var query = _context.BankTransactions
-                    .Include(t => t.BankAccount)
-                    .Where(t => t.UserId == userId);
+                // Use projection to avoid reading soft delete columns
+                var allTransactionsData = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(t => t.UserId == userId)
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.BankAccountId,
+                        t.UserId,
+                        t.Amount,
+                        t.TransactionType,
+                        t.Description,
+                        t.Category,
+                        t.ReferenceNumber,
+                        t.ExternalTransactionId,
+                        t.TransactionDate,
+                        t.CreatedAt,
+                        t.UpdatedAt,
+                        t.Notes,
+                        t.Merchant,
+                        t.Location,
+                        t.IsRecurring,
+                        t.RecurringFrequency,
+                        t.Currency,
+                        t.BalanceAfterTransaction,
+                        BankAccount = t.BankAccount != null ? new
+                        {
+                            t.BankAccount.Id,
+                            t.BankAccount.AccountName,
+                            t.BankAccount.AccountType
+                        } : null
+                    })
+                    .ToListAsync();
+
+                // Convert to BankTransaction entities (filter out soft-deleted in memory)
+                var filteredTransactions = allTransactionsData.Select(t => new BankTransaction
+                {
+                    Id = t.Id,
+                    BankAccountId = t.BankAccountId,
+                    UserId = t.UserId,
+                    Amount = t.Amount,
+                    TransactionType = t.TransactionType,
+                    Description = t.Description,
+                    Category = t.Category,
+                    ReferenceNumber = t.ReferenceNumber,
+                    ExternalTransactionId = t.ExternalTransactionId,
+                    TransactionDate = t.TransactionDate,
+                    CreatedAt = t.CreatedAt,
+                    UpdatedAt = t.UpdatedAt,
+                    Notes = t.Notes,
+                    Merchant = t.Merchant,
+                    Location = t.Location,
+                    IsRecurring = t.IsRecurring,
+                    RecurringFrequency = t.RecurringFrequency,
+                    Currency = t.Currency,
+                    BalanceAfterTransaction = t.BalanceAfterTransaction,
+                    IsDeleted = false,
+                    BankAccount = t.BankAccount != null ? new BankAccount
+                    {
+                        Id = t.BankAccount.Id,
+                        AccountName = t.BankAccount.AccountName,
+                        AccountType = t.BankAccount.AccountType
+                    } : null
+                }).ToList();
 
                 if (!string.IsNullOrEmpty(accountType))
                 {
-                    query = query.Where(t => t.BankAccount.AccountType == accountType.ToLower());
+                    filteredTransactions = filteredTransactions.Where(t => t.BankAccount.AccountType == accountType.ToLower()).ToList();
                 }
 
-                var transactions = await query
+                var transactions = filteredTransactions
                     .OrderByDescending(t => t.TransactionDate)
                     .Skip((page - 1) * limit)
                     .Take(limit)
-                    .ToListAsync();
+                    .ToList();
 
                 var transactionDtos = transactions.Select(MapToBankTransactionDto).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
@@ -1298,14 +2252,75 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var transaction = await _context.BankTransactions
-                    .Include(t => t.BankAccount)
-                    .FirstOrDefaultAsync(t => t.Id == transactionId && t.UserId == userId);
-
-                if (transaction == null)
+                // Use projection to avoid reading soft delete columns
+                var transactionData = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(t => t.Id == transactionId && t.UserId == userId)
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.BankAccountId,
+                        t.UserId,
+                        t.Amount,
+                        t.TransactionType,
+                        t.Description,
+                        t.Category,
+                        t.ReferenceNumber,
+                        t.ExternalTransactionId,
+                        t.TransactionDate,
+                        t.CreatedAt,
+                        t.UpdatedAt,
+                        t.Notes,
+                        t.Merchant,
+                        t.Location,
+                        t.IsRecurring,
+                        t.RecurringFrequency,
+                        t.Currency,
+                        t.BalanceAfterTransaction,
+                        BankAccount = t.BankAccount != null ? new
+                        {
+                            t.BankAccount.Id,
+                            t.BankAccount.AccountName,
+                            t.BankAccount.AccountType
+                        } : null
+                    })
+                    .FirstOrDefaultAsync();
+                
+                if (transactionData == null)
                 {
                     return ApiResponse<BankTransactionDto>.ErrorResult("Transaction not found");
                 }
+                
+                // Convert to BankTransaction entity
+                var transaction = new BankTransaction
+                {
+                    Id = transactionData.Id,
+                    BankAccountId = transactionData.BankAccountId,
+                    UserId = transactionData.UserId,
+                    Amount = transactionData.Amount,
+                    TransactionType = transactionData.TransactionType,
+                    Description = transactionData.Description,
+                    Category = transactionData.Category,
+                    ReferenceNumber = transactionData.ReferenceNumber,
+                    ExternalTransactionId = transactionData.ExternalTransactionId,
+                    TransactionDate = transactionData.TransactionDate,
+                    CreatedAt = transactionData.CreatedAt,
+                    UpdatedAt = transactionData.UpdatedAt,
+                    Notes = transactionData.Notes,
+                    Merchant = transactionData.Merchant,
+                    Location = transactionData.Location,
+                    IsRecurring = transactionData.IsRecurring,
+                    RecurringFrequency = transactionData.RecurringFrequency,
+                    Currency = transactionData.Currency,
+                    BalanceAfterTransaction = transactionData.BalanceAfterTransaction,
+                    IsDeleted = false,
+                    BankAccount = transactionData.BankAccount != null ? new BankAccount
+                    {
+                        Id = transactionData.BankAccount.Id,
+                        AccountName = transactionData.BankAccount.AccountName,
+                        AccountType = transactionData.BankAccount.AccountType
+                    } : null
+                };
 
                 var transactionDto = MapToBankTransactionDto(transaction);
                 return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto);
@@ -1322,16 +2337,130 @@ namespace UtilityHub360.Services
             {
                 var (startDate, endDate) = GetPeriodDates(period);
 
-                var transactions = await _context.BankTransactions
-                    .Include(t => t.BankAccount)
+                // Filter out soft-deleted transactions and use projection
+                var allTransactionsData = await _context.BankTransactions
+                    .AsNoTracking()
                     .Where(t => t.UserId == userId && 
+                               !t.IsDeleted &&
                                t.TransactionDate >= startDate && 
                                t.TransactionDate <= endDate)
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.BankAccountId,
+                        t.UserId,
+                        t.Amount,
+                        t.TransactionType,
+                        t.Description,
+                        t.Category,
+                        t.ReferenceNumber,
+                        t.ExternalTransactionId,
+                        t.TransactionDate,
+                        t.CreatedAt,
+                        t.UpdatedAt,
+                        t.Notes,
+                        t.Merchant,
+                        t.Location,
+                        t.IsRecurring,
+                        t.RecurringFrequency,
+                        t.Currency,
+                        t.BalanceAfterTransaction,
+                        t.IsDeleted,
+                        BankAccount = t.BankAccount != null ? new
+                        {
+                            t.BankAccount.Id,
+                            t.BankAccount.AccountName,
+                            t.BankAccount.AccountType,
+                            t.BankAccount.CurrentBalance
+                        } : null
+                    })
                     .ToListAsync();
+                
+                // Convert to BankTransaction entities
+                var transactions = allTransactionsData.Select(t => new BankTransaction
+                {
+                    Id = t.Id,
+                    BankAccountId = t.BankAccountId,
+                    UserId = t.UserId,
+                    Amount = t.Amount,
+                    TransactionType = t.TransactionType,
+                    Description = t.Description,
+                    Category = t.Category,
+                    ReferenceNumber = t.ReferenceNumber,
+                    ExternalTransactionId = t.ExternalTransactionId,
+                    TransactionDate = t.TransactionDate,
+                    CreatedAt = t.CreatedAt,
+                    UpdatedAt = t.UpdatedAt,
+                    Notes = t.Notes,
+                    Merchant = t.Merchant,
+                    Location = t.Location,
+                    IsRecurring = t.IsRecurring,
+                    RecurringFrequency = t.RecurringFrequency,
+                    Currency = t.Currency,
+                    BalanceAfterTransaction = t.BalanceAfterTransaction,
+                    IsDeleted = t.IsDeleted,
+                    BankAccount = t.BankAccount != null ? new BankAccount
+                    {
+                        Id = t.BankAccount.Id,
+                        AccountName = t.BankAccount.AccountName,
+                        AccountType = t.BankAccount.AccountType,
+                        CurrentBalance = t.BankAccount.CurrentBalance
+                    } : null
+                }).ToList();
 
-                var bankAccounts = await _context.BankAccounts
+                // Use projection to avoid reading soft delete columns
+                var bankAccountsData = await _context.BankAccounts
+                    .AsNoTracking()
                     .Where(ba => ba.UserId == userId && ba.IsActive)
+                    .Select(ba => new
+                    {
+                        ba.Id,
+                        ba.UserId,
+                        ba.AccountName,
+                        ba.AccountType,
+                        ba.InitialBalance,
+                        ba.CurrentBalance,
+                        ba.Currency,
+                        ba.Description,
+                        ba.FinancialInstitution,
+                        ba.AccountNumber,
+                        ba.RoutingNumber,
+                        ba.SyncFrequency,
+                        ba.IsConnected,
+                        ba.ConnectionId,
+                        ba.LastSyncedAt,
+                        ba.CreatedAt,
+                        ba.UpdatedAt,
+                        ba.IsActive,
+                        ba.Iban,
+                        ba.SwiftCode
+                    })
                     .ToListAsync();
+                
+                // Convert to BankAccount entities
+                var bankAccounts = bankAccountsData.Select(ba => new BankAccount
+                {
+                    Id = ba.Id,
+                    UserId = ba.UserId,
+                    AccountName = ba.AccountName,
+                    AccountType = ba.AccountType,
+                    InitialBalance = ba.InitialBalance,
+                    CurrentBalance = ba.CurrentBalance,
+                    Currency = ba.Currency,
+                    Description = ba.Description,
+                    FinancialInstitution = ba.FinancialInstitution,
+                    AccountNumber = ba.AccountNumber,
+                    RoutingNumber = ba.RoutingNumber,
+                    SyncFrequency = ba.SyncFrequency,
+                    IsConnected = ba.IsConnected,
+                    ConnectionId = ba.ConnectionId,
+                    LastSyncedAt = ba.LastSyncedAt,
+                    CreatedAt = ba.CreatedAt,
+                    UpdatedAt = ba.UpdatedAt,
+                    IsActive = ba.IsActive,
+                    Iban = ba.Iban,
+                    SwiftCode = ba.SwiftCode
+                }).ToList();
 
                 var analytics = new BankAccountAnalyticsDto
                 {
@@ -1371,12 +2500,17 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var transactions = await _context.BankTransactions
+                var allTransactions = await _context.BankTransactions
                     .Include(t => t.BankAccount)
                     .Where(t => t.UserId == userId)
+                    .ToListAsync();
+
+                // Filter out soft-deleted transactions in memory
+                var transactions = allTransactions
+                    .Where(t => !t.IsDeleted)
                     .OrderByDescending(t => t.TransactionDate)
                     .Take(limit)
-                    .ToListAsync();
+                    .ToList();
 
                 var transactionDtos = transactions.Select(MapToBankTransactionDto).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
@@ -1393,15 +2527,26 @@ namespace UtilityHub360.Services
             {
                 var (startDate, endDate) = GetPeriodDates(period);
 
-                var spendingByCategory = await _context.BankTransactions
+                // Use projection to avoid reading soft delete columns
+                var allTransactionsData = await _context.BankTransactions
+                    .AsNoTracking()
                     .Where(t => t.UserId == userId && 
                                t.TransactionType == "DEBIT" && 
                                t.TransactionDate >= startDate && 
                                t.TransactionDate <= endDate &&
                                !string.IsNullOrEmpty(t.Category))
+                    .Select(t => new
+                    {
+                        t.Category,
+                        t.Amount
+                    })
+                    .ToListAsync();
+
+                // Group by category (no need to filter IsDeleted since we're using projection)
+                var spendingByCategory = allTransactionsData
                     .GroupBy(t => t.Category!)
                     .Select(g => new { Category = g.Key, Amount = g.Sum(t => t.Amount) })
-                    .ToDictionaryAsync(x => x.Category, x => x.Amount);
+                    .ToDictionary(x => x.Category, x => x.Amount);
 
                 return ApiResponse<Dictionary<string, decimal>>.SuccessResult(spendingByCategory);
             }
@@ -1492,12 +2637,124 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var bankAccounts = await _context.BankAccounts
-                    .Include(ba => ba.Transactions)
+                // Use projection to avoid reading soft delete columns
+                var bankAccountsData = await _context.BankAccounts
+                    .AsNoTracking()
+                    .Select(ba => new
+                    {
+                        ba.Id,
+                        ba.UserId,
+                        ba.AccountName,
+                        ba.AccountType,
+                        ba.InitialBalance,
+                        ba.CurrentBalance,
+                        ba.Currency,
+                        ba.Description,
+                        ba.FinancialInstitution,
+                        ba.AccountNumber,
+                        ba.RoutingNumber,
+                        ba.SyncFrequency,
+                        ba.IsConnected,
+                        ba.ConnectionId,
+                        ba.LastSyncedAt,
+                        ba.CreatedAt,
+                        ba.UpdatedAt,
+                        ba.IsActive,
+                        ba.Iban,
+                        ba.SwiftCode
+                    })
                     .OrderByDescending(ba => ba.CreatedAt)
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToListAsync();
+                
+                // Convert to BankAccount entities
+                var bankAccounts = bankAccountsData.Select(ba => new BankAccount
+                {
+                    Id = ba.Id,
+                    UserId = ba.UserId,
+                    AccountName = ba.AccountName,
+                    AccountType = ba.AccountType,
+                    InitialBalance = ba.InitialBalance,
+                    CurrentBalance = ba.CurrentBalance,
+                    Currency = ba.Currency,
+                    Description = ba.Description,
+                    FinancialInstitution = ba.FinancialInstitution,
+                    AccountNumber = ba.AccountNumber,
+                    RoutingNumber = ba.RoutingNumber,
+                    SyncFrequency = ba.SyncFrequency,
+                    IsConnected = ba.IsConnected,
+                    ConnectionId = ba.ConnectionId,
+                    LastSyncedAt = ba.LastSyncedAt,
+                    CreatedAt = ba.CreatedAt,
+                    UpdatedAt = ba.UpdatedAt,
+                    IsActive = ba.IsActive,
+                    Iban = ba.Iban,
+                    SwiftCode = ba.SwiftCode,
+                    Transactions = new List<BankTransaction>()
+                }).ToList();
+                
+                // Load transactions separately using projection
+                var bankAccountIds = bankAccounts.Select(ba => ba.Id).ToList();
+                var transactionsData = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(t => bankAccountIds.Contains(t.BankAccountId))
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.BankAccountId,
+                        t.UserId,
+                        t.Amount,
+                        t.TransactionType,
+                        t.Description,
+                        t.Category,
+                        t.ReferenceNumber,
+                        t.ExternalTransactionId,
+                        t.TransactionDate,
+                        t.CreatedAt,
+                        t.UpdatedAt,
+                        t.Notes,
+                        t.Merchant,
+                        t.Location,
+                        t.IsRecurring,
+                        t.RecurringFrequency,
+                        t.Currency,
+                        t.BalanceAfterTransaction
+                    })
+                    .ToListAsync();
+                
+                // Convert to BankTransaction entities
+                var transactions = transactionsData.Select(t => new BankTransaction
+                {
+                    Id = t.Id,
+                    BankAccountId = t.BankAccountId,
+                    UserId = t.UserId,
+                    Amount = t.Amount,
+                    TransactionType = t.TransactionType,
+                    Description = t.Description,
+                    Category = t.Category,
+                    ReferenceNumber = t.ReferenceNumber,
+                    ExternalTransactionId = t.ExternalTransactionId,
+                    TransactionDate = t.TransactionDate,
+                    CreatedAt = t.CreatedAt,
+                    UpdatedAt = t.UpdatedAt,
+                    Notes = t.Notes,
+                    Merchant = t.Merchant,
+                    Location = t.Location,
+                    IsRecurring = t.IsRecurring,
+                    RecurringFrequency = t.RecurringFrequency,
+                    Currency = t.Currency,
+                    BalanceAfterTransaction = t.BalanceAfterTransaction,
+                    IsDeleted = false
+                }).ToList();
+                
+                // Attach transactions to bank accounts in memory
+                foreach (var account in bankAccounts)
+                {
+                    account.Transactions = transactions
+                        .Where(t => t.BankAccountId == account.Id)
+                        .ToList();
+                }
 
                 var bankAccountDtos = new List<BankAccountDto>();
                 foreach (var account in bankAccounts)
@@ -1517,12 +2774,17 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var transactions = await _context.BankTransactions
+                var allTransactions = await _context.BankTransactions
                     .Include(t => t.BankAccount)
+                    .ToListAsync();
+
+                // Filter out soft-deleted transactions in memory
+                var transactions = allTransactions
+                    .Where(t => !t.IsDeleted)
                     .OrderByDescending(t => t.TransactionDate)
                     .Skip((page - 1) * limit)
                     .Take(limit)
-                    .ToListAsync();
+                    .ToList();
 
                 var transactionDtos = transactions.Select(MapToBankTransactionDto).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
@@ -1588,12 +2850,15 @@ namespace UtilityHub360.Services
             {
                 var (startDate, endDate) = GetPeriodDates(period);
 
-                var expenses = await _context.BankTransactions
+                var allExpenses = await _context.BankTransactions
                     .Where(t => t.UserId == userId && 
                                t.TransactionType == "DEBIT" && 
                                t.TransactionDate >= startDate && 
                                t.TransactionDate <= endDate)
                     .ToListAsync();
+
+                // Filter out soft-deleted transactions in memory
+                var expenses = allExpenses.Where(t => !t.IsDeleted).ToList();
 
                 var analytics = new ExpenseAnalyticsDto
                 {
@@ -1636,38 +2901,43 @@ namespace UtilityHub360.Services
                 var lastMonthStart = thisMonthStart.AddMonths(-1);
                 var lastMonthEnd = thisMonthStart.AddDays(-1);
 
-                var todayExpenses = await _context.BankTransactions
-                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT" && t.TransactionDate.Date == today)
-                    .SumAsync(t => t.Amount);
+                // Load all transactions first, then filter in memory
+                var allDebitTransactions = await _context.BankTransactions
+                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT")
+                    .ToListAsync();
 
-                var thisWeekExpenses = await _context.BankTransactions
-                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT" && t.TransactionDate >= thisWeekStart)
-                    .SumAsync(t => t.Amount);
+                // Filter out soft-deleted transactions in memory
+                var debitTransactions = allDebitTransactions.Where(t => !t.IsDeleted).ToList();
 
-                var thisMonthExpenses = await _context.BankTransactions
-                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT" && t.TransactionDate >= thisMonthStart)
-                    .SumAsync(t => t.Amount);
+                var todayExpenses = debitTransactions
+                    .Where(t => t.TransactionDate.Date == today)
+                    .Sum(t => t.Amount);
 
-                var lastMonthExpenses = await _context.BankTransactions
-                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT" && 
-                               t.TransactionDate >= lastMonthStart && t.TransactionDate <= lastMonthEnd)
-                    .SumAsync(t => t.Amount);
+                var thisWeekExpenses = debitTransactions
+                    .Where(t => t.TransactionDate >= thisWeekStart)
+                    .Sum(t => t.Amount);
 
-                var topCategories = await _context.BankTransactions
-                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT" && t.TransactionDate >= thisMonthStart)
+                var thisMonthExpenses = debitTransactions
+                    .Where(t => t.TransactionDate >= thisMonthStart)
+                    .Sum(t => t.Amount);
+
+                var lastMonthExpenses = debitTransactions
+                    .Where(t => t.TransactionDate >= lastMonthStart && t.TransactionDate <= lastMonthEnd)
+                    .Sum(t => t.Amount);
+
+                var topCategories = debitTransactions
+                    .Where(t => t.TransactionDate >= thisMonthStart && !string.IsNullOrEmpty(t.Category))
                     .GroupBy(t => t.Category!)
-                    .Where(g => !string.IsNullOrEmpty(g.Key))
                     .Select(g => new { Category = g.Key, Amount = g.Sum(t => t.Amount) })
                     .OrderByDescending(x => x.Amount)
                     .Take(5)
-                    .ToDictionaryAsync(x => x.Category, x => x.Amount);
+                    .ToDictionary(x => x.Category, x => x.Amount);
 
-                var recentExpenses = await _context.BankTransactions
-                    .Where(t => t.UserId == userId && t.TransactionType == "DEBIT")
+                var recentExpenses = debitTransactions
                     .OrderByDescending(t => t.TransactionDate)
                     .Take(5)
                     .Select(t => MapToBankTransactionDto(t))
-                    .ToListAsync();
+                    .ToList();
 
                 var summary = new ExpenseSummaryDto
                 {
@@ -1691,14 +2961,19 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var expenses = await _context.BankTransactions
+                var allExpenses = await _context.BankTransactions
                     .Where(t => t.UserId == userId && 
                                t.TransactionType == "DEBIT" && 
                                t.Category == category)
+                    .ToListAsync();
+
+                // Filter out soft-deleted transactions in memory
+                var expenses = allExpenses
+                    .Where(t => !t.IsDeleted)
                     .OrderByDescending(t => t.TransactionDate)
                     .Skip((page - 1) * limit)
                     .Take(limit)
-                    .ToListAsync();
+                    .ToList();
 
                 var expenseDtos = expenses.Select(MapToBankTransactionDto).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(expenseDtos);
@@ -1713,13 +2988,18 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var categories = await _context.BankTransactions
+                var allTransactions = await _context.BankTransactions
                     .Where(t => t.UserId == userId && 
                                t.TransactionType == "DEBIT" && 
                                !string.IsNullOrEmpty(t.Category))
+                    .ToListAsync();
+
+                // Filter out soft-deleted transactions in memory, then group
+                var categories = allTransactions
+                    .Where(t => !t.IsDeleted)
                     .GroupBy(t => t.Category!)
                     .Select(g => new { Category = g.Key, Amount = g.Sum(t => t.Amount) })
-                    .ToDictionaryAsync(x => x.Category, x => x.Amount);
+                    .ToDictionary(x => x.Category, x => x.Amount);
 
                 return ApiResponse<Dictionary<string, decimal>>.SuccessResult(categories);
             }
@@ -1733,46 +3013,125 @@ namespace UtilityHub360.Services
         {
             try
             {
-                // Find the transaction and verify it belongs to the user
-                var transaction = await _context.BankTransactions
+                // Check Payments table first (primary storage for bank transactions)
+                var payment = await _context.Payments
+                    .Include(p => p.BankAccount)
+                    .FirstOrDefaultAsync(p => p.Id == transactionId && p.UserId == userId && p.IsBankTransaction);
+
+                if (payment != null)
+                {
+                    // Found in Payments table
+                    // ==================== MONTH CLOSURE VALIDATION ====================
+                    if (payment.BankAccountId != null && payment.TransactionDate.HasValue)
+                    {
+                        var transactionDate = payment.TransactionDate.Value;
+                        var isMonthClosed = await _context.ClosedMonths
+                            .AnyAsync(cm => cm.BankAccountId == payment.BankAccountId &&
+                                           cm.Year == transactionDate.Year &&
+                                           cm.Month == transactionDate.Month);
+
+                        if (isMonthClosed)
+                        {
+                            var monthName = new[] { "", "January", "February", "March", "April", "May", "June",
+                                                    "July", "August", "September", "October", "November", "December" }[transactionDate.Month];
+                            return ApiResponse<bool>.ErrorResult(
+                                $"Cannot delete transaction. The month {monthName} {transactionDate.Year} is closed for this account.");
+                        }
+                    }
+                    // ==================== END MONTH CLOSURE VALIDATION ====================
+
+                    // Check if transaction is synced from bank (read-only)
+                    if (!string.IsNullOrEmpty(payment.ExternalTransactionId))
+                    {
+                        return ApiResponse<bool>.ErrorResult("Cannot delete transactions synced from bank");
+                    }
+
+                    // Check if transaction can be deleted based on business rules
+                    var hoursSinceCreation = (DateTime.UtcNow - payment.CreatedAt).TotalHours;
+                    
+                    // If transaction is > 24 hours old, use soft delete instead
+                    if (hoursSinceCreation > 24)
+                    {
+                        // Automatically use soft delete
+                        return await SoftDeleteTransactionAsync(transactionId, userId, "Auto-soft-deleted: Transaction older than 24 hours");
+                    }
+
+                    // Reverse the transaction effect on the bank account balance
+                    if (payment.BankAccount != null)
+                    {
+                        if (payment.TransactionType == "CREDIT")
+                        {
+                            payment.BankAccount.CurrentBalance -= payment.Amount;
+                        }
+                        else if (payment.TransactionType == "DEBIT")
+                        {
+                            payment.BankAccount.CurrentBalance += payment.Amount;
+                        }
+                        payment.BankAccount.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    // Remove from Payments table
+                    _context.Payments.Remove(payment);
+                }
+
+                // Also check and remove from BankTransactions table if it exists
+                var bankTransaction = await _context.BankTransactions
                     .Include(t => t.BankAccount)
                     .FirstOrDefaultAsync(t => t.Id == transactionId && t.UserId == userId);
 
-                if (transaction == null)
+                if (bankTransaction != null)
+                {
+                    // Check if already deleted
+                    if (bankTransaction.IsDeleted)
+                    {
+                        return ApiResponse<bool>.ErrorResult("Transaction is already deleted");
+                    }
+
+                    // ==================== MONTH CLOSURE VALIDATION ====================
+                    var transactionDate = bankTransaction.TransactionDate;
+                    var isMonthClosed = await _context.ClosedMonths
+                        .AnyAsync(cm => cm.BankAccountId == bankTransaction.BankAccountId &&
+                                       cm.Year == transactionDate.Year &&
+                                       cm.Month == transactionDate.Month);
+
+                    if (isMonthClosed)
+                    {
+                        var monthName = new[] { "", "January", "February", "March", "April", "May", "June",
+                                                "July", "August", "September", "October", "November", "December" }[transactionDate.Month];
+                        return ApiResponse<bool>.ErrorResult(
+                            $"Cannot delete transaction. The month {monthName} {transactionDate.Year} is closed for this account.");
+                    }
+                    // ==================== END MONTH CLOSURE VALIDATION ====================
+
+                    // Check if transaction is synced from bank (read-only)
+                    if (!string.IsNullOrEmpty(bankTransaction.ExternalTransactionId))
+                    {
+                        return ApiResponse<bool>.ErrorResult("Cannot delete transactions synced from bank");
+                    }
+
+                    // Reverse balance impact (only if not already reversed from Payment above)
+                    if (payment == null && bankTransaction.BankAccount != null)
+                    {
+                        if (bankTransaction.TransactionType == "CREDIT")
+                        {
+                            bankTransaction.BankAccount.CurrentBalance -= bankTransaction.Amount;
+                        }
+                        else if (bankTransaction.TransactionType == "DEBIT")
+                        {
+                            bankTransaction.BankAccount.CurrentBalance += bankTransaction.Amount;
+                        }
+                        bankTransaction.BankAccount.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    // Remove from BankTransactions table
+                    _context.BankTransactions.Remove(bankTransaction);
+                }
+
+                // If neither was found, return error
+                if (payment == null && bankTransaction == null)
                 {
                     return ApiResponse<bool>.ErrorResult("Transaction not found or you don't have permission to delete it");
                 }
-
-                // Check if transaction can be deleted based on business rules
-                var hoursSinceCreation = (DateTime.UtcNow - transaction.CreatedAt).TotalHours;
-                if (hoursSinceCreation > 24)
-                {
-                    return ApiResponse<bool>.ErrorResult("Cannot delete transactions older than 24 hours");
-                }
-
-                // Check if the bank account is still active
-                if (!transaction.BankAccount.IsActive)
-                {
-                    return ApiResponse<bool>.ErrorResult("Cannot delete transactions for inactive bank accounts");
-                }
-
-                // Reverse the transaction effect on the bank account balance
-                if (transaction.TransactionType == "CREDIT")
-                {
-                    // If it was a credit (money in), subtract it from balance
-                    transaction.BankAccount.CurrentBalance -= transaction.Amount;
-                }
-                else if (transaction.TransactionType == "DEBIT")
-                {
-                    // If it was a debit (money out), add it back to balance
-                    transaction.BankAccount.CurrentBalance += transaction.Amount;
-                }
-
-                // Update the bank account's updated timestamp
-                transaction.BankAccount.UpdatedAt = DateTime.UtcNow;
-
-                // Remove the transaction
-                _context.BankTransactions.Remove(transaction);
 
                 await _context.SaveChangesAsync();
 
@@ -1781,6 +3140,419 @@ namespace UtilityHub360.Services
             catch (Exception ex)
             {
                 return ApiResponse<bool>.ErrorResult($"Failed to delete transaction: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Soft delete (hide) a bank transaction - for transactions older than 24 hours
+        /// </summary>
+        public async Task<ApiResponse<bool>> SoftDeleteTransactionAsync(string transactionId, string userId, string? reason = null)
+        {
+            try
+            {
+                // Use projection to find transaction data without materializing soft delete columns
+                var bankTransactionData = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(t => t.Id == transactionId && t.UserId == userId)
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.BankAccountId,
+                        t.Amount,
+                        t.TransactionType,
+                        t.ExternalTransactionId
+                    })
+                    .FirstOrDefaultAsync();
+
+                if (bankTransactionData != null)
+                {
+                    // Check if transaction is synced from bank (read-only)
+                    if (!string.IsNullOrEmpty(bankTransactionData.ExternalTransactionId))
+                    {
+                        return ApiResponse<bool>.ErrorResult("Cannot delete transactions synced from bank");
+                    }
+
+                    // Load BankAccount separately using projection
+                    var bankAccountData = await _context.BankAccounts
+                        .AsNoTracking()
+                        .Where(ba => ba.Id == bankTransactionData.BankAccountId)
+                        .Select(ba => new
+                        {
+                            ba.Id,
+                            ba.CurrentBalance
+                        })
+                        .FirstOrDefaultAsync();
+
+                    if (bankAccountData == null)
+                    {
+                        return ApiResponse<bool>.ErrorResult("Bank account not found");
+                    }
+
+                    // Calculate new balance
+                    decimal newBalance = bankAccountData.CurrentBalance;
+                    if (bankTransactionData.TransactionType == "CREDIT")
+                    {
+                        newBalance -= bankTransactionData.Amount;
+                    }
+                    else if (bankTransactionData.TransactionType == "DEBIT")
+                    {
+                        newBalance += bankTransactionData.Amount;
+                    }
+
+                    // Update BankAccount balance using raw SQL to avoid materializing soft delete columns
+                    await _context.Database.ExecuteSqlInterpolatedAsync(
+                        $@"UPDATE BankAccounts 
+                           SET CurrentBalance = {newBalance}, 
+                               UpdatedAt = {DateTime.UtcNow}
+                           WHERE Id = {bankTransactionData.BankAccountId}");
+
+                    // Update transaction soft delete properties using raw SQL
+                    // Note: This will fail if columns don't exist, but that's expected until migration is run
+                    try
+                    {
+                        await _context.Database.ExecuteSqlInterpolatedAsync(
+                            $@"UPDATE BankTransactions 
+                               SET IsDeleted = 1, 
+                                   DeletedAt = {DateTime.UtcNow}, 
+                                   DeletedBy = {userId}, 
+                                   DeleteReason = {reason ?? (string?)null}, 
+                                   UpdatedAt = {DateTime.UtcNow}
+                               WHERE Id = {bankTransactionData.Id}");
+                    }
+                    catch
+                    {
+                        // If soft delete columns don't exist, we can't perform soft delete
+                        // This is expected until migration is run
+                        return ApiResponse<bool>.ErrorResult("Soft delete columns do not exist. Please run the database migration first.");
+                    }
+
+                    return ApiResponse<bool>.SuccessResult(true, "Transaction hidden successfully");
+                }
+
+                // If not found in BankTransactions, check Payments table using projection
+                var paymentTransactionData = await _context.Payments
+                    .AsNoTracking()
+                    .Where(p => p.Id == transactionId && p.UserId == userId && p.IsBankTransaction)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.BankAccountId,
+                        p.Amount,
+                        p.TransactionType,
+                        p.ExternalTransactionId
+                    })
+                    .FirstOrDefaultAsync();
+
+                if (paymentTransactionData != null)
+                {
+                    // Check if transaction is synced from bank (read-only)
+                    if (!string.IsNullOrEmpty(paymentTransactionData.ExternalTransactionId))
+                    {
+                        return ApiResponse<bool>.ErrorResult("Cannot delete transactions synced from bank");
+                    }
+
+                    if (string.IsNullOrEmpty(paymentTransactionData.TransactionType) || paymentTransactionData.BankAccountId == null)
+                    {
+                        return ApiResponse<bool>.ErrorResult("Invalid transaction data");
+                    }
+
+                    // Load BankAccount separately using projection
+                    var bankAccountData = await _context.BankAccounts
+                        .AsNoTracking()
+                        .Where(ba => ba.Id == paymentTransactionData.BankAccountId)
+                        .Select(ba => new
+                        {
+                            ba.Id,
+                            ba.CurrentBalance
+                        })
+                        .FirstOrDefaultAsync();
+
+                    if (bankAccountData == null)
+                    {
+                        return ApiResponse<bool>.ErrorResult("Bank account not found");
+                    }
+
+                    // Calculate new balance
+                    decimal newBalance = bankAccountData.CurrentBalance;
+                    if (paymentTransactionData.TransactionType == "CREDIT")
+                    {
+                        newBalance -= paymentTransactionData.Amount;
+                    }
+                    else if (paymentTransactionData.TransactionType == "DEBIT")
+                    {
+                        newBalance += paymentTransactionData.Amount;
+                    }
+
+                    // Update BankAccount balance using raw SQL
+                    await _context.Database.ExecuteSqlInterpolatedAsync(
+                        $@"UPDATE BankAccounts 
+                           SET CurrentBalance = {newBalance}, 
+                               UpdatedAt = {DateTime.UtcNow}
+                           WHERE Id = {paymentTransactionData.BankAccountId}");
+
+                    // Update payment soft delete properties using raw SQL
+                    try
+                    {
+                        await _context.Database.ExecuteSqlInterpolatedAsync(
+                            $@"UPDATE Payments 
+                               SET IsDeleted = 1, 
+                                   DeletedAt = {DateTime.UtcNow}, 
+                                   DeletedBy = {userId}, 
+                                   DeleteReason = {reason ?? (string?)null}, 
+                                   UpdatedAt = {DateTime.UtcNow}
+                               WHERE Id = {paymentTransactionData.Id}");
+                    }
+                    catch
+                    {
+                        // If soft delete columns don't exist, we can't perform soft delete
+                        return ApiResponse<bool>.ErrorResult("Soft delete columns do not exist. Please run the database migration first.");
+                    }
+
+                    return ApiResponse<bool>.SuccessResult(true, "Transaction hidden successfully");
+                }
+
+                // Transaction not found in either table
+                return ApiResponse<bool>.ErrorResult("Transaction not found or you don't have permission to delete it");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Failed to hide transaction: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Restore a soft-deleted (hidden) bank transaction
+        /// </summary>
+        public async Task<ApiResponse<BankTransactionDto>> RestoreTransactionAsync(string transactionId, string userId)
+        {
+            try
+            {
+                // Use projection to find transaction data without materializing soft delete columns
+                var bankTransactionData = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(t => t.Id == transactionId && t.UserId == userId)
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.BankAccountId,
+                        t.Amount,
+                        t.TransactionType,
+                        t.Description,
+                        t.Category,
+                        t.ReferenceNumber,
+                        t.ExternalTransactionId,
+                        t.TransactionDate,
+                        t.CreatedAt,
+                        t.UpdatedAt,
+                        t.Notes,
+                        t.Merchant,
+                        t.Location,
+                        t.IsRecurring,
+                        t.RecurringFrequency,
+                        t.Currency,
+                        t.BalanceAfterTransaction
+                    })
+                    .FirstOrDefaultAsync();
+
+                if (bankTransactionData != null)
+                {
+                    // Load BankAccount separately using projection
+                    var bankAccountData = await _context.BankAccounts
+                        .AsNoTracking()
+                        .Where(ba => ba.Id == bankTransactionData.BankAccountId)
+                        .Select(ba => new
+                        {
+                            ba.Id,
+                            ba.CurrentBalance
+                        })
+                        .FirstOrDefaultAsync();
+
+                    if (bankAccountData == null)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found");
+                    }
+
+                    // Calculate new balance (re-apply transaction effect)
+                    decimal newBalance = bankAccountData.CurrentBalance;
+                    if (bankTransactionData.TransactionType == "CREDIT")
+                    {
+                        newBalance += bankTransactionData.Amount;
+                    }
+                    else if (bankTransactionData.TransactionType == "DEBIT")
+                    {
+                        newBalance -= bankTransactionData.Amount;
+                    }
+
+                    // Update BankAccount balance using raw SQL
+                    await _context.Database.ExecuteSqlInterpolatedAsync(
+                        $@"UPDATE BankAccounts 
+                           SET CurrentBalance = {newBalance}, 
+                               UpdatedAt = {DateTime.UtcNow}
+                           WHERE Id = {bankTransactionData.BankAccountId}");
+
+                    // Restore transaction using raw SQL
+                    try
+                    {
+                        await _context.Database.ExecuteSqlInterpolatedAsync(
+                            $@"UPDATE BankTransactions 
+                               SET IsDeleted = 0, 
+                                   DeletedAt = NULL, 
+                                   DeletedBy = NULL, 
+                                   DeleteReason = NULL, 
+                                   UpdatedAt = {DateTime.UtcNow}
+                               WHERE Id = {bankTransactionData.Id}");
+                    }
+                    catch
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult("Soft delete columns do not exist. Please run the database migration first.");
+                    }
+
+                    // Create transaction DTO from projected data
+                    var transactionDto = new BankTransactionDto
+                    {
+                        Id = bankTransactionData.Id,
+                        BankAccountId = bankTransactionData.BankAccountId,
+                        UserId = userId,
+                        Amount = bankTransactionData.Amount,
+                        TransactionType = bankTransactionData.TransactionType ?? "UNKNOWN",
+                        Description = bankTransactionData.Description ?? "",
+                        Category = bankTransactionData.Category,
+                        ReferenceNumber = bankTransactionData.ReferenceNumber,
+                        ExternalTransactionId = bankTransactionData.ExternalTransactionId,
+                        TransactionDate = bankTransactionData.TransactionDate,
+                        CreatedAt = bankTransactionData.CreatedAt,
+                        UpdatedAt = DateTime.UtcNow,
+                        Notes = bankTransactionData.Notes,
+                        Merchant = bankTransactionData.Merchant,
+                        Location = bankTransactionData.Location,
+                        IsRecurring = bankTransactionData.IsRecurring,
+                        RecurringFrequency = bankTransactionData.RecurringFrequency,
+                        Currency = bankTransactionData.Currency,
+                        BalanceAfterTransaction = bankTransactionData.BalanceAfterTransaction
+                    };
+
+                    return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Transaction restored successfully");
+                }
+
+                // If not found in BankTransactions, check Payments table using projection
+                var paymentTransactionData = await _context.Payments
+                    .AsNoTracking()
+                    .Where(p => p.Id == transactionId && p.UserId == userId && p.IsBankTransaction)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.BankAccountId,
+                        p.Amount,
+                        p.TransactionType,
+                        p.Description,
+                        p.Category,
+                        p.Reference,
+                        p.ExternalTransactionId,
+                        p.TransactionDate,
+                        p.ProcessedAt,
+                        p.CreatedAt,
+                        p.UpdatedAt,
+                        p.Notes,
+                        p.Merchant,
+                        p.Location,
+                        p.IsRecurring,
+                        p.RecurringFrequency,
+                        p.Currency,
+                        p.BalanceAfterTransaction
+                    })
+                    .FirstOrDefaultAsync();
+
+                if (paymentTransactionData != null)
+                {
+                    if (string.IsNullOrEmpty(paymentTransactionData.TransactionType) || paymentTransactionData.BankAccountId == null)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult("Invalid transaction data");
+                    }
+
+                    // Load BankAccount separately using projection
+                    var bankAccountData = await _context.BankAccounts
+                        .AsNoTracking()
+                        .Where(ba => ba.Id == paymentTransactionData.BankAccountId)
+                        .Select(ba => new
+                        {
+                            ba.Id,
+                            ba.CurrentBalance
+                        })
+                        .FirstOrDefaultAsync();
+
+                    if (bankAccountData == null)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found");
+                    }
+
+                    // Calculate new balance (re-apply transaction effect)
+                    decimal newBalance = bankAccountData.CurrentBalance;
+                    if (paymentTransactionData.TransactionType == "CREDIT")
+                    {
+                        newBalance += paymentTransactionData.Amount;
+                    }
+                    else if (paymentTransactionData.TransactionType == "DEBIT")
+                    {
+                        newBalance -= paymentTransactionData.Amount;
+                    }
+
+                    // Update BankAccount balance using raw SQL
+                    await _context.Database.ExecuteSqlInterpolatedAsync(
+                        $@"UPDATE BankAccounts 
+                           SET CurrentBalance = {newBalance}, 
+                               UpdatedAt = {DateTime.UtcNow}
+                           WHERE Id = {paymentTransactionData.BankAccountId}");
+
+                    // Restore payment using raw SQL
+                    try
+                    {
+                        await _context.Database.ExecuteSqlInterpolatedAsync(
+                            $@"UPDATE Payments 
+                               SET IsDeleted = 0, 
+                                   DeletedAt = NULL, 
+                                   DeletedBy = NULL, 
+                                   DeleteReason = NULL, 
+                                   UpdatedAt = {DateTime.UtcNow}
+                               WHERE Id = {paymentTransactionData.Id}");
+                    }
+                    catch
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult("Soft delete columns do not exist. Please run the database migration first.");
+                    }
+
+                    // Create transaction DTO from projected data
+                    var transactionDto = new BankTransactionDto
+                    {
+                        Id = paymentTransactionData.Id,
+                        BankAccountId = paymentTransactionData.BankAccountId,
+                        UserId = userId,
+                        Amount = paymentTransactionData.Amount,
+                        TransactionType = paymentTransactionData.TransactionType ?? "UNKNOWN",
+                        Description = paymentTransactionData.Description ?? "",
+                        Category = paymentTransactionData.Category,
+                        ReferenceNumber = paymentTransactionData.Reference,
+                        ExternalTransactionId = paymentTransactionData.ExternalTransactionId,
+                        TransactionDate = paymentTransactionData.TransactionDate ?? paymentTransactionData.ProcessedAt,
+                        CreatedAt = paymentTransactionData.CreatedAt,
+                        UpdatedAt = DateTime.UtcNow,
+                        Notes = paymentTransactionData.Notes,
+                        Merchant = paymentTransactionData.Merchant,
+                        Location = paymentTransactionData.Location,
+                        IsRecurring = paymentTransactionData.IsRecurring,
+                        RecurringFrequency = paymentTransactionData.RecurringFrequency,
+                        Currency = paymentTransactionData.Currency,
+                        BalanceAfterTransaction = paymentTransactionData.BalanceAfterTransaction ?? 0
+                    };
+
+                    return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Transaction restored successfully");
+                }
+
+                // Transaction not found in either table
+                return ApiResponse<BankTransactionDto>.ErrorResult("Transaction not found or you don't have permission to restore it");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<BankTransactionDto>.ErrorResult($"Failed to restore transaction: {ex.Message}");
             }
         }
 
@@ -1793,18 +3565,30 @@ namespace UtilityHub360.Services
             List<CardDto> cards = new List<CardDto>();
             try
             {
-                // Try to load Cards collection - this will fail if Cards table doesn't exist
+                // Try to load Cards collection - use direct query instead of Entry to avoid materializing entity
                 try
                 {
-                    var isCardsLoaded = _context.Entry(bankAccount)
-                        .Collection(ba => ba.Cards)
-                        .IsLoaded;
+                    // Check if bankAccount is tracked by EF Core
+                    var entry = _context.ChangeTracker.Entries<BankAccount>()
+                        .FirstOrDefault(e => e.Entity.Id == bankAccount.Id);
                     
-                    if (!isCardsLoaded)
+                    if (entry != null)
                     {
-                        await _context.Entry(bankAccount)
-                            .Collection(ba => ba.Cards)
-                            .LoadAsync();
+                        // Entity is tracked, check if Cards are loaded
+                        var isCardsLoaded = entry.Collection(ba => ba.Cards).IsLoaded;
+                        
+                        if (!isCardsLoaded)
+                        {
+                            await entry.Collection(ba => ba.Cards).LoadAsync();
+                        }
+                    }
+                    else
+                    {
+                        // Entity is not tracked (manually created), load cards directly
+                        var bankAccountCards = await _context.Cards
+                            .Where(c => c.BankAccountId == bankAccount.Id && !c.IsDeleted)
+                            .ToListAsync();
+                        bankAccount.Cards = bankAccountCards;
                     }
                 }
                 catch
@@ -1999,17 +3783,53 @@ namespace UtilityHub360.Services
         {
             try
             {
-                var bankAccount = await _context.BankAccounts
-                    .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
+                // Use projection to avoid reading soft delete columns
+                var bankAccountData = await _context.BankAccounts
+                    .AsNoTracking()
+                    .Where(ba => ba.Id == bankAccountId && ba.UserId == userId)
+                    .Select(ba => new { ba.Id })
+                    .FirstOrDefaultAsync();
 
-                if (bankAccount == null)
+                if (bankAccountData == null)
                 {
                     return ApiResponse<List<BankTransactionDto>>.ErrorResult("Bank account not found");
                 }
 
+                // Use projection to avoid reading soft delete columns
                 var query = _context.Payments
-                    .Include(p => p.BankAccount)
-                    .Where(p => p.BankAccountId == bankAccountId && p.UserId == userId && p.IsBankTransaction);
+                    .AsNoTracking()
+                    .Where(p => p.BankAccountId == bankAccountId && p.UserId == userId && p.IsBankTransaction)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.UserId,
+                        p.Amount,
+                        p.TransactionType,
+                        p.Description,
+                        p.Category,
+                        p.TransactionDate,
+                        p.ProcessedAt,
+                        p.CreatedAt,
+                        p.UpdatedAt,
+                        p.BankAccountId,
+                        p.Reference,
+                        p.Status,
+                        p.Method,
+                        p.Notes,
+                        p.Merchant,
+                        p.Location,
+                        p.IsRecurring,
+                        p.RecurringFrequency,
+                        p.Currency,
+                        p.BalanceAfterTransaction,
+                        p.ExternalTransactionId,
+                        BankAccount = p.BankAccount != null ? new
+                        {
+                            p.BankAccount.Id,
+                            p.BankAccount.AccountName,
+                            p.BankAccount.AccountType
+                        } : null
+                    });
 
                 if (dateFrom.HasValue)
                 {
@@ -2021,11 +3841,46 @@ namespace UtilityHub360.Services
                     query = query.Where(p => p.TransactionDate <= dateTo.Value);
                 }
 
-                var transactions = await query
+                var transactionsData = await query
                     .OrderByDescending(p => p.TransactionDate)
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToListAsync();
+                
+                // Convert to Payment entities with BankAccount
+                var transactions = transactionsData.Select(p => new Payment
+                {
+                    Id = p.Id,
+                    UserId = p.UserId,
+                    Amount = p.Amount,
+                    TransactionType = p.TransactionType,
+                    Description = p.Description,
+                    Category = p.Category,
+                    TransactionDate = p.TransactionDate,
+                    ProcessedAt = p.ProcessedAt,
+                    CreatedAt = p.CreatedAt,
+                    UpdatedAt = p.UpdatedAt,
+                    BankAccountId = p.BankAccountId,
+                    Reference = p.Reference,
+                    Status = p.Status,
+                    Method = p.Method,
+                    Notes = p.Notes,
+                    Merchant = p.Merchant,
+                    Location = p.Location,
+                    IsRecurring = p.IsRecurring,
+                    RecurringFrequency = p.RecurringFrequency,
+                    Currency = p.Currency,
+                    BalanceAfterTransaction = p.BalanceAfterTransaction,
+                    ExternalTransactionId = p.ExternalTransactionId,
+                    IsBankTransaction = true,
+                    IsDeleted = false,
+                    BankAccount = p.BankAccount != null ? new BankAccount
+                    {
+                        Id = p.BankAccount.Id,
+                        AccountName = p.BankAccount.AccountName,
+                        AccountType = p.BankAccount.AccountType
+                    } : null
+                }).ToList();
 
                 var transactionDtos = transactions.Select(p => MapPaymentToBankTransactionDto(p)).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
@@ -2040,9 +3895,41 @@ namespace UtilityHub360.Services
         {
             try
             {
+                // Use projection to avoid reading soft delete columns
                 var query = _context.Payments
-                    .Include(p => p.BankAccount)
-                    .Where(p => p.UserId == userId && p.IsBankTransaction);
+                    .AsNoTracking()
+                    .Where(p => p.UserId == userId && p.IsBankTransaction)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.UserId,
+                        p.Amount,
+                        p.TransactionType,
+                        p.Description,
+                        p.Category,
+                        p.TransactionDate,
+                        p.ProcessedAt,
+                        p.CreatedAt,
+                        p.UpdatedAt,
+                        p.BankAccountId,
+                        p.Reference,
+                        p.Status,
+                        p.Method,
+                        p.Notes,
+                        p.Merchant,
+                        p.Location,
+                        p.IsRecurring,
+                        p.RecurringFrequency,
+                        p.Currency,
+                        p.BalanceAfterTransaction,
+                        p.ExternalTransactionId,
+                        BankAccount = p.BankAccount != null ? new
+                        {
+                            p.BankAccount.Id,
+                            p.BankAccount.AccountName,
+                            p.BankAccount.AccountType
+                        } : null
+                    });
 
                 if (!string.IsNullOrEmpty(accountType))
                 {
@@ -2059,11 +3946,46 @@ namespace UtilityHub360.Services
                     query = query.Where(p => p.TransactionDate <= dateTo.Value);
                 }
 
-                var transactions = await query
+                var transactionsData = await query
                     .OrderByDescending(p => p.TransactionDate)
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToListAsync();
+
+                // Convert to Payment entities with BankAccount
+                var transactions = transactionsData.Select(p => new Payment
+                {
+                    Id = p.Id,
+                    UserId = p.UserId,
+                    Amount = p.Amount,
+                    TransactionType = p.TransactionType,
+                    Description = p.Description,
+                    Category = p.Category,
+                    TransactionDate = p.TransactionDate,
+                    ProcessedAt = p.ProcessedAt,
+                    CreatedAt = p.CreatedAt,
+                    UpdatedAt = p.UpdatedAt,
+                    BankAccountId = p.BankAccountId,
+                    Reference = p.Reference,
+                    Status = p.Status,
+                    Method = p.Method,
+                    Notes = p.Notes,
+                    Merchant = p.Merchant,
+                    Location = p.Location,
+                    IsRecurring = p.IsRecurring,
+                    RecurringFrequency = p.RecurringFrequency,
+                    Currency = p.Currency,
+                    BalanceAfterTransaction = p.BalanceAfterTransaction,
+                    ExternalTransactionId = p.ExternalTransactionId,
+                    IsBankTransaction = true,
+                    IsDeleted = false,
+                    BankAccount = p.BankAccount != null ? new BankAccount
+                    {
+                        Id = p.BankAccount.Id,
+                        AccountName = p.BankAccount.AccountName,
+                        AccountType = p.BankAccount.AccountType
+                    } : null
+                }).ToList();
 
                 var transactionDtos = transactions.Select(p => MapPaymentToBankTransactionDto(p)).ToList();
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
@@ -2086,16 +4008,122 @@ namespace UtilityHub360.Services
                     endDate = startDate.AddMonths(1).AddDays(-1);
                 }
 
-                var accounts = await _context.BankAccounts
+                // Use projection to avoid reading soft delete columns
+                var accountsData = await _context.BankAccounts
+                    .AsNoTracking()
                     .Where(ba => ba.UserId == userId && ba.IsActive)
+                    .Select(ba => new
+                    {
+                        ba.Id,
+                        ba.UserId,
+                        ba.AccountName,
+                        ba.AccountType,
+                        ba.InitialBalance,
+                        ba.CurrentBalance,
+                        ba.Currency,
+                        ba.Description,
+                        ba.FinancialInstitution,
+                        ba.AccountNumber,
+                        ba.RoutingNumber,
+                        ba.SyncFrequency,
+                        ba.IsConnected,
+                        ba.ConnectionId,
+                        ba.LastSyncedAt,
+                        ba.CreatedAt,
+                        ba.UpdatedAt,
+                        ba.IsActive,
+                        ba.Iban,
+                        ba.SwiftCode
+                    })
                     .ToListAsync();
+                
+                // Convert to BankAccount entities
+                var accounts = accountsData.Select(ba => new BankAccount
+                {
+                    Id = ba.Id,
+                    UserId = ba.UserId,
+                    AccountName = ba.AccountName,
+                    AccountType = ba.AccountType,
+                    InitialBalance = ba.InitialBalance,
+                    CurrentBalance = ba.CurrentBalance,
+                    Currency = ba.Currency,
+                    Description = ba.Description,
+                    FinancialInstitution = ba.FinancialInstitution,
+                    AccountNumber = ba.AccountNumber,
+                    RoutingNumber = ba.RoutingNumber,
+                    SyncFrequency = ba.SyncFrequency,
+                    IsConnected = ba.IsConnected,
+                    ConnectionId = ba.ConnectionId,
+                    LastSyncedAt = ba.LastSyncedAt,
+                    CreatedAt = ba.CreatedAt,
+                    UpdatedAt = ba.UpdatedAt,
+                    IsActive = ba.IsActive,
+                    Iban = ba.Iban,
+                    SwiftCode = ba.SwiftCode
+                }).ToList();
 
-                var transactions = await _context.Payments
+                // Use projection to avoid reading soft delete columns
+                var transactionsData = await _context.Payments
+                    .AsNoTracking()
                     .Where(p => p.UserId == userId && 
                                p.IsBankTransaction && 
                                p.TransactionDate >= startDate && 
                                p.TransactionDate <= endDate)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.UserId,
+                        p.Amount,
+                        p.TransactionType,
+                        p.Description,
+                        p.Category,
+                        p.TransactionDate,
+                        p.ProcessedAt,
+                        p.CreatedAt,
+                        p.UpdatedAt,
+                        p.BankAccountId,
+                        p.Reference,
+                        p.Status,
+                        p.Method,
+                        p.Notes,
+                        p.Merchant,
+                        p.Location,
+                        p.IsRecurring,
+                        p.RecurringFrequency,
+                        p.Currency,
+                        p.BalanceAfterTransaction,
+                        p.ExternalTransactionId
+                    })
                     .ToListAsync();
+                
+                // Convert to Payment entities
+                var transactions = transactionsData.Select(p => new Payment
+                {
+                    Id = p.Id,
+                    UserId = p.UserId,
+                    Amount = p.Amount,
+                    TransactionType = p.TransactionType,
+                    Description = p.Description,
+                    Category = p.Category,
+                    TransactionDate = p.TransactionDate,
+                    ProcessedAt = p.ProcessedAt,
+                    CreatedAt = p.CreatedAt,
+                    UpdatedAt = p.UpdatedAt,
+                    BankAccountId = p.BankAccountId,
+                    Reference = p.Reference,
+                    Status = p.Status,
+                    Method = p.Method,
+                    Notes = p.Notes,
+                    Merchant = p.Merchant,
+                    Location = p.Location,
+                    IsRecurring = p.IsRecurring,
+                    RecurringFrequency = p.RecurringFrequency,
+                    Currency = p.Currency,
+                    BalanceAfterTransaction = p.BalanceAfterTransaction,
+                    ExternalTransactionId = p.ExternalTransactionId,
+                    IsBankTransaction = true,
+                    IsDeleted = false
+                }).ToList();
 
                 // Calculate total balance excluding credit cards (they represent debt, not assets)
                 var totalBalance = accounts
@@ -2166,6 +4194,168 @@ namespace UtilityHub360.Services
             }
             
             return ApiResponse<BankTransactionDto>.ErrorResult("AI Agent service is not available");
+        }
+
+        // Month Closing Methods
+        public async Task<ApiResponse<ClosedMonthDto>> CloseMonthAsync(string bankAccountId, CloseMonthDto closeMonthDto, string userId)
+        {
+            try
+            {
+                // Validate bank account exists and belongs to user
+                var bankAccount = await _context.BankAccounts
+                    .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
+
+                if (bankAccount == null)
+                {
+                    return ApiResponse<ClosedMonthDto>.ErrorResult("Bank account not found");
+                }
+
+                // Validate month range
+                if (closeMonthDto.Month < 1 || closeMonthDto.Month > 12)
+                {
+                    return ApiResponse<ClosedMonthDto>.ErrorResult("Month must be between 1 and 12");
+                }
+
+                // Check if month is already closed
+                var existingClosedMonth = await _context.ClosedMonths
+                    .FirstOrDefaultAsync(cm => cm.BankAccountId == bankAccountId && 
+                                              cm.Year == closeMonthDto.Year && 
+                                              cm.Month == closeMonthDto.Month);
+
+                if (existingClosedMonth != null)
+                {
+                    return ApiResponse<ClosedMonthDto>.ErrorResult($"Month {closeMonthDto.Month}/{closeMonthDto.Year} is already closed");
+                }
+
+                // Validate that the month being closed is not in the future
+                var currentDate = DateTime.UtcNow;
+                var closeDate = new DateTime(closeMonthDto.Year, closeMonthDto.Month, 1);
+                if (closeDate > currentDate)
+                {
+                    return ApiResponse<ClosedMonthDto>.ErrorResult("Cannot close a future month");
+                }
+
+                // Create closed month record
+                var closedMonth = new ClosedMonth
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    BankAccountId = bankAccountId,
+                    Year = closeMonthDto.Year,
+                    Month = closeMonthDto.Month,
+                    ClosedBy = userId,
+                    ClosedAt = DateTime.UtcNow,
+                    Notes = closeMonthDto.Notes,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.ClosedMonths.Add(closedMonth);
+                await _context.SaveChangesAsync();
+
+                // Map to DTO
+                var closedMonthDto = await MapToClosedMonthDtoAsync(closedMonth);
+                return ApiResponse<ClosedMonthDto>.SuccessResult(closedMonthDto, "Month closed successfully");
+            }
+            catch (DbUpdateException dbEx)
+            {
+                var innerException = dbEx.InnerException?.Message ?? dbEx.Message;
+                if (innerException.Contains("IX_ClosedMonths_BankAccountId_Year_Month") || innerException.Contains("duplicate key"))
+                {
+                    return ApiResponse<ClosedMonthDto>.ErrorResult($"Month {closeMonthDto.Month}/{closeMonthDto.Year} is already closed");
+                }
+                return ApiResponse<ClosedMonthDto>.ErrorResult($"Failed to close month: {innerException}");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<ClosedMonthDto>.ErrorResult($"Failed to close month: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<List<ClosedMonthDto>>> GetClosedMonthsAsync(string bankAccountId, string userId)
+        {
+            try
+            {
+                // Validate bank account exists and belongs to user
+                var bankAccount = await _context.BankAccounts
+                    .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
+
+                if (bankAccount == null)
+                {
+                    return ApiResponse<List<ClosedMonthDto>>.ErrorResult("Bank account not found");
+                }
+
+                var closedMonths = await _context.ClosedMonths
+                    .Include(cm => cm.BankAccount)
+                    .Include(cm => cm.User)
+                    .Where(cm => cm.BankAccountId == bankAccountId)
+                    .OrderByDescending(cm => cm.Year)
+                    .ThenByDescending(cm => cm.Month)
+                    .ToListAsync();
+
+                var closedMonthDtos = new List<ClosedMonthDto>();
+                foreach (var closedMonth in closedMonths)
+                {
+                    closedMonthDtos.Add(await MapToClosedMonthDtoAsync(closedMonth));
+                }
+
+                return ApiResponse<List<ClosedMonthDto>>.SuccessResult(closedMonthDtos);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<List<ClosedMonthDto>>.ErrorResult($"Failed to get closed months: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<bool>> IsMonthClosedAsync(string bankAccountId, int year, int month, string userId)
+        {
+            try
+            {
+                // Validate bank account exists and belongs to user
+                var bankAccount = await _context.BankAccounts
+                    .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
+
+                if (bankAccount == null)
+                {
+                    return ApiResponse<bool>.ErrorResult("Bank account not found");
+                }
+
+                var isClosed = await _context.ClosedMonths
+                    .AnyAsync(cm => cm.BankAccountId == bankAccountId && 
+                                   cm.Year == year && 
+                                   cm.Month == month);
+
+                return ApiResponse<bool>.SuccessResult(isClosed);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Failed to check month closure status: {ex.Message}");
+            }
+        }
+
+        private async Task<ClosedMonthDto> MapToClosedMonthDtoAsync(ClosedMonth closedMonth)
+        {
+            var bankAccount = await _context.BankAccounts
+                .FirstOrDefaultAsync(ba => ba.Id == closedMonth.BankAccountId);
+            
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Id == closedMonth.ClosedBy);
+
+            var monthNames = new[] { "", "January", "February", "March", "April", "May", "June", 
+                                    "July", "August", "September", "October", "November", "December" };
+
+            return new ClosedMonthDto
+            {
+                Id = closedMonth.Id,
+                BankAccountId = closedMonth.BankAccountId,
+                BankAccountName = bankAccount?.AccountName,
+                Year = closedMonth.Year,
+                Month = closedMonth.Month,
+                MonthName = closedMonth.Month >= 1 && closedMonth.Month <= 12 ? monthNames[closedMonth.Month] : "",
+                ClosedBy = closedMonth.ClosedBy,
+                ClosedByName = user?.Email ?? user?.Name,
+                ClosedAt = closedMonth.ClosedAt,
+                Notes = closedMonth.Notes,
+                CreatedAt = closedMonth.CreatedAt
+            };
         }
     }
 }

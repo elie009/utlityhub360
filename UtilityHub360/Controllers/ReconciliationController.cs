@@ -22,6 +22,104 @@ namespace UtilityHub360.Controllers
         // ==================== BANK STATEMENT ENDPOINTS ====================
 
         /// <summary>
+        /// Extract transactions from uploaded bank statement file (PDF/CSV) using AI
+        /// </summary>
+        [HttpPost("statements/extract")]
+        public async Task<ActionResult<ApiResponse<ExtractBankStatementResponseDto>>> ExtractBankStatement(
+            IFormFile file, 
+            [FromForm] string bankAccountId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (file == null || file.Length == 0)
+                {
+                    return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("No file provided"));
+                }
+
+                if (string.IsNullOrEmpty(bankAccountId))
+                {
+                    return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("Bank account ID is required"));
+                }
+
+                var fileExtension = Path.GetExtension(file.FileName).ToLower();
+                if (fileExtension != ".csv" && fileExtension != ".pdf")
+                {
+                    return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("Only CSV and PDF files are supported"));
+                }
+
+                using var stream = file.OpenReadStream();
+                
+                // Use ReconciliationService for extraction (which uses AI for PDFs)
+                var result = await _reconciliationService.ExtractBankStatementFromFileAsync(stream, file.FileName, bankAccountId, userId);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult($"Failed to extract bank statement: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Analyze PDF bank statement using AI Agent (direct AI analysis)
+        /// </summary>
+        [HttpPost("statements/analyze-pdf")]
+        public async Task<ActionResult<ApiResponse<ExtractBankStatementResponseDto>>> AnalyzePDFWithAI(
+            IFormFile file, 
+            [FromForm] string bankAccountId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (file == null || file.Length == 0)
+                {
+                    return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("No file provided"));
+                }
+
+                if (string.IsNullOrEmpty(bankAccountId))
+                {
+                    return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("Bank account ID is required"));
+                }
+
+                var fileExtension = Path.GetExtension(file.FileName).ToLower();
+                if (fileExtension != ".pdf")
+                {
+                    return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("Only PDF files are supported for AI analysis"));
+                }
+
+                using var stream = file.OpenReadStream();
+                var result = await _reconciliationService.AnalyzePDFWithAIAsync(stream, file.FileName, bankAccountId, userId);
+
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult($"Failed to analyze PDF with AI: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
         /// Import a bank statement
         /// </summary>
         [HttpPost("statements/import")]

@@ -509,17 +509,25 @@ namespace UtilityHub360.Services
                 // 14. UserOnboarding (skip if table doesn't exist)
                 try
                 {
-                    var userOnboarding = await _context.UserOnboardings
-                        .FirstOrDefaultAsync(uo => uo.UserId == userId);
-                    if (userOnboarding != null)
+                    // Use raw SQL to check and delete to avoid EF Core model validation issues
+                    var result = await _context.Database.ExecuteSqlRawAsync(@"
+                        IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'UserOnboardings')
+                        BEGIN
+                            DELETE FROM UserOnboardings WHERE UserId = {0}
+                        END", userId);
+                    
+                    if (result > 0)
                     {
-                        _context.UserOnboardings.Remove(userOnboarding);
                         deletionSummary["userOnboarding"] = 1;
                     }
                 }
+                catch (Microsoft.Data.SqlClient.SqlException)
+                {
+                    // Table doesn't exist or SQL error, skip
+                }
                 catch (Exception)
                 {
-                    // Table doesn't exist, skip
+                    // Any other error, skip
                 }
 
                 // 15. PasswordReset

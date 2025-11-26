@@ -654,7 +654,26 @@ namespace UtilityHub360.Services
                     return ApiResponse<bool>.ErrorResult("Bank transaction not found");
                 }
 
+                // Check if the month for this transaction is closed
+                if (payment.BankAccountId != null && payment.TransactionDate.HasValue)
+                {
+                    var transactionDate = payment.TransactionDate.Value;
+                    var isMonthClosed = await _context.ClosedMonths
+                        .AnyAsync(cm => cm.BankAccountId == payment.BankAccountId &&
+                                       cm.Year == transactionDate.Year &&
+                                       cm.Month == transactionDate.Month);
+
+                    if (isMonthClosed)
+                    {
+                        var monthName = new[] { "", "January", "February", "March", "April", "May", "June",
+                                                "July", "August", "September", "October", "November", "December" }[transactionDate.Month];
+                        return ApiResponse<bool>.ErrorResult(
+                            $"Cannot delete transaction. The month {monthName} {transactionDate.Year} is closed for this account.");
+                    }
+                }
+
                 // Check if transaction is too old to delete (e.g., more than 24 hours)
+                // This check is now secondary to month closure check
                 var timeSinceCreation = DateTime.UtcNow - payment.CreatedAt;
                 if (timeSinceCreation.TotalHours > 24)
                 {
