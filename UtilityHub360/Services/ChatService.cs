@@ -1019,17 +1019,17 @@ namespace UtilityHub360.Services
             if (report.BillsReport != null)
             {
                 sb.AppendLine("### Bills Summary");
-                sb.AppendLine($"- **Total Bills**: {report.BillsReport.TotalBills}");
-                sb.AppendLine($"- **Pending Amount**: ${report.BillsReport.TotalPendingAmount:F2}");
-                sb.AppendLine($"- **Paid Amount**: ${report.BillsReport.TotalPaidAmount:F2}");
-                sb.AppendLine($"- **Overdue Amount**: ${report.BillsReport.TotalOverdueAmount:F2}");
+                sb.AppendLine($"- **Total Monthly Bills**: ${report.BillsReport.TotalMonthlyBills:F2}");
+                sb.AppendLine($"- **Unpaid Bills Count**: {report.BillsReport.UnpaidBillsCount}");
+                sb.AppendLine($"- **Overdue Bills Count**: {report.BillsReport.OverdueBillsCount}");
+                sb.AppendLine($"- **Average Monthly Bills**: ${report.BillsReport.AverageMonthlyBills:F2}");
                 sb.AppendLine();
             }
 
             if (report.LoanReport != null)
             {
                 sb.AppendLine("### Loans Summary");
-                sb.AppendLine($"- **Total Loans**: {report.LoanReport.TotalLoans}");
+                sb.AppendLine($"- **Active Loans**: {report.LoanReport.ActiveLoansCount}");
                 sb.AppendLine($"- **Total Principal**: ${report.LoanReport.TotalPrincipal:F2}");
                 sb.AppendLine($"- **Total Monthly Payment**: ${report.LoanReport.TotalMonthlyPayment:F2}");
                 sb.AppendLine($"- **Remaining Balance**: ${report.LoanReport.TotalRemainingBalance:F2}");

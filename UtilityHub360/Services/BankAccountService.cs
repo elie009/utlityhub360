@@ -370,10 +370,59 @@ namespace UtilityHub360.Services
                     return ApiResponse<bool>.ErrorResult("Bank account not found");
                 }
 
-                _context.BankAccounts.Remove(bankAccount);
+                if (bankAccount.IsDeleted)
+                {
+                    return ApiResponse<bool>.ErrorResult("Bank account is already deleted");
+                }
+
+                // Handle foreign key constraints by setting related foreign keys to NULL
+                // These entities have DeleteBehavior.NoAction, so we need to handle them manually
+                
+                // 1. Set BankAccountId to NULL in Payments
+                var payments = await _context.Payments
+                    .Where(p => p.BankAccountId == bankAccountId)
+                    .ToListAsync();
+                
+                foreach (var payment in payments)
+                {
+                    payment.BankAccountId = null;
+                }
+
+                // 2. Set BankAccountId to NULL in ReceivablePayments
+                var receivablePayments = await _context.ReceivablePayments
+                    .Where(rp => rp.BankAccountId == bankAccountId)
+                    .ToListAsync();
+                
+                foreach (var receivablePayment in receivablePayments)
+                {
+                    receivablePayment.BankAccountId = null;
+                }
+
+                // 3. Set SourceBankAccountId to NULL in SavingsTransactions
+                var savingsTransactions = await _context.SavingsTransactions
+                    .Where(st => st.SourceBankAccountId == bankAccountId)
+                    .ToListAsync();
+                
+                foreach (var savingsTransaction in savingsTransactions)
+                {
+                    savingsTransaction.SourceBankAccountId = null;
+                }
+
+                // Perform soft delete instead of hard delete
+                bankAccount.IsDeleted = true;
+                bankAccount.DeletedAt = DateTime.UtcNow;
+                bankAccount.DeletedBy = userId;
+                bankAccount.IsActive = false; // Also deactivate the account
+
                 await _context.SaveChangesAsync();
 
                 return ApiResponse<bool>.SuccessResult(true, "Bank account deleted successfully");
+            }
+            catch (DbUpdateException dbEx)
+            {
+                // Log the inner exception for debugging
+                var innerException = dbEx.InnerException?.Message ?? dbEx.Message;
+                return ApiResponse<bool>.ErrorResult($"Failed to delete bank account: An error occurred while saving the entity changes. See the inner exception for details. Inner exception: {innerException}");
             }
             catch (Exception ex)
             {
@@ -3150,86 +3199,7 @@ namespace UtilityHub360.Services
         {
             try
             {
-                // Use projection to find transaction data without materializing soft delete columns
-                var bankTransactionData = await _context.BankTransactions
-                    .AsNoTracking()
-                    .Where(t => t.Id == transactionId && t.UserId == userId)
-                    .Select(t => new
-                    {
-                        t.Id,
-                        t.BankAccountId,
-                        t.Amount,
-                        t.TransactionType,
-                        t.ExternalTransactionId
-                    })
-                    .FirstOrDefaultAsync();
-
-                if (bankTransactionData != null)
-                {
-                    // Check if transaction is synced from bank (read-only)
-                    if (!string.IsNullOrEmpty(bankTransactionData.ExternalTransactionId))
-                    {
-                        return ApiResponse<bool>.ErrorResult("Cannot delete transactions synced from bank");
-                    }
-
-                    // Load BankAccount separately using projection
-                    var bankAccountData = await _context.BankAccounts
-                        .AsNoTracking()
-                        .Where(ba => ba.Id == bankTransactionData.BankAccountId)
-                        .Select(ba => new
-                        {
-                            ba.Id,
-                            ba.CurrentBalance
-                        })
-                        .FirstOrDefaultAsync();
-
-                    if (bankAccountData == null)
-                    {
-                        return ApiResponse<bool>.ErrorResult("Bank account not found");
-                    }
-
-                    // Calculate new balance
-                    decimal newBalance = bankAccountData.CurrentBalance;
-                    if (bankTransactionData.TransactionType == "CREDIT")
-                    {
-                        newBalance -= bankTransactionData.Amount;
-                    }
-                    else if (bankTransactionData.TransactionType == "DEBIT")
-                    {
-                        newBalance += bankTransactionData.Amount;
-                    }
-
-                    // Update BankAccount balance using raw SQL to avoid materializing soft delete columns
-                    await _context.Database.ExecuteSqlInterpolatedAsync(
-                        $@"UPDATE BankAccounts 
-                           SET CurrentBalance = {newBalance}, 
-                               UpdatedAt = {DateTime.UtcNow}
-                           WHERE Id = {bankTransactionData.BankAccountId}");
-
-                    // Update transaction soft delete properties using raw SQL
-                    // Note: This will fail if columns don't exist, but that's expected until migration is run
-                    try
-                    {
-                        await _context.Database.ExecuteSqlInterpolatedAsync(
-                            $@"UPDATE BankTransactions 
-                               SET IsDeleted = 1, 
-                                   DeletedAt = {DateTime.UtcNow}, 
-                                   DeletedBy = {userId}, 
-                                   DeleteReason = {reason ?? (string?)null}, 
-                                   UpdatedAt = {DateTime.UtcNow}
-                               WHERE Id = {bankTransactionData.Id}");
-                    }
-                    catch
-                    {
-                        // If soft delete columns don't exist, we can't perform soft delete
-                        // This is expected until migration is run
-                        return ApiResponse<bool>.ErrorResult("Soft delete columns do not exist. Please run the database migration first.");
-                    }
-
-                    return ApiResponse<bool>.SuccessResult(true, "Transaction hidden successfully");
-                }
-
-                // If not found in BankTransactions, check Payments table using projection
+                // Check Payments table FIRST (primary storage for bank transactions)
                 var paymentTransactionData = await _context.Payments
                     .AsNoTracking()
                     .Where(p => p.Id == transactionId && p.UserId == userId && p.IsBankTransaction)
@@ -3311,6 +3281,85 @@ namespace UtilityHub360.Services
                     return ApiResponse<bool>.SuccessResult(true, "Transaction hidden successfully");
                 }
 
+                // If not found in Payments, check BankTransactions table (legacy/fallback)
+                var bankTransactionData = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(t => t.Id == transactionId && t.UserId == userId)
+                    .Select(t => new
+                    {
+                        t.Id,
+                        t.BankAccountId,
+                        t.Amount,
+                        t.TransactionType,
+                        t.ExternalTransactionId
+                    })
+                    .FirstOrDefaultAsync();
+
+                if (bankTransactionData != null)
+                {
+                    // Check if transaction is synced from bank (read-only)
+                    if (!string.IsNullOrEmpty(bankTransactionData.ExternalTransactionId))
+                    {
+                        return ApiResponse<bool>.ErrorResult("Cannot delete transactions synced from bank");
+                    }
+
+                    // Load BankAccount separately using projection
+                    var bankAccountData = await _context.BankAccounts
+                        .AsNoTracking()
+                        .Where(ba => ba.Id == bankTransactionData.BankAccountId)
+                        .Select(ba => new
+                        {
+                            ba.Id,
+                            ba.CurrentBalance
+                        })
+                        .FirstOrDefaultAsync();
+
+                    if (bankAccountData == null)
+                    {
+                        return ApiResponse<bool>.ErrorResult("Bank account not found");
+                    }
+
+                    // Calculate new balance
+                    decimal newBalance = bankAccountData.CurrentBalance;
+                    if (bankTransactionData.TransactionType == "CREDIT")
+                    {
+                        newBalance -= bankTransactionData.Amount;
+                    }
+                    else if (bankTransactionData.TransactionType == "DEBIT")
+                    {
+                        newBalance += bankTransactionData.Amount;
+                    }
+
+                    // Update BankAccount balance using raw SQL to avoid materializing soft delete columns
+                    await _context.Database.ExecuteSqlInterpolatedAsync(
+                        $@"UPDATE BankAccounts 
+                           SET CurrentBalance = {newBalance}, 
+                               UpdatedAt = {DateTime.UtcNow}
+                           WHERE Id = {bankTransactionData.BankAccountId}");
+
+                    // Update transaction soft delete properties using raw SQL
+                    // Note: This will fail if columns don't exist, but that's expected until migration is run
+                    try
+                    {
+                        await _context.Database.ExecuteSqlInterpolatedAsync(
+                            $@"UPDATE BankTransactions 
+                               SET IsDeleted = 1, 
+                                   DeletedAt = {DateTime.UtcNow}, 
+                                   DeletedBy = {userId}, 
+                                   DeleteReason = {reason ?? (string?)null}, 
+                                   UpdatedAt = {DateTime.UtcNow}
+                               WHERE Id = {bankTransactionData.Id}");
+                    }
+                    catch
+                    {
+                        // If soft delete columns don't exist, we can't perform soft delete
+                        // This is expected until migration is run
+                        return ApiResponse<bool>.ErrorResult("Soft delete columns do not exist. Please run the database migration first.");
+                    }
+
+                    return ApiResponse<bool>.SuccessResult(true, "Transaction hidden successfully");
+                }
+
                 // Transaction not found in either table
                 return ApiResponse<bool>.ErrorResult("Transaction not found or you don't have permission to delete it");
             }
@@ -3327,7 +3376,120 @@ namespace UtilityHub360.Services
         {
             try
             {
-                // Use projection to find transaction data without materializing soft delete columns
+                // Check Payments table FIRST (primary storage for bank transactions)
+                var paymentTransactionData = await _context.Payments
+                    .AsNoTracking()
+                    .Where(p => p.Id == transactionId && p.UserId == userId && p.IsBankTransaction)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.BankAccountId,
+                        p.Amount,
+                        p.TransactionType,
+                        p.Description,
+                        p.Category,
+                        p.Reference,
+                        p.ExternalTransactionId,
+                        p.TransactionDate,
+                        p.ProcessedAt,
+                        p.CreatedAt,
+                        p.UpdatedAt,
+                        p.Notes,
+                        p.Merchant,
+                        p.Location,
+                        p.IsRecurring,
+                        p.RecurringFrequency,
+                        p.Currency,
+                        p.BalanceAfterTransaction
+                    })
+                    .FirstOrDefaultAsync();
+
+                if (paymentTransactionData != null)
+                {
+                    if (string.IsNullOrEmpty(paymentTransactionData.TransactionType) || paymentTransactionData.BankAccountId == null)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult("Invalid transaction data");
+                    }
+
+                    // Load BankAccount separately using projection
+                    var bankAccountData = await _context.BankAccounts
+                        .AsNoTracking()
+                        .Where(ba => ba.Id == paymentTransactionData.BankAccountId)
+                        .Select(ba => new
+                        {
+                            ba.Id,
+                            ba.CurrentBalance
+                        })
+                        .FirstOrDefaultAsync();
+
+                    if (bankAccountData == null)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found");
+                    }
+
+                    // Calculate new balance (re-apply transaction effect)
+                    decimal newBalance = bankAccountData.CurrentBalance;
+                    if (paymentTransactionData.TransactionType == "CREDIT")
+                    {
+                        newBalance += paymentTransactionData.Amount;
+                    }
+                    else if (paymentTransactionData.TransactionType == "DEBIT")
+                    {
+                        newBalance -= paymentTransactionData.Amount;
+                    }
+
+                    // Update BankAccount balance using raw SQL
+                    await _context.Database.ExecuteSqlInterpolatedAsync(
+                        $@"UPDATE BankAccounts 
+                           SET CurrentBalance = {newBalance}, 
+                               UpdatedAt = {DateTime.UtcNow}
+                           WHERE Id = {paymentTransactionData.BankAccountId}");
+
+                    // Restore payment using raw SQL
+                    try
+                    {
+                        await _context.Database.ExecuteSqlInterpolatedAsync(
+                            $@"UPDATE Payments 
+                               SET IsDeleted = 0, 
+                                   DeletedAt = NULL, 
+                                   DeletedBy = NULL, 
+                                   DeleteReason = NULL, 
+                                   UpdatedAt = {DateTime.UtcNow}
+                               WHERE Id = {paymentTransactionData.Id}");
+                    }
+                    catch
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult("Soft delete columns do not exist. Please run the database migration first.");
+                    }
+
+                    // Create transaction DTO from projected data
+                    var transactionDto = new BankTransactionDto
+                    {
+                        Id = paymentTransactionData.Id,
+                        BankAccountId = paymentTransactionData.BankAccountId ?? "",
+                        UserId = userId,
+                        Amount = paymentTransactionData.Amount,
+                        TransactionType = paymentTransactionData.TransactionType ?? "UNKNOWN",
+                        Description = paymentTransactionData.Description ?? "",
+                        Category = paymentTransactionData.Category,
+                        ReferenceNumber = paymentTransactionData.Reference,
+                        ExternalTransactionId = paymentTransactionData.ExternalTransactionId,
+                        TransactionDate = paymentTransactionData.TransactionDate ?? paymentTransactionData.ProcessedAt,
+                        CreatedAt = paymentTransactionData.CreatedAt,
+                        UpdatedAt = DateTime.UtcNow,
+                        Notes = paymentTransactionData.Notes,
+                        Merchant = paymentTransactionData.Merchant,
+                        Location = paymentTransactionData.Location,
+                        IsRecurring = paymentTransactionData.IsRecurring,
+                        RecurringFrequency = paymentTransactionData.RecurringFrequency,
+                        Currency = paymentTransactionData.Currency,
+                        BalanceAfterTransaction = paymentTransactionData.BalanceAfterTransaction ?? 0
+                    };
+
+                    return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Transaction restored successfully");
+                }
+
+                // If not found in Payments, check BankTransactions table (legacy/fallback)
                 var bankTransactionData = await _context.BankTransactions
                     .AsNoTracking()
                     .Where(t => t.Id == transactionId && t.UserId == userId)
@@ -3429,119 +3591,6 @@ namespace UtilityHub360.Services
                         RecurringFrequency = bankTransactionData.RecurringFrequency,
                         Currency = bankTransactionData.Currency,
                         BalanceAfterTransaction = bankTransactionData.BalanceAfterTransaction
-                    };
-
-                    return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Transaction restored successfully");
-                }
-
-                // If not found in BankTransactions, check Payments table using projection
-                var paymentTransactionData = await _context.Payments
-                    .AsNoTracking()
-                    .Where(p => p.Id == transactionId && p.UserId == userId && p.IsBankTransaction)
-                    .Select(p => new
-                    {
-                        p.Id,
-                        p.BankAccountId,
-                        p.Amount,
-                        p.TransactionType,
-                        p.Description,
-                        p.Category,
-                        p.Reference,
-                        p.ExternalTransactionId,
-                        p.TransactionDate,
-                        p.ProcessedAt,
-                        p.CreatedAt,
-                        p.UpdatedAt,
-                        p.Notes,
-                        p.Merchant,
-                        p.Location,
-                        p.IsRecurring,
-                        p.RecurringFrequency,
-                        p.Currency,
-                        p.BalanceAfterTransaction
-                    })
-                    .FirstOrDefaultAsync();
-
-                if (paymentTransactionData != null)
-                {
-                    if (string.IsNullOrEmpty(paymentTransactionData.TransactionType) || paymentTransactionData.BankAccountId == null)
-                    {
-                        return ApiResponse<BankTransactionDto>.ErrorResult("Invalid transaction data");
-                    }
-
-                    // Load BankAccount separately using projection
-                    var bankAccountData = await _context.BankAccounts
-                        .AsNoTracking()
-                        .Where(ba => ba.Id == paymentTransactionData.BankAccountId)
-                        .Select(ba => new
-                        {
-                            ba.Id,
-                            ba.CurrentBalance
-                        })
-                        .FirstOrDefaultAsync();
-
-                    if (bankAccountData == null)
-                    {
-                        return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found");
-                    }
-
-                    // Calculate new balance (re-apply transaction effect)
-                    decimal newBalance = bankAccountData.CurrentBalance;
-                    if (paymentTransactionData.TransactionType == "CREDIT")
-                    {
-                        newBalance += paymentTransactionData.Amount;
-                    }
-                    else if (paymentTransactionData.TransactionType == "DEBIT")
-                    {
-                        newBalance -= paymentTransactionData.Amount;
-                    }
-
-                    // Update BankAccount balance using raw SQL
-                    await _context.Database.ExecuteSqlInterpolatedAsync(
-                        $@"UPDATE BankAccounts 
-                           SET CurrentBalance = {newBalance}, 
-                               UpdatedAt = {DateTime.UtcNow}
-                           WHERE Id = {paymentTransactionData.BankAccountId}");
-
-                    // Restore payment using raw SQL
-                    try
-                    {
-                        await _context.Database.ExecuteSqlInterpolatedAsync(
-                            $@"UPDATE Payments 
-                               SET IsDeleted = 0, 
-                                   DeletedAt = NULL, 
-                                   DeletedBy = NULL, 
-                                   DeleteReason = NULL, 
-                                   UpdatedAt = {DateTime.UtcNow}
-                               WHERE Id = {paymentTransactionData.Id}");
-                    }
-                    catch
-                    {
-                        return ApiResponse<BankTransactionDto>.ErrorResult("Soft delete columns do not exist. Please run the database migration first.");
-                    }
-
-                    // Create transaction DTO from projected data
-                    var transactionDto = new BankTransactionDto
-                    {
-                        Id = paymentTransactionData.Id,
-                        BankAccountId = paymentTransactionData.BankAccountId,
-                        UserId = userId,
-                        Amount = paymentTransactionData.Amount,
-                        TransactionType = paymentTransactionData.TransactionType ?? "UNKNOWN",
-                        Description = paymentTransactionData.Description ?? "",
-                        Category = paymentTransactionData.Category,
-                        ReferenceNumber = paymentTransactionData.Reference,
-                        ExternalTransactionId = paymentTransactionData.ExternalTransactionId,
-                        TransactionDate = paymentTransactionData.TransactionDate ?? paymentTransactionData.ProcessedAt,
-                        CreatedAt = paymentTransactionData.CreatedAt,
-                        UpdatedAt = DateTime.UtcNow,
-                        Notes = paymentTransactionData.Notes,
-                        Merchant = paymentTransactionData.Merchant,
-                        Location = paymentTransactionData.Location,
-                        IsRecurring = paymentTransactionData.IsRecurring,
-                        RecurringFrequency = paymentTransactionData.RecurringFrequency,
-                        Currency = paymentTransactionData.Currency,
-                        BalanceAfterTransaction = paymentTransactionData.BalanceAfterTransaction ?? 0
                     };
 
                     return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Transaction restored successfully");

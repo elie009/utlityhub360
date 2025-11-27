@@ -5,6 +5,7 @@ using UtilityHub360.DTOs;
 using UtilityHub360.Models;
 using UtilityHub360.Services;
 using UtilityHub360.Data;
+using UtilityHub360.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace UtilityHub360.Controllers
