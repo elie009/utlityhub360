@@ -20,6 +20,8 @@ namespace UtilityHub360.Services
         private readonly OpenAISettings _openAISettings;
         private readonly ILogger<ChatService> _logger;
         private readonly IDocumentationSearchService _documentationSearchService;
+        private readonly IBankAccountService _bankAccountService;
+        private readonly IFinancialReportService _financialReportService;
         private readonly Dictionary<string, List<DateTime>> _rateLimitTracker = new();
 
         public ChatService(
@@ -31,7 +33,9 @@ namespace UtilityHub360.Services
             IMemoryCache cache,
             OpenAISettings openAISettings,
             ILogger<ChatService> logger,
-            IDocumentationSearchService documentationSearchService)
+            IDocumentationSearchService documentationSearchService,
+            IBankAccountService bankAccountService,
+            IFinancialReportService financialReportService)
         {
             _context = context;
             _disposableAmountService = disposableAmountService;
@@ -42,6 +46,8 @@ namespace UtilityHub360.Services
             _openAISettings = openAISettings;
             _logger = logger;
             _documentationSearchService = documentationSearchService;
+            _bankAccountService = bankAccountService;
+            _financialReportService = financialReportService;
         }
 
         public async Task<ApiResponse<ChatResponseDto>> SendMessageAsync(ChatMessageDto messageDto, string userId)
@@ -107,6 +113,13 @@ namespace UtilityHub360.Services
 
                 // Get conversation history for context
                 var conversationHistory = await GetConversationHistoryForAI(conversation.Id, _openAISettings.MaxConversationHistory);
+
+                // Process special commands (reports, entity creation)
+                var specialCommandResult = await ProcessSpecialCommandsAsync(messageDto.Message, userId, financialContext);
+                if (specialCommandResult != null)
+                {
+                    return specialCommandResult;
+                }
 
                 // Call OpenAI API
                 var aiResponse = await CallOpenAIAsync(messageDto.Message, financialContext, conversationHistory);
@@ -550,16 +563,39 @@ namespace UtilityHub360.Services
                 var client = new HttpClient();
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_openAISettings.ApiKey}");
 
+                // Build enhanced system prompt
+                var systemPrompt = BuildEnhancedSystemPrompt();
+                
                 var messages = new List<object>
                 {
-                    new { role = "system", content = _openAISettings.SystemPrompt }
+                    new { role = "system", content = systemPrompt }
                 };
 
-                // Add documentation context for application-related questions
-                var documentationContext = await _documentationSearchService.GetDocumentationContextAsync(userMessage);
-                if (!string.IsNullOrEmpty(documentationContext))
+                // Add documentation context ONLY for system functionality questions (not programming)
+                var lowerMessage = userMessage.ToLower();
+                var isSystemQuestion = lowerMessage.Contains("how do i") || 
+                                      lowerMessage.Contains("how to") || 
+                                      lowerMessage.Contains("what is") ||
+                                      lowerMessage.Contains("explain") ||
+                                      lowerMessage.Contains("feature");
+                
+                // Filter out programming-related questions
+                var isProgrammingQuestion = lowerMessage.Contains("code") || 
+                                           lowerMessage.Contains("programming") ||
+                                           lowerMessage.Contains("api endpoint") ||
+                                           lowerMessage.Contains("controller") ||
+                                           lowerMessage.Contains("service class") ||
+                                           lowerMessage.Contains("database") ||
+                                           lowerMessage.Contains("sql") ||
+                                           lowerMessage.Contains("entity framework");
+                
+                if (isSystemQuestion && !isProgrammingQuestion)
                 {
-                    messages.Add(new { role = "system", content = documentationContext });
+                    var documentationContext = await _documentationSearchService.GetDocumentationContextAsync(userMessage);
+                    if (!string.IsNullOrEmpty(documentationContext))
+                    {
+                        messages.Add(new { role = "system", content = documentationContext });
+                    }
                 }
 
                 // Add conversation history
@@ -737,6 +773,64 @@ namespace UtilityHub360.Services
             return result.Trim();
         }
 
+        private string BuildEnhancedSystemPrompt()
+        {
+            var basePrompt = _openAISettings.SystemPrompt;
+            
+            // If system prompt is empty or default, use enhanced accountant prompt
+            if (string.IsNullOrEmpty(basePrompt) || basePrompt.Contains("helpful assistant"))
+            {
+                return @"You are a senior accountant and financial advisor for UtilityHub360, a comprehensive financial management system. Your role is to:
+
+1. **Act as a Senior Accountant**: Provide expert financial advice, analysis, and guidance based on accounting principles and best practices.
+
+2. **Answer System Questions**: Help users understand how to use UtilityHub360 features, including:
+   - How to create and manage bills, loans, bank accounts, and savings goals
+   - How to view financial reports and analytics
+   - How to track expenses and income
+   - How to use the system's accounting features
+
+3. **Provide Financial Reports**: When users request reports or figures, provide detailed financial information including:
+   - Income and expense summaries
+   - Bill analytics and upcoming payments
+   - Loan status and payment schedules
+   - Savings progress and goals
+   - Financial summaries and trends
+
+4. **Assist with Entity Creation**: Guide users through creating:
+   - New bills (with amount, due date, frequency, type)
+   - Loan applications (with purpose, principal, interest rate, term)
+   - Bank accounts (with account type, initial balance, currency)
+   - Savings goals (with target amount, target date, savings type)
+
+5. **Receipt Processing**: When users upload receipt images (JPG/PNG), help them convert them into transactions by extracting:
+   - Amount, date, merchant name
+   - Category and description
+   - Link to appropriate bank account
+
+**IMPORTANT RESTRICTIONS:**
+- DO NOT answer programming-related questions (code, API endpoints, database queries, entity framework, SQL, controllers, service classes)
+- DO NOT provide technical implementation details
+- DO NOT explain how the system is built internally
+- If asked about programming/technical implementation, politely redirect: ""I'm here to help with your finances and using UtilityHub360. For technical questions about the system's code, please contact the development team.""
+
+**Response Style:**
+- Be professional, clear, and concise
+- Use accounting terminology appropriately
+- Provide actionable financial advice
+- Format numbers and dates clearly
+- Suggest relevant next steps based on the user's financial situation
+
+**When providing reports or figures:**
+- Include specific numbers from the user's financial context
+- Highlight important trends or concerns
+- Provide recommendations when appropriate
+- Format data in a clear, readable manner";
+            }
+            
+            return basePrompt;
+        }
+
         private List<string> ExtractSuggestedActions(string message)
         {
             var actions = new List<string>();
@@ -745,22 +839,36 @@ namespace UtilityHub360.Services
             if (lowerMessage.Contains("bill") || lowerMessage.Contains("payment"))
             {
                 actions.Add("View upcoming bills");
+                actions.Add("Create new bill");
             }
             if (lowerMessage.Contains("budget") || lowerMessage.Contains("expense"))
             {
                 actions.Add("Review budget");
+                actions.Add("View expense report");
             }
             if (lowerMessage.Contains("loan"))
             {
                 actions.Add("Check loan status");
+                actions.Add("Apply for loan");
             }
             if (lowerMessage.Contains("savings") || lowerMessage.Contains("save"))
             {
                 actions.Add("View savings accounts");
+                actions.Add("Create savings goal");
             }
             if (lowerMessage.Contains("income") || lowerMessage.Contains("salary"))
             {
                 actions.Add("Review income sources");
+            }
+            if (lowerMessage.Contains("report") || lowerMessage.Contains("analytics"))
+            {
+                actions.Add("Generate financial report");
+                actions.Add("View financial summary");
+            }
+            if (lowerMessage.Contains("bank account") || lowerMessage.Contains("account"))
+            {
+                actions.Add("View bank accounts");
+                actions.Add("Add bank account");
             }
 
             return actions;
@@ -784,6 +892,257 @@ namespace UtilityHub360.Services
                 _logger.LogError(ex, $"Error searching documentation for query: {query}");
                 return ApiResponse<string>.ErrorResult($"Failed to search documentation: {ex.Message}");
             }
+        }
+
+        private async Task<ApiResponse<ChatResponseDto>?> ProcessSpecialCommandsAsync(string userMessage, string userId, ChatContextDto? financialContext)
+        {
+            var lowerMessage = userMessage.ToLower().Trim();
+            
+            // Check for report requests
+            if (lowerMessage.Contains("report") || lowerMessage.Contains("generate report") || 
+                lowerMessage.Contains("financial report") || lowerMessage.Contains("show me") && 
+                (lowerMessage.Contains("summary") || lowerMessage.Contains("analytics")))
+            {
+                return await HandleReportRequestAsync(userMessage, userId, financialContext);
+            }
+            
+            // Check for entity creation requests
+            if (lowerMessage.Contains("create") || lowerMessage.Contains("add") || lowerMessage.Contains("new"))
+            {
+                if (lowerMessage.Contains("bill"))
+                {
+                    return await HandleCreateBillRequestAsync(userMessage, userId);
+                }
+                else if (lowerMessage.Contains("loan"))
+                {
+                    return await HandleCreateLoanRequestAsync(userMessage, userId);
+                }
+                else if (lowerMessage.Contains("bank account") || lowerMessage.Contains("account"))
+                {
+                    return await HandleCreateBankAccountRequestAsync(userMessage, userId);
+                }
+                else if (lowerMessage.Contains("savings") || lowerMessage.Contains("saving goal"))
+                {
+                    return await HandleCreateSavingsRequestAsync(userMessage, userId);
+                }
+            }
+            
+            return null; // Not a special command, continue with normal AI processing
+        }
+
+        private async Task<ApiResponse<ChatResponseDto>> HandleReportRequestAsync(string userMessage, string userId, ChatContextDto? financialContext)
+        {
+            try
+            {
+                var reportFormat = "json"; // Default to JSON for chat display
+                var lowerMessage = userMessage.ToLower();
+                
+                if (lowerMessage.Contains("pdf"))
+                {
+                    reportFormat = "pdf";
+                }
+                else if (lowerMessage.Contains("excel") || lowerMessage.Contains("csv"))
+                {
+                    reportFormat = "excel";
+                }
+
+                // Determine report type
+                var reportType = "financial_summary";
+                if (lowerMessage.Contains("bill"))
+                {
+                    reportType = "bill_analysis";
+                }
+                else if (lowerMessage.Contains("expense"))
+                {
+                    reportType = "expense_report";
+                }
+                else if (lowerMessage.Contains("income"))
+                {
+                    reportType = "income_report";
+                }
+
+                // Generate report data
+                var query = new ReportQueryDto
+                {
+                    StartDate = DateTime.UtcNow.AddDays(-30),
+                    EndDate = DateTime.UtcNow,
+                    Period = "MONTHLY"
+                };
+
+                var reportResult = await _financialReportService.GenerateFullReportAsync(userId, query);
+                
+                if (reportResult.Success && reportResult.Data != null)
+                {
+                    var report = reportResult.Data;
+                    var reportText = BuildReportText(report, financialContext);
+                    
+                    return ApiResponse<ChatResponseDto>.SuccessResult(new ChatResponseDto
+                    {
+                        Message = reportText,
+                        SuggestedActions = new List<string> 
+                        { 
+                            "Export as PDF", 
+                            "Export as Excel",
+                            "View detailed analytics"
+                        },
+                        TokensUsed = 0,
+                        Timestamp = DateTime.UtcNow
+                    });
+                }
+                
+                // Fallback to AI if report generation fails
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling report request");
+                return null; // Fallback to normal AI processing
+            }
+        }
+
+        private string BuildReportText(FinancialReportDto report, ChatContextDto? financialContext)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("## 📊 Financial Report Summary");
+            sb.AppendLine();
+
+            if (report.Summary != null)
+            {
+                sb.AppendLine("### Financial Overview");
+                sb.AppendLine($"- **Total Income**: ${report.Summary.TotalIncome:F2}");
+                sb.AppendLine($"- **Total Expenses**: ${report.Summary.TotalExpenses:F2}");
+                sb.AppendLine($"- **Disposable Income**: ${report.Summary.DisposableIncome:F2}");
+                sb.AppendLine($"- **Net Worth**: ${report.Summary.NetWorth:F2}");
+                sb.AppendLine();
+            }
+
+            if (report.BillsReport != null)
+            {
+                sb.AppendLine("### Bills Summary");
+                sb.AppendLine($"- **Total Bills**: {report.BillsReport.TotalBills}");
+                sb.AppendLine($"- **Pending Amount**: ${report.BillsReport.TotalPendingAmount:F2}");
+                sb.AppendLine($"- **Paid Amount**: ${report.BillsReport.TotalPaidAmount:F2}");
+                sb.AppendLine($"- **Overdue Amount**: ${report.BillsReport.TotalOverdueAmount:F2}");
+                sb.AppendLine();
+            }
+
+            if (report.LoanReport != null)
+            {
+                sb.AppendLine("### Loans Summary");
+                sb.AppendLine($"- **Total Loans**: {report.LoanReport.TotalLoans}");
+                sb.AppendLine($"- **Total Principal**: ${report.LoanReport.TotalPrincipal:F2}");
+                sb.AppendLine($"- **Total Monthly Payment**: ${report.LoanReport.TotalMonthlyPayment:F2}");
+                sb.AppendLine($"- **Remaining Balance**: ${report.LoanReport.TotalRemainingBalance:F2}");
+                sb.AppendLine();
+            }
+
+            if (financialContext?.UpcomingBills != null && financialContext.UpcomingBills.Any())
+            {
+                sb.AppendLine("### ⚠️ Upcoming Bills (Next 7 Days)");
+                foreach (var bill in financialContext.UpcomingBills.Take(5))
+                {
+                    sb.AppendLine($"- **{bill.BillName}**: ${bill.Amount:F2} due on {bill.DueDate:MMM dd, yyyy}");
+                }
+                sb.AppendLine();
+            }
+
+            sb.AppendLine("Would you like me to export this report as PDF or Excel?");
+            
+            return sb.ToString();
+        }
+
+        private async Task<ApiResponse<ChatResponseDto>> HandleCreateBillRequestAsync(string userMessage, string userId)
+        {
+            // Extract bill information from user message using AI or pattern matching
+            var response = new ChatResponseDto
+            {
+                Message = "I'd be happy to help you create a new bill! To get started, I'll need the following information:\n\n" +
+                         "1. **Bill Name** (e.g., 'Electricity Bill')\n" +
+                         "2. **Amount** (e.g., $150.00)\n" +
+                         "3. **Due Date** (e.g., 2024-12-15)\n" +
+                         "4. **Bill Type** (Utility, Insurance, Subscription, etc.)\n" +
+                         "5. **Frequency** (Monthly, Quarterly, Yearly)\n\n" +
+                         "Please provide these details, or you can use the form in the chat interface.",
+                SuggestedActions = new List<string> 
+                { 
+                    "Show bill creation form",
+                    "View existing bills"
+                },
+                TokensUsed = 0,
+                Timestamp = DateTime.UtcNow
+            };
+            
+            return ApiResponse<ChatResponseDto>.SuccessResult(response);
+        }
+
+        private async Task<ApiResponse<ChatResponseDto>> HandleCreateLoanRequestAsync(string userMessage, string userId)
+        {
+            var response = new ChatResponseDto
+            {
+                Message = "I can help you apply for a loan! Here's what I'll need:\n\n" +
+                         "1. **Loan Purpose** (e.g., 'Home Purchase', 'Car Loan')\n" +
+                         "2. **Principal Amount** (e.g., $50,000)\n" +
+                         "3. **Interest Rate** (e.g., 5.5%)\n" +
+                         "4. **Term** in months (e.g., 60 months)\n" +
+                         "5. **Monthly Income**\n" +
+                         "6. **Employment Status**\n\n" +
+                         "Please provide these details, or use the loan application form in the chat.",
+                SuggestedActions = new List<string> 
+                { 
+                    "Show loan application form",
+                    "View existing loans"
+                },
+                TokensUsed = 0,
+                Timestamp = DateTime.UtcNow
+            };
+            
+            return ApiResponse<ChatResponseDto>.SuccessResult(response);
+        }
+
+        private async Task<ApiResponse<ChatResponseDto>> HandleCreateBankAccountRequestAsync(string userMessage, string userId)
+        {
+            var response = new ChatResponseDto
+            {
+                Message = "Let's add a new bank account! I'll need:\n\n" +
+                         "1. **Account Name** (e.g., 'Chase Checking')\n" +
+                         "2. **Account Type** (Checking, Savings, Credit Card, Investment)\n" +
+                         "3. **Initial Balance** (e.g., $1,000.00)\n" +
+                         "4. **Currency** (e.g., USD)\n" +
+                         "5. **Financial Institution** (optional)\n\n" +
+                         "Please provide these details, or use the form in the chat interface.",
+                SuggestedActions = new List<string> 
+                { 
+                    "Show bank account form",
+                    "View existing accounts"
+                },
+                TokensUsed = 0,
+                Timestamp = DateTime.UtcNow
+            };
+            
+            return ApiResponse<ChatResponseDto>.SuccessResult(response);
+        }
+
+        private async Task<ApiResponse<ChatResponseDto>> HandleCreateSavingsRequestAsync(string userMessage, string userId)
+        {
+            var response = new ChatResponseDto
+            {
+                Message = "Great! Let's create a savings goal. I'll need:\n\n" +
+                         "1. **Goal Name** (e.g., 'Vacation Fund')\n" +
+                         "2. **Savings Type** (Emergency, Vacation, Retirement, etc.)\n" +
+                         "3. **Target Amount** (e.g., $10,000)\n" +
+                         "4. **Target Date** (e.g., 2025-12-31)\n" +
+                         "5. **Goal Description** (optional)\n\n" +
+                         "Please provide these details, or use the savings goal form in the chat.",
+                SuggestedActions = new List<string> 
+                { 
+                    "Show savings goal form",
+                    "View existing savings goals"
+                },
+                TokensUsed = 0,
+                Timestamp = DateTime.UtcNow
+            };
+            
+            return ApiResponse<ChatResponseDto>.SuccessResult(response);
         }
     }
 
