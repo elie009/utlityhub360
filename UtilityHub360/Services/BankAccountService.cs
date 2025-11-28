@@ -1877,7 +1877,50 @@ namespace UtilityHub360.Services
                 var bankAccount = payment.BankAccount;
                 if (bankAccount == null)
                 {
-                    return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found for this transaction");
+                    // Try to load bank account if not included
+                    if (!string.IsNullOrEmpty(payment.BankAccountId))
+                    {
+                        bankAccount = await _context.BankAccounts
+                            .FirstOrDefaultAsync(ba => ba.Id == payment.BankAccountId);
+                    }
+                    
+                    if (bankAccount == null)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found for this transaction");
+                    }
+                }
+
+                // Handle BankAccountId change (moving transaction to different account)
+                BankAccount? newBankAccount = null;
+                if (!string.IsNullOrEmpty(updateTransactionDto.BankAccountId) && 
+                    updateTransactionDto.BankAccountId != payment.BankAccountId)
+                {
+                    // Verify the new bank account exists and belongs to the user
+                    newBankAccount = await _context.BankAccounts
+                        .FirstOrDefaultAsync(ba => ba.Id == updateTransactionDto.BankAccountId && 
+                                                   ba.UserId == userId && 
+                                                   ba.IsActive);
+                    
+                    if (newBankAccount == null)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            "New bank account not found, inactive, or does not belong to user");
+                    }
+                    
+                    // Check if the new account's month is closed for the transaction date
+                    var transactionDateForCheck = updateTransactionDto.TransactionDate ?? payment.TransactionDate ?? DateTime.UtcNow;
+                    var isNewAccountMonthClosed = await _context.ClosedMonths
+                        .AnyAsync(cm => cm.BankAccountId == newBankAccount.Id &&
+                                       cm.Year == transactionDateForCheck.Year &&
+                                       cm.Month == transactionDateForCheck.Month);
+                    
+                    if (isNewAccountMonthClosed)
+                    {
+                        var monthName = new[] { "", "January", "February", "March", "April", "May", "June",
+                                                "July", "August", "September", "October", "November", "December" }[transactionDateForCheck.Month];
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            $"Cannot move transaction to new account. The month {monthName} {transactionDateForCheck.Year} is closed for the destination account.");
+                    }
                 }
 
                 // Determine the transaction date to check (use new date if provided, otherwise old date)
@@ -1932,6 +1975,18 @@ namespace UtilityHub360.Services
                 else if (oldTransactionType == "DEBIT")
                 {
                     bankAccount.CurrentBalance += oldAmount;
+                }
+
+                // If changing bank account, update the payment's bank account reference
+                if (newBankAccount != null)
+                {
+                    // Update old account's updated timestamp
+                    bankAccount.UpdatedAt = DateTime.UtcNow;
+                    
+                    // Switch to new bank account for applying new balance
+                    payment.BankAccountId = newBankAccount.Id;
+                    payment.BankAccount = newBankAccount;
+                    bankAccount = newBankAccount;
                 }
 
                 // Update payment fields
@@ -2034,6 +2089,17 @@ namespace UtilityHub360.Services
                 payment.BalanceAfterTransaction = bankAccount.CurrentBalance;
                 bankAccount.UpdatedAt = DateTime.UtcNow;
 
+                // If account was changed, also update the old account's timestamp
+                if (newBankAccount != null && oldBankAccountId != bankAccount.Id)
+                {
+                    var oldAccount = await _context.BankAccounts
+                        .FirstOrDefaultAsync(ba => ba.Id == oldBankAccountId);
+                    if (oldAccount != null)
+                    {
+                        oldAccount.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+
                 // Update BankTransaction record if it exists
                 var bankTransaction = await _context.BankTransactions
                     .FirstOrDefaultAsync(bt => bt.Id == transactionId && bt.UserId == userId);
@@ -2088,6 +2154,12 @@ namespace UtilityHub360.Services
                     if (updateTransactionDto.Location != null)
                     {
                         bankTransaction.Location = updateTransactionDto.Location;
+                    }
+
+                    // Update BankAccountId if account was changed
+                    if (newBankAccount != null)
+                    {
+                        bankTransaction.BankAccountId = newBankAccount.Id;
                     }
 
                     if (updateTransactionDto.IsRecurring.HasValue)

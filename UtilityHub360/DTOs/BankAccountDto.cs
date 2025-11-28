@@ -242,7 +242,7 @@ namespace UtilityHub360.DTOs
         public string? LoanId { get; set; }
 
         [StringLength(450)]
-        public string? ToBankAccountId { get; set; } // Destination account for bank transfer transactions
+        public string? BankAccountId { get; set; } // Destination account for bank transfer transactions
     }
 
     public class BankAccountSummaryDto

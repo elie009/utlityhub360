@@ -114,11 +114,19 @@ namespace UtilityHub360.Services
                                 var words = page.GetWords();
                                 if (words != null && words.Any())
                                 {
-                                    var pageText = string.Join(" ", words.Select(w => w.Text));
-                                    if (!string.IsNullOrWhiteSpace(pageText))
+                                    // Filter to only English (ASCII) words - excludes Arabic, Chinese, Japanese, etc.
+                                    var englishWords = words
+                                        .Where(w => !string.IsNullOrWhiteSpace(w.Text) && ContainsOnlyEnglishText(w.Text))
+                                        .Select(w => w.Text);
+                                    
+                                    if (englishWords.Any())
                                     {
-                                        textBuilder.AppendLine(pageText);
-                                        _logger.LogInformation($"Extracted {pageText.Length} characters from page {page.Number}");
+                                        var pageText = string.Join(" ", englishWords);
+                                        if (!string.IsNullOrWhiteSpace(pageText))
+                                        {
+                                            textBuilder.AppendLine(pageText);
+                                            _logger.LogInformation($"Extracted {pageText.Length} characters from page {page.Number} (English only)");
+                                        }
                                     }
                                 }
                             }
@@ -147,18 +155,68 @@ namespace UtilityHub360.Services
                     try
                     {
                         pdfStream.Position = 0;
-                        _logger.LogInformation("Attempting OCR extraction...");
-                        var ocrResult = await _ocrService.ProcessPdfAsync(pdfStream);
+                        _logger.LogInformation("Attempting to convert scanned PDF to text-based PDF...");
                         
-                        if (ocrResult != null && !string.IsNullOrWhiteSpace(ocrResult.FullText))
+                        // Convert scanned PDF to text-based PDF
+                        var textBasedPdfStream = await _ocrService.ConvertPdfToTextBasedPdfAsync(pdfStream);
+                        
+                        if (textBasedPdfStream != null && textBasedPdfStream.Length > 0)
                         {
-                            extractedText = ocrResult.FullText;
-                            extractionMethod = ocrResult.Provider ?? "OCR";
-                            _logger.LogInformation($"Successfully extracted {extractedText.Length} characters from PDF using {extractionMethod}");
+                            // Now try PdfPig on the converted PDF
+                            textBasedPdfStream.Position = 0;
+                            var textBuilder = new StringBuilder();
+                            
+                            using (var document = PdfDocument.Open(textBasedPdfStream))
+                            {
+                                var pageCount = document.NumberOfPages;
+                                _logger.LogInformation($"Converted PDF has {pageCount} pages");
+                                
+                                foreach (var page in document.GetPages())
+                                {
+                                    try
+                                    {
+                                        var words = page.GetWords();
+                                        if (words != null && words.Any())
+                                        {
+                                            var pageText = string.Join(" ", words.Select(w => w.Text));
+                                            if (!string.IsNullOrWhiteSpace(pageText))
+                                            {
+                                                textBuilder.AppendLine(pageText);
+                                            }
+                                        }
+                                    }
+                                    catch (Exception pageEx)
+                                    {
+                                        _logger.LogWarning($"Error extracting text from converted PDF page {page.Number}: {pageEx.Message}");
+                                    }
+                                }
+                            }
+                            
+                            extractedText = textBuilder.ToString();
+                            if (!string.IsNullOrWhiteSpace(extractedText))
+                            {
+                                extractionMethod = "OCR_TO_TEXT_PDF";
+                                _logger.LogInformation($"Successfully extracted {extractedText.Length} characters from converted PDF");
+                            }
                         }
-                        else
+                        
+                        // If conversion didn't work, try direct OCR extraction as fallback
+                        if (string.IsNullOrWhiteSpace(extractedText))
                         {
-                            _logger.LogWarning($"OCR returned empty text. Confidence: {ocrResult?.Confidence ?? 0}");
+                            pdfStream.Position = 0;
+                            _logger.LogInformation("Falling back to direct OCR extraction...");
+                            var ocrResult = await _ocrService.ProcessPdfAsync(pdfStream);
+                            
+                            if (ocrResult != null && !string.IsNullOrWhiteSpace(ocrResult.FullText))
+                            {
+                                extractedText = ocrResult.FullText;
+                                extractionMethod = ocrResult.Provider ?? "OCR";
+                                _logger.LogInformation($"Successfully extracted {extractedText.Length} characters from PDF using {extractionMethod}");
+                            }
+                            else
+                            {
+                                _logger.LogWarning($"OCR returned empty text. Confidence: {ocrResult?.Confidence ?? 0}");
+                            }
                         }
                     }
                     catch (Exception ocrEx)
@@ -275,9 +333,9 @@ IMPORTANT:
                     StatementEndDate = aiResult.TryGetProperty("statementEndDate", out var endDate) && 
                         DateTime.TryParse(endDate.GetString(), out var ed) ? ed : null,
                     OpeningBalance = aiResult.TryGetProperty("openingBalance", out var openBal) ? 
-                        openBal.GetDecimal() : null,
+                        GetDecimalFromJsonElement(openBal) : null,
                     ClosingBalance = aiResult.TryGetProperty("closingBalance", out var closeBal) ? 
-                        closeBal.GetDecimal() : null,
+                        GetDecimalFromJsonElement(closeBal) : null,
                     ImportFormat = "PDF",
                     ImportSource = fileName,
                     StatementItems = new List<BankStatementItemImportDto>(),
@@ -297,16 +355,34 @@ IMPORTANT:
                                 continue;
                             }
 
+                            // Safely parse amount - handle both string and number types
+                            var amountElement = trans.GetProperty("amount");
+                            var amount = GetDecimalFromJsonElement(amountElement);
+                            
+                            if (!amount.HasValue || amount.Value <= 0)
+                            {
+                                _logger.LogWarning($"Skipping transaction with invalid amount: {amountElement}");
+                                continue;
+                            }
+
+                            // Safely parse balanceAfterTransaction
+                            decimal balanceAfter = 0;
+                            if (trans.TryGetProperty("balanceAfterTransaction", out var bal))
+                            {
+                                var balanceValue = GetDecimalFromJsonElement(bal);
+                                balanceAfter = balanceValue ?? 0;
+                            }
+
                             var item = new BankStatementItemImportDto
                             {
                                 TransactionDate = transactionDate,
-                                Amount = trans.GetProperty("amount").GetDecimal(),
+                                Amount = amount.Value,
                                 TransactionType = trans.GetProperty("transactionType").GetString() ?? "DEBIT",
                                 Description = trans.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "",
                                 ReferenceNumber = trans.TryGetProperty("referenceNumber", out var refNum) ? refNum.GetString() ?? "" : "",
                                 Merchant = trans.TryGetProperty("merchant", out var merch) ? merch.GetString() ?? "" : "",
                                 Category = trans.TryGetProperty("category", out var cat) ? cat.GetString() ?? "" : "",
-                                BalanceAfterTransaction = trans.TryGetProperty("balanceAfterTransaction", out var bal) ? bal.GetDecimal() : 0
+                                BalanceAfterTransaction = balanceAfter
                             };
                             result.StatementItems.Add(item);
                         }
@@ -1130,6 +1206,45 @@ IMPORTANT:
         }
 
         // ==================== HELPER METHODS ====================
+
+        private decimal? GetDecimalFromJsonElement(JsonElement element)
+        {
+            try
+            {
+                if (element.ValueKind == JsonValueKind.Number)
+                {
+                    return element.GetDecimal();
+                }
+                else if (element.ValueKind == JsonValueKind.String)
+                {
+                    var str = element.GetString();
+                    if (string.IsNullOrWhiteSpace(str))
+                        return null;
+                    
+                    // Remove currency symbols and commas
+                    str = str.Replace("$", "").Replace(",", "").Trim();
+                    if (decimal.TryParse(str, out var result))
+                    {
+                        return result;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Error parsing decimal from JSON element: {ex.Message}");
+            }
+            return null;
+        }
+
+        private bool ContainsOnlyEnglishText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+            
+            // Only allow ASCII characters (0-127) - this excludes all non-English scripts
+            // (Arabic, Chinese, Japanese, Korean, Hebrew, Thai, etc.)
+            return text.All(c => c <= 127 || char.IsWhiteSpace(c));
+        }
 
         private async Task AutoMatchStatementItemsAsync(string statementId, string userId)
         {

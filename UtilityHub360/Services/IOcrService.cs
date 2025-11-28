@@ -4,6 +4,7 @@ namespace UtilityHub360.Services
     {
         Task<OcrResult> ProcessImageAsync(Stream imageStream, string fileType);
         Task<OcrResult> ProcessPdfAsync(Stream pdfStream);
+        Task<Stream> ConvertPdfToTextBasedPdfAsync(Stream pdfStream);
     }
 
     public class OcrResult
