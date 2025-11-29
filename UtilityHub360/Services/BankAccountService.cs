@@ -3678,9 +3678,27 @@ namespace UtilityHub360.Services
         }
 
         // Helper Methods
-        private async Task<BankAccountDto> MapToBankAccountDtoAsync(BankAccount bankAccount)
+        private async Task<BankAccountDto> MapToBankAccountDtoAsync(BankAccount bankAccount, dynamic? transactionStats = null)
         {
             var transactions = bankAccount.Transactions ?? new List<BankTransaction>();
+            
+            // Use provided stats if available, otherwise calculate from transactions
+            int transactionCount;
+            decimal totalIncoming;
+            decimal totalOutgoing;
+            
+            if (transactionStats != null)
+            {
+                transactionCount = transactionStats.TransactionCount;
+                totalIncoming = transactionStats.TotalIncoming ?? 0m;
+                totalOutgoing = transactionStats.TotalOutgoing ?? 0m;
+            }
+            else
+            {
+                transactionCount = transactions.Count;
+                totalIncoming = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount);
+                totalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount);
+            }
             
             // Load cards if not already loaded (handle case where Cards table doesn't exist)
             List<CardDto> cards = new List<CardDto>();
@@ -3737,9 +3755,9 @@ namespace UtilityHub360.Services
                         IsActive = bankAccount.IsActive,
                         Iban = bankAccount.Iban,
                         SwiftCode = bankAccount.SwiftCode,
-                        TransactionCount = transactions.Count,
-                        TotalIncoming = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount),
-                        TotalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount),
+                        TransactionCount = transactionCount,
+                        TotalIncoming = totalIncoming,
+                        TotalOutgoing = totalOutgoing,
                         Cards = new List<CardDto>()
                     };
                 }
@@ -4158,6 +4176,35 @@ namespace UtilityHub360.Services
                     })
                     .ToListAsync();
                 
+                // Get bank account IDs for transaction lookup
+                var bankAccountIds = accountsData.Select(ba => ba.Id).ToList();
+                
+                // Get aggregated transaction statistics from Payments table grouped by BankAccountId (ALL transactions, not just period)
+                var transactionStats = await _context.Payments
+                    .AsNoTracking()
+                    .Where(p => bankAccountIds.Contains(p.BankAccountId) && 
+                               p.IsBankTransaction && 
+                               !p.IsDeleted &&
+                               p.BankAccountId != null)
+                    .GroupBy(p => p.BankAccountId!)
+                    .Select(g => new
+                    {
+                        BankAccountId = g.Key,
+                        TransactionCount = g.Count(),
+                        TotalIncoming = g.Where(p => p.TransactionType == "CREDIT").Sum(p => p.Amount),
+                        TotalOutgoing = g.Where(p => p.TransactionType == "DEBIT").Sum(p => p.Amount)
+                    })
+                    .ToListAsync();
+                
+                // Create dictionary for efficient lookup
+                var transactionStatsByAccountId = transactionStats
+                    .ToDictionary(ts => ts.BankAccountId, ts => new
+                    {
+                        ts.TransactionCount,
+                        ts.TotalIncoming,
+                        ts.TotalOutgoing
+                    });
+                
                 // Convert to BankAccount entities
                 var accounts = accountsData.Select(ba => new BankAccount
                 {
@@ -4180,10 +4227,11 @@ namespace UtilityHub360.Services
                     UpdatedAt = ba.UpdatedAt,
                     IsActive = ba.IsActive,
                     Iban = ba.Iban,
-                    SwiftCode = ba.SwiftCode
+                    SwiftCode = ba.SwiftCode,
+                    Transactions = new List<BankTransaction>() // Empty list - we use aggregated stats from Payments
                 }).ToList();
 
-                // Use projection to avoid reading soft delete columns
+                // Use projection to avoid reading soft delete columns (period transactions for summary calculations)
                 var transactionsData = await _context.Payments
                     .AsNoTracking()
                     .Where(p => p.UserId == userId && 
@@ -4290,12 +4338,22 @@ namespace UtilityHub360.Services
                     PeriodStart = startDate,
                     PeriodEnd = endDate,
                     TransactionCount = transactions.Count,
-                    Accounts = accounts.Select(a => MapToBankAccountDtoAsync(a).Result).ToList(),
+                    Accounts = new List<BankAccountDto>(),
                     SpendingByCategory = transactions
                         .Where(t => t.TransactionType == "DEBIT" && !string.IsNullOrEmpty(t.Category))
                         .GroupBy(t => t.Category!)
                         .ToDictionary(g => g.Key, g => g.Sum(t => t.Amount))
                 };
+
+                // Map accounts with transaction stats
+                foreach (var account in accounts)
+                {
+                    // Pass transaction stats if available
+                    var stats = transactionStatsByAccountId.TryGetValue(account.Id, out var accountStats) 
+                        ? accountStats 
+                        : null;
+                    summary.Accounts.Add(await MapToBankAccountDtoAsync(account, stats));
+                }
 
                 return ApiResponse<BankAccountSummaryDto>.SuccessResult(summary);
             }
