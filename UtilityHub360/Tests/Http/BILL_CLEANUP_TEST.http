@@ -1,0 +1,101 @@
+### Bill Year Restriction Fix and Cleanup Test
+### This file tests the fixes for:
+### 1. Removing year restriction in bill history/creation
+### 2. Cleaning up auto-generated future bills not within current year
+
+### Get JWT Token First (replace with your actual credentials)
+POST https://localhost:7299/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "Test123!"
+}
+
+### Create a bill for a future year (testing year restriction removal)
+### This should now work without year restrictions
+POST https://localhost:7299/api/bills
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "billName": "Future Electricity Bill",
+  "billType": "utility",
+  "amount": 150.00,
+  "dueDate": "2025-03-15T00:00:00Z",
+  "frequency": "monthly",
+  "provider": "Electric Company",
+  "referenceNumber": "ELE2025001",
+  "autoGenerateNext": true,
+  "notes": "Test bill for 2025 - should work now"
+}
+
+### Create a bill for a past year (testing year restriction removal)
+### This should also work without year restrictions
+POST https://localhost:7299/api/bills
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "billName": "Past Water Bill",
+  "billType": "utility",
+  "amount": 75.00,
+  "dueDate": "2023-05-10T00:00:00Z",
+  "frequency": "monthly",
+  "provider": "Water Company",
+  "referenceNumber": "WAT2023001",
+  "autoGenerateNext": true,
+  "notes": "Test bill for 2023 - should work now"
+}
+
+### Get count of auto-generated bills outside current year
+### This will show how many bills need cleanup
+GET https://localhost:7299/api/bills/cleanup/out-of-year/count
+Authorization: Bearer {{auth_token}}
+
+### Clean up auto-generated bills not within current year
+### This will remove auto-generated bills outside the current year
+POST https://localhost:7299/api/bills/cleanup/out-of-year
+Authorization: Bearer {{auth_token}}
+
+### Verify cleanup worked - count should be 0 now
+GET https://localhost:7299/api/bills/cleanup/out-of-year/count
+Authorization: Bearer {{auth_token}}
+
+### Get bills for a specific month in 2023 (testing monthly filtering)
+GET https://localhost:7299/api/bills/monthly?year=2023&month=5
+Authorization: Bearer {{auth_token}}
+
+### Get bills for a specific month in 2025 (testing monthly filtering)
+GET https://localhost:7299/api/bills/monthly?year=2025&month=3
+Authorization: Bearer {{auth_token}}
+
+### Get all user bills to see the complete picture
+GET https://localhost:7299/api/bills?page=1&limit=50
+Authorization: Bearer {{auth_token}}
+
+### Create another test bill for current year with auto-generation
+### This should create bills only for the next 12 months
+POST https://localhost:7299/api/bills
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "billName": "Current Year Gas Bill",
+  "billType": "utility",
+  "amount": 89.50,
+  "dueDate": "2024-10-20T00:00:00Z",
+  "frequency": "monthly",
+  "provider": "Gas Company",
+  "referenceNumber": "GAS2024001",
+  "autoGenerateNext": true,
+  "notes": "Current year bill with auto-generation - should create next 12 months"
+}
+
+### Test: Get bills for a future month (should show auto-generated bills)
+GET https://localhost:7299/api/bills/monthly?year=2024&month=11
+Authorization: Bearer {{auth_token}}
+
+### Test: Get bills for far future month (should show auto-generated bills)
+GET https://localhost:7299/api/bills/monthly?year=2025&month=9
+Authorization: Bearer {{auth_token}}

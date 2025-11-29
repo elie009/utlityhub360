@@ -1,0 +1,28 @@
+### 🗑️ DELETE REPAYMENT SCHEDULES 2026-2031
+### This targets the RepaymentSchedules table specifically
+
+### Step 1: Login (replace with your actual credentials)
+POST https://localhost:7299/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "your-email@example.com",
+  "password": "your-password"
+}
+
+### Step 2: Check how many repayment schedules exist in 2026-2031 range
+GET https://localhost:7299/api/loans/repayment-schedules/count-2026-2031
+Authorization: Bearer {{auth_token}}
+
+### Step 3: 🗑️ DELETE ALL REPAYMENT SCHEDULES from January 2026 to December 2031
+### ⚠️ WARNING: This will permanently delete repayment schedules from the database
+POST https://localhost:7299/api/loans/emergency-delete-repayment-schedules-2026-2031
+Authorization: Bearer {{auth_token}}
+
+### Step 4: Verify they're gone (should show count = 0)
+GET https://localhost:7299/api/loans/repayment-schedules/count-2026-2031
+Authorization: Bearer {{auth_token}}
+
+### ✅ DONE! 
+### Your repayment schedules from January 2026 to 2031 are now deleted from the database.
+### This will also properly update loan remaining balances and mark loans as completed if needed.

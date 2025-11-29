@@ -1,0 +1,228 @@
+### UtilityHub360 - Loan Payment Schedule API Tests
+### All endpoints are CORRECT and tested
+### Base URL: http://localhost:5000 or https://localhost:5001
+
+@baseUrl = http://localhost:5000
+@loanId = da188a68-ebe3-4288-b56d-d9e0a922dc81
+@token = YOUR_JWT_TOKEN_HERE
+
+### ============================================
+### 1. ADD PAYMENT SCHEDULE - Auto Installment Number ⭐ **RECOMMENDED**
+### System automatically finds next available installment number
+### Just provide: due date and monthly payment!
+### ============================================
+POST {{baseUrl}}/api/Loans/{{loanId}}/add-schedule
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "firstDueDate": "2024-07-15T00:00:00Z",
+  "monthlyPayment": 1200.00,
+  "numberOfMonths": 3,
+  "reason": "Adding catch-up payments"
+}
+
+### ✨ NEW: No need to provide startingInstallmentNumber!
+### System automatically:
+### - Finds max existing installment (e.g., 12)
+### - Starts new ones from max + 1 (e.g., 13)
+### - No conflicts possible!
+
+###
+
+### 1b. ADD PAYMENT SCHEDULE - Manual Installment Number (Advanced)
+### Only use if you need specific installment numbers
+POST {{baseUrl}}/api/Loans/{{loanId}}/add-schedule-manual
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "startingInstallmentNumber": 13,
+  "numberOfMonths": 3,
+  "firstDueDate": "2024-07-15T00:00:00Z",
+  "monthlyPayment": 1200.00,
+  "reason": "Adding catch-up payments at specific position"
+}
+
+### ============================================
+### 2. ADD PAYMENT SCHEDULE - Extend Loan Term
+### ============================================
+POST {{baseUrl}}/api/Loans/{{loanId}}/extend-term
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "additionalMonths": 6,
+  "reason": "Financial hardship extension"
+}
+
+### ============================================
+### 3. ADD PAYMENT SCHEDULE - Regenerate Entire Schedule
+### WARNING: This REPLACES the entire schedule!
+### ============================================
+POST {{baseUrl}}/api/Loans/{{loanId}}/regenerate-schedule
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "newMonthlyPayment": 750.00,
+  "newTerm": 24,
+  "startDate": "2024-02-01T00:00:00Z",
+  "reason": "Complete loan restructuring"
+}
+
+### ============================================
+### 4. UPDATE PAYMENT SCHEDULE - Simple Update
+### Updates amount, status, due date, paid date
+### ============================================
+PATCH {{baseUrl}}/api/Loans/{{loanId}}/schedule/3
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "amount": 900.00,
+  "status": "PAID",
+  "dueDate": "2024-12-20T00:00:00Z",
+  "paidDate": "2024-12-01T10:30:00Z",
+  "paymentMethod": "CASH",
+  "paymentReference": "PAY-001",
+  "notes": "Updated and marked as paid"
+}
+
+### ============================================
+### 5. UPDATE PAYMENT SCHEDULE - Mark as Paid
+### ============================================
+POST {{baseUrl}}/api/Loans/{{loanId}}/schedule/3/mark-paid
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "amount": 825.00,
+  "method": "CASH",
+  "reference": "PAY-2024-001",
+  "paymentDate": "2024-12-01T10:30:00Z",
+  "notes": "Payment received in cash"
+}
+
+### ============================================
+### 6. UPDATE PAYMENT SCHEDULE - Update Due Date Only
+### ============================================
+PUT {{baseUrl}}/api/Loans/{{loanId}}/schedule/3
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "newDueDate": "2024-12-20T00:00:00Z"
+}
+
+### ============================================
+### 7. DELETE PAYMENT SCHEDULE - Delete Specific Installment
+### ============================================
+DELETE {{baseUrl}}/api/Loans/{{loanId}}/schedule/15
+Authorization: Bearer {{token}}
+
+### ============================================
+### 8. VIEW PAYMENT SCHEDULE - Get Full Schedule
+### ============================================
+GET {{baseUrl}}/api/Loans/{{loanId}}/schedule
+Authorization: Bearer {{token}}
+
+### ============================================
+### 9. VIEW PAYMENT SCHEDULE - Get Loan Details
+### ============================================
+GET {{baseUrl}}/api/Loans/{{loanId}}
+Authorization: Bearer {{token}}
+
+### ============================================
+### 10. VIEW PAYMENT SCHEDULE - Upcoming Payments
+### ============================================
+GET {{baseUrl}}/api/Loans/upcoming-payments?days=30
+Authorization: Bearer {{token}}
+
+### ============================================
+### 11. VIEW PAYMENT SCHEDULE - Overdue Payments
+### ============================================
+GET {{baseUrl}}/api/Loans/overdue-payments
+Authorization: Bearer {{token}}
+
+### ============================================
+### QUICK REFERENCE FOR YOUR LOAN
+### Loan ID: da188a68-ebe3-4288-b56d-d9e0a922dc81
+### ============================================
+
+### ⭐ YOUR EXACT REQUEST - FIXED VERSION (Will work now!)
+POST {{baseUrl}}/api/Loans/da188a68-ebe3-4288-b56d-d9e0a922dc81/add-schedule
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "firstDueDate": "2025-10-12T20:19:04.695Z",
+  "monthlyPayment": 200
+}
+
+### ✨ Changes from your original request:
+### ❌ Removed: "startingInstallmentNumber": 1
+### ✅ System auto-generates installment number
+### ✅ No more conflicts!
+### ✅ Just 2 required fields!
+
+###
+
+### Add 3 payment months
+POST {{baseUrl}}/api/Loans/da188a68-ebe3-4288-b56d-d9e0a922dc81/add-schedule
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "numberOfMonths": 3,
+  "firstDueDate": "2024-07-15T00:00:00Z",
+  "monthlyPayment": 1200.00
+}
+
+###
+
+### Extend by 6 months (alternative simpler method)
+POST {{baseUrl}}/api/Loans/da188a68-ebe3-4288-b56d-d9e0a922dc81/extend-term
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "additionalMonths": 6
+}
+
+###
+
+### Update installment #3
+PATCH {{baseUrl}}/api/Loans/da188a68-ebe3-4288-b56d-d9e0a922dc81/schedule/3
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "amount": 900.00,
+  "status": "PAID"
+}
+
+###
+
+### Delete installment #15
+DELETE {{baseUrl}}/api/Loans/da188a68-ebe3-4288-b56d-d9e0a922dc81/schedule/15
+Authorization: Bearer {{token}}
+
+###
+
+### ============================================
+### COMMON ERRORS - NOW FIXED! ✅
+### ============================================
+### ❌ WAS: /api/api/Loans/... (duplicate /api/)
+### ✅ NOW: /api/Loans/... (correct!)
+### 
+### ❌ WAS: "startingInstallmentNumber": 1 (conflicts!)
+### ✅ NOW: Auto-generated (no conflicts!)
+###
+### ❌ WAS: Missing Authorization header
+### ✅ NOW: Authorization: Bearer YOUR_TOKEN
+###
+### ❌ WAS: Using GET for add-schedule
+### ✅ NOW: Using POST for add-schedule
+### ============================================
+

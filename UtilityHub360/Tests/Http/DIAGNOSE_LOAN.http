@@ -1,0 +1,90 @@
+### Diagnose Loan Payment Schedule Issue
+### Replace YOUR_TOKEN with your actual JWT token
+
+@baseUrl = http://localhost:5000
+@loanId = da188a68-ebe3-4288-b56d-d9e0a922dc81
+@token = YOUR_TOKEN_HERE
+
+### ============================================
+### STEP 1: Check Loan Details and Status
+### ============================================
+GET {{baseUrl}}/api/Loans/{{loanId}}
+Authorization: Bearer {{token}}
+
+### Expected Response:
+### - Check "status" field - must be "ACTIVE" or "APPROVED"
+### - Check "term" field - number of months
+### - Check other loan details
+
+###
+
+### ============================================
+### STEP 2: Check Existing Payment Schedule
+### ============================================
+GET {{baseUrl}}/api/Loans/{{loanId}}/schedule
+Authorization: Bearer {{token}}
+
+### Expected Response:
+### - Shows all existing installments
+### - Check installmentNumber values
+### - See which numbers are already taken
+### - Check status of each (PENDING, PAID, OVERDUE)
+
+###
+
+### ============================================
+### SOLUTION 1: Auto-Add Schedule (SIMPLEST!) ⭐ **RECOMMENDED**
+### System automatically finds next available installment number
+### NO NEED to provide startingInstallmentNumber!
+### ============================================
+POST {{baseUrl}}/api/Loans/{{loanId}}/add-schedule
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "firstDueDate": "2025-10-12T20:19:04.695Z",
+  "monthlyPayment": 200
+}
+
+### That's it! Just 2 fields!
+### - System automatically finds next installment number
+### - numberOfMonths defaults to 1
+### - No conflicts possible!
+
+###
+
+### ============================================
+### SOLUTION 2: Extend Loan Term (Simpler)
+### Automatically adds to the end, no conflicts!
+### ============================================
+POST {{baseUrl}}/api/Loans/{{loanId}}/extend-term
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "additionalMonths": 1,
+  "reason": "Adding 1 extra month"
+}
+
+### This automatically:
+### - Finds the last installment number
+### - Adds new installment after it
+### - Uses existing monthly payment amount
+### - No conflicts!
+
+###
+
+### ============================================
+### SOLUTION 3: Update Existing Installment
+### If you want to modify installment #1 instead of adding:
+### ============================================
+PATCH {{baseUrl}}/api/Loans/{{loanId}}/schedule/1
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "amount": 200
+}
+
+###
+

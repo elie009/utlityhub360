@@ -1,0 +1,95 @@
+### 🛡️ TEST CURRENT YEAR VALIDATION
+### This tests the new validation that only allows bills for the current year
+
+### Step 1: Login (replace with your actual credentials)
+POST https://localhost:7299/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "your-email@example.com",
+  "password": "your-password"
+}
+
+### Test 1: ✅ SHOULD WORK - Create bill for current year (2024)
+POST https://localhost:7299/api/bills
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "billName": "Current Year Electric Bill",
+  "billType": "utility",
+  "amount": 150.00,
+  "dueDate": "2024-12-15T00:00:00Z",
+  "frequency": "monthly",
+  "provider": "Electric Company",
+  "referenceNumber": "ELE2024001",
+  "autoGenerateNext": true,
+  "notes": "This should work - current year 2024"
+}
+
+### Test 2: ❌ SHOULD FAIL - Try to create bill for 2026
+POST https://localhost:7299/api/bills
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "billName": "Future Year Water Bill",
+  "billType": "utility", 
+  "amount": 75.00,
+  "dueDate": "2026-01-15T00:00:00Z",
+  "frequency": "monthly",
+  "provider": "Water Company",
+  "referenceNumber": "WAT2026001",
+  "autoGenerateNext": false,
+  "notes": "This should FAIL - future year 2026"
+}
+
+### Test 3: ❌ SHOULD FAIL - Try to create bill for 2023
+POST https://localhost:7299/api/bills
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "billName": "Past Year Gas Bill",
+  "billType": "utility",
+  "amount": 100.00,
+  "dueDate": "2023-08-15T00:00:00Z",
+  "frequency": "monthly",
+  "provider": "Gas Company", 
+  "referenceNumber": "GAS2023001",
+  "autoGenerateNext": false,
+  "notes": "This should FAIL - past year 2023"
+}
+
+### Test 4: ✅ SHOULD WORK - Create bill for different month in current year
+POST https://localhost:7299/api/bills
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "billName": "August 2024 Internet Bill",
+  "billType": "utility",
+  "amount": 89.99,
+  "dueDate": "2024-08-20T00:00:00Z",
+  "frequency": "monthly",
+  "provider": "Internet Provider",
+  "referenceNumber": "INT2024001", 
+  "autoGenerateNext": true,
+  "notes": "This should work - August 2024 (current year)"
+}
+
+### Test 5: Get created bills to verify only current year bills exist
+GET https://localhost:7299/api/bills?page=1&limit=20
+Authorization: Bearer {{auth_token}}
+
+### Test 6: Verify auto-generated bills are only for current year
+GET https://localhost:7299/api/bills/auto-generated?confirmed=false
+Authorization: Bearer {{auth_token}}
+
+### Expected Results:
+### Test 1: ✅ SUCCESS - Bill created for December 2024
+### Test 2: ❌ ERROR - "Bills can only be created for the current year (2024)"
+### Test 3: ❌ ERROR - "Bills can only be created for the current year (2024)" 
+### Test 4: ✅ SUCCESS - Bill created for August 2024
+### Test 5: Should only show bills from 2024
+### Test 6: Should only show auto-generated bills from 2024

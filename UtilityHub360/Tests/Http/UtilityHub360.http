@@ -1,0 +1,68 @@
+@UtilityHub360_HostAddress = http://localhost:5000
+@token = YOUR_JWT_TOKEN_HERE
+
+### Health Check
+GET {{UtilityHub360_HostAddress}}/health
+Accept: application/json
+
+###
+
+### Weather Forecast (Test Endpoint)
+GET {{UtilityHub360_HostAddress}}/api/weatherforecast/
+Accept: application/json
+
+###
+
+### Get Loan Details
+GET {{UtilityHub360_HostAddress}}/api/Loans/YOUR_LOAN_ID
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### Get Loan Payment Schedule
+GET {{UtilityHub360_HostAddress}}/api/Loans/YOUR_LOAN_ID/schedule
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### Add Payment Schedule (Custom Installments)
+POST {{UtilityHub360_HostAddress}}/api/Loans/YOUR_LOAN_ID/add-schedule
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "startingInstallmentNumber": 13,
+  "numberOfMonths": 3,
+  "firstDueDate": "2024-07-15T00:00:00Z",
+  "monthlyPayment": 1200.00,
+  "reason": "Adding additional payments"
+}
+
+###
+
+### Extend Loan Term
+POST {{UtilityHub360_HostAddress}}/api/Loans/YOUR_LOAN_ID/extend-term
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "additionalMonths": 6,
+  "reason": "Extension needed"
+}
+
+###
+
+### Update Payment Schedule
+PATCH {{UtilityHub360_HostAddress}}/api/Loans/YOUR_LOAN_ID/schedule/1
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "amount": 900.00,
+  "status": "PAID",
+  "paymentMethod": "CASH"
+}
+
+###

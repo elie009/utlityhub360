@@ -1,0 +1,22 @@
+### 🗑️ DELETE 2026-2031 AUTO-GENERATED BILLS NOW
+### This will permanently delete all auto-generated bills with due dates from Jan 2026 to Dec 2031
+
+### Step 1: Login (replace with your actual credentials)
+POST https://localhost:7299/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "your-email@example.com",
+  "password": "your-password"
+}
+
+### Step 2: ⚠️ PERMANENT DELETION - Delete all auto-generated bills from Jan 2026 to Dec 2031
+### This will remove them from the database permanently
+POST https://localhost:7299/api/bills/cleanup/date-range?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### Step 3: Verify they're gone (should show count = 0)
+GET https://localhost:7299/api/bills/cleanup/date-range/count?startDate=2026-01-01&endDate=2031-12-31
+Authorization: Bearer {{auth_token}}
+
+### ✅ DONE! The bills are now deleted from the database.

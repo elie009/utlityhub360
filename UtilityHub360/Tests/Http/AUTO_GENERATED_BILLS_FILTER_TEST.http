@@ -1,0 +1,92 @@
+### Test Auto-Generated Bills API with Current Year Filter
+### This file tests the modified /api/bills/auto-generated endpoint
+### which now filters out bills with due dates not in the current year
+
+### Get JWT Token First (replace with your actual credentials)
+POST https://localhost:7299/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "Test123!"
+}
+
+### Test 1: Get all auto-generated bills (should only show current year)
+### This should now only return bills with due dates in 2024 (current year)
+GET https://localhost:7299/api/bills/auto-generated
+Authorization: Bearer {{auth_token}}
+
+### Test 2: Get unconfirmed auto-generated bills (should only show current year)
+### This should only return unconfirmed bills with due dates in 2024
+GET https://localhost:7299/api/bills/auto-generated?confirmed=false
+Authorization: Bearer {{auth_token}}
+
+### Test 3: Get confirmed auto-generated bills (should only show current year)
+### This should only return confirmed bills with due dates in 2024
+GET https://localhost:7299/api/bills/auto-generated?confirmed=true
+Authorization: Bearer {{auth_token}}
+
+### Test 4: Create a bill for future year to test filtering
+### Create a bill with auto-generation for 2025
+POST https://localhost:7299/api/bills
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "billName": "Future Electric Bill 2025",
+  "billType": "utility",
+  "amount": 200.00,
+  "dueDate": "2025-02-15T00:00:00Z",
+  "frequency": "monthly",
+  "provider": "Electric Co",
+  "referenceNumber": "ELE2025002",
+  "autoGenerateNext": true,
+  "notes": "Test bill for 2025 - should generate some auto bills for 2025"
+}
+
+### Test 5: Create a bill for past year to test filtering
+### Create a bill with auto-generation for 2023
+POST https://localhost:7299/api/bills
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "billName": "Past Water Bill 2023",
+  "billType": "utility",
+  "amount": 120.00,
+  "dueDate": "2023-08-10T00:00:00Z",
+  "frequency": "monthly",
+  "provider": "Water Co",
+  "referenceNumber": "WAT2023002",
+  "autoGenerateNext": true,
+  "notes": "Test bill for 2023 - should generate some auto bills for 2023"
+}
+
+### Test 6: Get all auto-generated bills again
+### Should still only show bills with due dates in current year (2024)
+### Even though we created bills that auto-generated for other years
+GET https://localhost:7299/api/bills/auto-generated
+Authorization: Bearer {{auth_token}}
+
+### Test 7: Get all user bills to see the complete picture
+### This should show bills from all years including the ones we just created
+GET https://localhost:7299/api/bills?page=1&limit=50
+Authorization: Bearer {{auth_token}}
+
+### Test 8: Verify out-of-year bills exist but are filtered
+### Check count of out-of-year auto-generated bills
+GET https://localhost:7299/api/bills/cleanup/out-of-year/count
+Authorization: Bearer {{auth_token}}
+
+### Test 9: Get bills by specific year/month to verify filtering
+### Get bills for a month in 2025 (should show auto-generated bills)
+GET https://localhost:7299/api/bills/monthly?year=2025&month=3
+Authorization: Bearer {{auth_token}}
+
+### Test 10: Get bills for a month in 2023 (should show auto-generated bills)  
+GET https://localhost:7299/api/bills/monthly?year=2023&month=9
+Authorization: Bearer {{auth_token}}
+
+### Test 11: Get bills for current year month (should show in both endpoints)
+GET https://localhost:7299/api/bills/monthly?year=2024&month=11
+Authorization: Bearer {{auth_token}}
