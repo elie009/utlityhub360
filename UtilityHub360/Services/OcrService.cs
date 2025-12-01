@@ -201,7 +201,7 @@ namespace UtilityHub360.Services
                             else
                             {
                                 // No direct text - try to extract images from the page and OCR them
-                                var pageText = await ExtractTextFromPdfPageImagesAsync(page, pageNum);
+                                var pageText = await ExtractTextFromPdfPageImagesAsyncInternal(page, pageNum);
                                 
                                 if (!string.IsNullOrWhiteSpace(pageText))
                                 {
@@ -243,7 +243,7 @@ namespace UtilityHub360.Services
             }
         }
 
-        private async Task<string> ExtractTextFromPdfPageImagesAsync(PdfPigPage page, int pageNumber)
+        private async Task<string> ExtractTextFromPdfPageImagesAsyncInternal(PdfPigPage page, int pageNumber)
         {
             try
             {

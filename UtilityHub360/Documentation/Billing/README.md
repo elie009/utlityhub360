@@ -83,7 +83,7 @@ Welcome to the UtilityHub360 Billing System documentation. This comprehensive gu
 5. DELETE `/api/bills/{billId}` - Delete bill
 6. PUT `/api/bills/{billId}/mark-paid` - Mark as paid
 7. PUT `/api/bills/{billId}/status` - Update status
-8. GET `/api/bills/overdue` - Get overdue bills
+8. GET `/api/bills/summary` - Get bills summary (unpaid and overdue bills)
 9. GET `/api/bills/upcoming` - Get upcoming bills
 10. GET `/api/bills/analytics/total-pending` - Total pending
 11. GET `/api/bills/analytics/total-paid` - Total paid

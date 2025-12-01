@@ -721,10 +721,17 @@ namespace UtilityHub360.Services
                 // Calculate period dates based on frequency
                 var (periodStart, periodEnd) = GetPeriodDates(frequency);
 
+                // Get total count of ALL transactions (not filtered by period) for TransactionCount
+                var totalTransactionCount = await _context.Payments
+                    .AsNoTracking()
+                    .Where(p => p.UserId == userId && p.IsBankTransaction)
+                    .CountAsync();
+
                 // Get all transactions for the period (now from Payments table) using projection
                 var allTransactionsData = await _context.Payments
                     .AsNoTracking()
                     .Where(p => p.UserId == userId && p.IsBankTransaction && 
+                               p.TransactionDate.HasValue &&
                                p.TransactionDate >= periodStart && p.TransactionDate <= periodEnd)
                     .Select(p => new
                     {
@@ -850,7 +857,7 @@ namespace UtilityHub360.Services
                     Frequency = frequency,
                     PeriodStart = periodStart,
                     PeriodEnd = periodEnd,
-                    TransactionCount = allTransactions.Count,
+                    TransactionCount = totalTransactionCount, // Total count of ALL transactions, not just period
                     Accounts = new List<BankAccountDto>(),
                     SpendingByCategory = allTransactions
                         .Where(t => t.TransactionType == "DEBIT" && !string.IsNullOrEmpty(t.Category))
@@ -2458,47 +2465,48 @@ namespace UtilityHub360.Services
             {
                 var (startDate, endDate) = GetPeriodDates(period);
 
-                // Filter out soft-deleted transactions and use projection
-                var allTransactionsData = await _context.BankTransactions
+                // Query from Payments table to match the transactions listing endpoint
+                // This ensures analytics count matches the actual transactions displayed
+                var allTransactionsData = await _context.Payments
                     .AsNoTracking()
-                    .Where(t => t.UserId == userId && 
-                               !t.IsDeleted &&
-                               t.TransactionDate >= startDate && 
-                               t.TransactionDate <= endDate)
-                    .Select(t => new
+                    .Where(p => p.UserId == userId && 
+                               p.IsBankTransaction &&
+                               p.TransactionDate.HasValue &&
+                               p.TransactionDate >= startDate && 
+                               p.TransactionDate <= endDate)
+                    .Select(p => new
                     {
-                        t.Id,
-                        t.BankAccountId,
-                        t.UserId,
-                        t.Amount,
-                        t.TransactionType,
-                        t.Description,
-                        t.Category,
-                        t.ReferenceNumber,
-                        t.ExternalTransactionId,
-                        t.TransactionDate,
-                        t.CreatedAt,
-                        t.UpdatedAt,
-                        t.Notes,
-                        t.Merchant,
-                        t.Location,
-                        t.IsRecurring,
-                        t.RecurringFrequency,
-                        t.Currency,
-                        t.BalanceAfterTransaction,
-                        t.IsDeleted,
-                        BankAccount = t.BankAccount != null ? new
+                        p.Id,
+                        p.BankAccountId,
+                        p.UserId,
+                        p.Amount,
+                        TransactionType = p.TransactionType ?? "DEBIT",
+                        p.Description,
+                        p.Category,
+                        ReferenceNumber = p.Reference,
+                        p.ExternalTransactionId,
+                        TransactionDate = p.TransactionDate ?? p.ProcessedAt,
+                        p.CreatedAt,
+                        p.UpdatedAt,
+                        p.Notes,
+                        p.Merchant,
+                        p.Location,
+                        p.IsRecurring,
+                        p.RecurringFrequency,
+                        p.Currency,
+                        p.BalanceAfterTransaction,
+                        BankAccount = p.BankAccount != null ? new
                         {
-                            t.BankAccount.Id,
-                            t.BankAccount.AccountName,
-                            t.BankAccount.AccountType,
-                            t.BankAccount.CurrentBalance
+                            p.BankAccount.Id,
+                            p.BankAccount.AccountName,
+                            p.BankAccount.AccountType,
+                            p.BankAccount.CurrentBalance
                         } : null
                     })
                     .ToListAsync();
                 
-                // Convert to BankTransaction entities
-                var transactions = allTransactionsData.Select(t => new BankTransaction
+                // Convert to anonymous type for analytics calculation (matching transaction structure)
+                var transactions = allTransactionsData.Select(t => new
                 {
                     Id = t.Id,
                     BankAccountId = t.BankAccountId,
@@ -2510,8 +2518,6 @@ namespace UtilityHub360.Services
                     ReferenceNumber = t.ReferenceNumber,
                     ExternalTransactionId = t.ExternalTransactionId,
                     TransactionDate = t.TransactionDate,
-                    CreatedAt = t.CreatedAt,
-                    UpdatedAt = t.UpdatedAt,
                     Notes = t.Notes,
                     Merchant = t.Merchant,
                     Location = t.Location,
@@ -2519,14 +2525,7 @@ namespace UtilityHub360.Services
                     RecurringFrequency = t.RecurringFrequency,
                     Currency = t.Currency,
                     BalanceAfterTransaction = t.BalanceAfterTransaction,
-                    IsDeleted = t.IsDeleted,
-                    BankAccount = t.BankAccount != null ? new BankAccount
-                    {
-                        Id = t.BankAccount.Id,
-                        AccountName = t.BankAccount.AccountName,
-                        AccountType = t.BankAccount.AccountType,
-                        CurrentBalance = t.BankAccount.CurrentBalance
-                    } : null
+                    BankAccount = t.BankAccount
                 }).ToList();
 
                 // Use projection to avoid reading soft delete columns
@@ -3894,13 +3893,16 @@ namespace UtilityHub360.Services
             // Set endDate to end of today (23:59:59.9999999) to include all transactions on the current day
             var endOfToday = now.Date.AddDays(1).AddTicks(-1);
             
+            // Start of current month (1st day of month at 00:00:00)
+            var startOfCurrentMonth = new DateTime(now.Year, now.Month, 1);
+            
             return period.ToLower() switch
             {
                 "weekly" or "week" => (now.AddDays(-7).Date, endOfToday),
-                "monthly" or "month" => (now.AddDays(-30).Date, endOfToday),
+                "monthly" or "month" => (startOfCurrentMonth, endOfToday), // Current calendar month instead of last 30 days
                 "quarterly" or "quarter" => (now.AddDays(-90).Date, endOfToday),
                 "yearly" or "year" => (now.AddDays(-365).Date, endOfToday),
-                _ => (now.AddDays(-30).Date, endOfToday) // Default to month
+                _ => (startOfCurrentMonth, endOfToday) // Default to current month instead of last 30 days
             };
         }
 
@@ -4179,6 +4181,12 @@ namespace UtilityHub360.Services
                 // Get bank account IDs for transaction lookup
                 var bankAccountIds = accountsData.Select(ba => ba.Id).ToList();
                 
+                // Get total count of ALL transactions (not filtered by period) for TransactionCount
+                var totalTransactionCount = await _context.Payments
+                    .AsNoTracking()
+                    .Where(p => p.UserId == userId && p.IsBankTransaction)
+                    .CountAsync();
+                
                 // Get aggregated transaction statistics from Payments table grouped by BankAccountId (ALL transactions, not just period)
                 var transactionStats = await _context.Payments
                     .AsNoTracking()
@@ -4236,6 +4244,7 @@ namespace UtilityHub360.Services
                     .AsNoTracking()
                     .Where(p => p.UserId == userId && 
                                p.IsBankTransaction && 
+                               p.TransactionDate.HasValue &&
                                p.TransactionDate >= startDate && 
                                p.TransactionDate <= endDate)
                     .Select(p => new
@@ -4337,7 +4346,7 @@ namespace UtilityHub360.Services
                     Frequency = frequency,
                     PeriodStart = startDate,
                     PeriodEnd = endDate,
-                    TransactionCount = transactions.Count,
+                    TransactionCount = totalTransactionCount, // Total count of ALL transactions, not just period
                     Accounts = new List<BankAccountDto>(),
                     SpendingByCategory = transactions
                         .Where(t => t.TransactionType == "DEBIT" && !string.IsNullOrEmpty(t.Category))

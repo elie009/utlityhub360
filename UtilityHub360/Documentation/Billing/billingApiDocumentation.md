@@ -453,11 +453,11 @@ GET /api/bills/analytics/total-paid?period=month
 
 ---
 
-### 12. Get Overdue Bills
+### 12. Get Bills Summary (Unpaid and Overdue)
 
-**Endpoint:** `GET /api/bills/overdue`
+**Endpoint:** `GET /api/bills/summary`
 
-**Description:** Get all overdue bills
+**Description:** Get all unpaid and overdue bills (bills with PENDING status)
 
 **Response (Success - 200):**
 ```json

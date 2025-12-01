@@ -176,8 +176,9 @@ builder.Services.AddScoped<IReconciliationService>(sp =>
     var ocrService = sp.GetRequiredService<IOcrService>();
     var bankAccountService = sp.GetRequiredService<IBankAccountService>();
     var logger = sp.GetRequiredService<ILogger<ReconciliationService>>();
+    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
     var openAISettings = sp.GetRequiredService<OpenAISettings>();
-    return new ReconciliationService(context, extractionService, aiAgentService, ocrService, bankAccountService, logger, openAISettings);
+    return new ReconciliationService(context, extractionService, aiAgentService, ocrService, bankAccountService, logger, loggerFactory, openAISettings);
 });
 builder.Services.AddScoped<IBankStatementExtractionService>(sp =>
 {

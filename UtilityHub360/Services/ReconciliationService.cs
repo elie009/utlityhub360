@@ -5,8 +5,9 @@ using UtilityHub360.Entities;
 using UtilityHub360.Models;
 using System.Text;
 using System.Text.Json;
-using UglyToad.PdfPig;
 using System.Linq;
+using System.Collections.Generic;
+using UtilityHub360.Controllers.PDFTextExtraction;
 
 namespace UtilityHub360.Services
 {
@@ -18,6 +19,7 @@ namespace UtilityHub360.Services
         private readonly IOcrService _ocrService;
         private readonly IBankAccountService _bankAccountService;
         private readonly ILogger<ReconciliationService> _logger;
+        private readonly ILoggerFactory _loggerFactory;
         private readonly HttpClient _httpClient;
         private readonly OpenAISettings _openAISettings;
 
@@ -28,6 +30,7 @@ namespace UtilityHub360.Services
             IOcrService ocrService,
             IBankAccountService bankAccountService,
             ILogger<ReconciliationService> logger,
+            ILoggerFactory loggerFactory,
             OpenAISettings openAISettings)
         {
             _context = context;
@@ -36,6 +39,7 @@ namespace UtilityHub360.Services
             _ocrService = ocrService;
             _bankAccountService = bankAccountService;
             _logger = logger;
+            _loggerFactory = loggerFactory;
             _openAISettings = openAISettings;
             _httpClient = new HttpClient();
             
@@ -100,48 +104,18 @@ namespace UtilityHub360.Services
                 try
                 {
                     pdfStream.Position = 0;
-                    var textBuilder = new StringBuilder();
                     
-                    using (var document = PdfDocument.Open(pdfStream))
-                    {
-                        var pageCount = document.NumberOfPages;
-                        _logger.LogInformation($"PDF has {pageCount} pages");
-                        
-                        foreach (var page in document.GetPages())
-                        {
-                            try
-                            {
-                                var words = page.GetWords();
-                                if (words != null && words.Any())
-                                {
-                                    // Filter to only English (ASCII) words - excludes Arabic, Chinese, Japanese, etc.
-                                    var englishWords = words
-                                        .Where(w => !string.IsNullOrWhiteSpace(w.Text) && ContainsOnlyEnglishText(w.Text))
-                                        .Select(w => w.Text);
-                                    
-                                    if (englishWords.Any())
-                                    {
-                                        var pageText = string.Join(" ", englishWords);
-                                        if (!string.IsNullOrWhiteSpace(pageText))
-                                        {
-                                            textBuilder.AppendLine(pageText);
-                                            _logger.LogInformation($"Extracted {pageText.Length} characters from page {page.Number} (English only)");
-                                        }
-                                    }
-                                }
-                            }
-                            catch (Exception pageEx)
-                            {
-                                _logger.LogWarning($"Error extracting text from PDF page {page.Number}: {pageEx.Message}");
-                            }
-                        }
-                    }
+                    //separate each pdf extraction service, independently each class because i will add other type of extraction
+                    var servicePdfPigBased = new ServicePdfPigBased(
+                        _loggerFactory.CreateLogger<ServicePdfPigBased>()
+                    );
                     
-                    extractedText = textBuilder.ToString();
+                    extractedText = await servicePdfPigBased.ExtractTextFromPDFAsync(pdfStream);
+                    
                     if (!string.IsNullOrWhiteSpace(extractedText))
                     {
                         extractionMethod = "PdfPig";
-                        _logger.LogInformation($"Successfully extracted {extractedText.Length} characters from PDF using PdfPig");
+                        _logger.LogInformation($"Successfully extracted text using ServicePdfPigBased");
                     }
                 }
                 catch (Exception pdfPigEx)
@@ -155,68 +129,20 @@ namespace UtilityHub360.Services
                     try
                     {
                         pdfStream.Position = 0;
-                        _logger.LogInformation("Attempting to convert scanned PDF to text-based PDF...");
                         
-                        // Convert scanned PDF to text-based PDF
-                        var textBasedPdfStream = await _ocrService.ConvertPdfToTextBasedPdfAsync(pdfStream);
+                        //separate each ocr service, independently each class because i will add other type of OC
+                        var serviceImageBased = new ServiceImageBased(
+                            _loggerFactory.CreateLogger<ServiceImageBased>(), 
+                            _ocrService
+                        );
                         
-                        if (textBasedPdfStream != null && textBasedPdfStream.Length > 0)
+                        var ocrExtractedText = await serviceImageBased.ExtractTextFromPDFAsync(pdfStream);
+                        
+                        if (!string.IsNullOrWhiteSpace(ocrExtractedText))
                         {
-                            // Now try PdfPig on the converted PDF
-                            textBasedPdfStream.Position = 0;
-                            var textBuilder = new StringBuilder();
-                            
-                            using (var document = PdfDocument.Open(textBasedPdfStream))
-                            {
-                                var pageCount = document.NumberOfPages;
-                                _logger.LogInformation($"Converted PDF has {pageCount} pages");
-                                
-                                foreach (var page in document.GetPages())
-                                {
-                                    try
-                                    {
-                                        var words = page.GetWords();
-                                        if (words != null && words.Any())
-                                        {
-                                            var pageText = string.Join(" ", words.Select(w => w.Text));
-                                            if (!string.IsNullOrWhiteSpace(pageText))
-                                            {
-                                                textBuilder.AppendLine(pageText);
-                                            }
-                                        }
-                                    }
-                                    catch (Exception pageEx)
-                                    {
-                                        _logger.LogWarning($"Error extracting text from converted PDF page {page.Number}: {pageEx.Message}");
-                                    }
-                                }
-                            }
-                            
-                            extractedText = textBuilder.ToString();
-                            if (!string.IsNullOrWhiteSpace(extractedText))
-                            {
-                                extractionMethod = "OCR_TO_TEXT_PDF";
-                                _logger.LogInformation($"Successfully extracted {extractedText.Length} characters from converted PDF");
-                            }
-                        }
-                        
-                        // If conversion didn't work, try direct OCR extraction as fallback
-                        if (string.IsNullOrWhiteSpace(extractedText))
-                        {
-                            pdfStream.Position = 0;
-                            _logger.LogInformation("Falling back to direct OCR extraction...");
-                            var ocrResult = await _ocrService.ProcessPdfAsync(pdfStream);
-                            
-                            if (ocrResult != null && !string.IsNullOrWhiteSpace(ocrResult.FullText))
-                            {
-                                extractedText = ocrResult.FullText;
-                                extractionMethod = ocrResult.Provider ?? "OCR";
-                                _logger.LogInformation($"Successfully extracted {extractedText.Length} characters from PDF using {extractionMethod}");
-                            }
-                            else
-                            {
-                                _logger.LogWarning($"OCR returned empty text. Confidence: {ocrResult?.Confidence ?? 0}");
-                            }
+                            extractedText = ocrExtractedText;
+                            extractionMethod = "OCR_IMAGE_BASED";
+                            _logger.LogInformation($"Successfully extracted {extractedText.Length} characters using ServiceImageBased");
                         }
                     }
                     catch (Exception ocrEx)
@@ -225,10 +151,36 @@ namespace UtilityHub360.Services
                     }
                 }
                 
+                // Third fallback: Try alternative PdfPig extraction methods (letters, text blocks, etc.)
+                if (string.IsNullOrWhiteSpace(extractedText))
+                {
+                    try
+                    {
+                        pdfStream.Position = 0;
+                        
+                        var servicePdfPigAlternative = new ServicePdfPigAlternative(
+                            _loggerFactory.CreateLogger<ServicePdfPigAlternative>()
+                        );
+                        
+                        var alternativeExtractedText = await servicePdfPigAlternative.ExtractTextFromPDFAsync(pdfStream);
+                        
+                        if (!string.IsNullOrWhiteSpace(alternativeExtractedText))
+                        {
+                            extractedText = alternativeExtractedText;
+                            extractionMethod = "PDFPIG_ALTERNATIVE";
+                            _logger.LogInformation($"Successfully extracted {extractedText.Length} characters using ServicePdfPigAlternative");
+                        }
+                    }
+                    catch (Exception altEx)
+                    {
+                        _logger.LogError(altEx, $"Alternative PdfPig extraction failed: {altEx.Message}");
+                    }
+                }
+                
                 // If still no text, return error with helpful message
                 if (string.IsNullOrWhiteSpace(extractedText))
                 {
-                    _logger.LogError($"Failed to extract text from PDF after trying both PdfPig and OCR methods. File: {fileName}, Size: {pdfStream.Length} bytes");
+                    _logger.LogError($"Failed to extract text from PDF after trying PdfPig, OCR, and alternative methods. File: {fileName}, Size: {pdfStream.Length} bytes");
                     return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(
                         "Could not extract text from PDF. Possible reasons:\n" +
                         "1. The PDF is password-protected (please remove password)\n" +
@@ -423,6 +375,29 @@ IMPORTANT:
                     return ApiResponse<BankStatementDto>.ErrorResult("Bank account not found or does not belong to user");
                 }
 
+                // Check for duplicate statement - prevent importing the same PDF twice
+                // Check by ImportSource (filename), date range, and account
+                if (!string.IsNullOrEmpty(importDto.ImportSource))
+                {
+                    var existingStatement = await _context.BankStatements
+                        .FirstOrDefaultAsync(bs => 
+                            bs.UserId == userId &&
+                            bs.BankAccountId == importDto.BankAccountId &&
+                            bs.ImportSource == importDto.ImportSource &&
+                            bs.StatementStartDate.Date == importDto.StatementStartDate.Date &&
+                            bs.StatementEndDate.Date == importDto.StatementEndDate.Date);
+
+                    if (existingStatement != null)
+                    {
+                        _logger.LogWarning($"Duplicate bank statement import attempt: User {userId}, Account {importDto.BankAccountId}, Source {importDto.ImportSource}, Date Range {importDto.StatementStartDate:yyyy-MM-dd} to {importDto.StatementEndDate:yyyy-MM-dd}");
+                        return ApiResponse<BankStatementDto>.ErrorResult(
+                            $"This bank statement has already been imported. " +
+                            $"A statement with the same file '{importDto.ImportSource}' and date range ({importDto.StatementStartDate:yyyy-MM-dd} to {importDto.StatementEndDate:yyyy-MM-dd}) already exists. " +
+                            $"Existing statement: '{existingStatement.StatementName}' (imported on {existingStatement.CreatedAt:yyyy-MM-dd HH:mm}). " +
+                            $"If you need to re-import, please delete the existing statement first.");
+                    }
+                }
+
                 // Create bank statement
                 var bankStatement = new BankStatement
                 {
@@ -568,6 +543,7 @@ IMPORTANT:
             try
             {
                 var statement = await _context.BankStatements
+                    .Include(s => s.StatementItems)
                     .FirstOrDefaultAsync(s => s.Id == statementId && s.UserId == userId);
 
                 if (statement == null)
@@ -575,13 +551,103 @@ IMPORTANT:
                     return ApiResponse<bool>.ErrorResult("Bank statement not found");
                 }
 
+                // Check if statement can be deleted (only if not reconciled)
+                if (statement.IsReconciled)
+                {
+                    return ApiResponse<bool>.ErrorResult("Cannot delete a reconciled bank statement. Please unreconcile it first.");
+                }
+
+                // Get all statement items
+                var statementItems = statement.StatementItems.ToList();
+
+                // Find and delete all payments created from this statement
+                // Payments are identified by:
+                // 1. MatchedTransactionId in statement items
+                // 2. Notes containing the statement name
+                // 3. ReferenceNumber starting with "STMT_" pattern
+                var paymentIdsToDelete = new HashSet<string>();
+                var bankAccount = await _context.BankAccounts
+                    .FirstOrDefaultAsync(ba => ba.Id == statement.BankAccountId);
+
+                foreach (var item in statementItems)
+                {
+                    // Find payments by matched transaction ID
+                    if (!string.IsNullOrEmpty(item.MatchedTransactionId))
+                    {
+                        paymentIdsToDelete.Add(item.MatchedTransactionId);
+                    }
+
+                    // Also find payments by reference number pattern (STMT_ prefix with item ID)
+                    var itemIdPrefix = item.Id.Substring(0, Math.Min(8, item.Id.Length));
+                    var paymentsByRef = await _context.Payments
+                        .Where(p => p.BankAccountId == statement.BankAccountId &&
+                                   p.Reference != null &&
+                                   p.Reference.StartsWith($"STMT_{itemIdPrefix}"))
+                        .Select(p => p.Id)
+                        .ToListAsync();
+                    
+                    foreach (var paymentId in paymentsByRef)
+                    {
+                        paymentIdsToDelete.Add(paymentId);
+                    }
+                }
+
+                // Find payments by notes containing statement name
+                var paymentsByNotes = await _context.Payments
+                    .Where(p => p.BankAccountId == statement.BankAccountId &&
+                               p.Notes != null &&
+                               p.Notes.Contains($"Imported from bank statement: {statement.StatementName}"))
+                    .Select(p => p.Id)
+                    .ToListAsync();
+
+                foreach (var paymentId in paymentsByNotes)
+                {
+                    paymentIdsToDelete.Add(paymentId);
+                }
+
+                // Delete payments and reverse balance changes
+                if (paymentIdsToDelete.Any() && bankAccount != null)
+                {
+                    var paymentsToDelete = await _context.Payments
+                        .Where(p => paymentIdsToDelete.Contains(p.Id) && 
+                                   p.BankAccountId == statement.BankAccountId &&
+                                   p.IsBankTransaction)
+                        .ToListAsync();
+
+                    foreach (var payment in paymentsToDelete)
+                    {
+                        // Reverse the transaction effect on the bank account balance
+                        if (payment.TransactionType == "CREDIT")
+                        {
+                            bankAccount.CurrentBalance -= payment.Amount;
+                        }
+                        else if (payment.TransactionType == "DEBIT")
+                        {
+                            bankAccount.CurrentBalance += payment.Amount;
+                        }
+                    }
+
+                    _context.Payments.RemoveRange(paymentsToDelete);
+                    bankAccount.UpdatedAt = DateTime.UtcNow;
+                    _logger.LogInformation($"Deleted {paymentsToDelete.Count} payments associated with bank statement {statementId}");
+                }
+
+                // Delete statement items (cascade should handle this, but explicitly delete for clarity)
+                if (statementItems.Any())
+                {
+                    _context.BankStatementItems.RemoveRange(statementItems);
+                    _logger.LogInformation($"Deleted {statementItems.Count} statement items for bank statement {statementId}");
+                }
+
+                // Delete the bank statement
                 _context.BankStatements.Remove(statement);
                 await _context.SaveChangesAsync();
 
-                return ApiResponse<bool>.SuccessResult(true);
+                return ApiResponse<bool>.SuccessResult(true, "Bank statement and associated transactions deleted successfully");
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, $"Failed to delete bank statement {statementId}");
                 return ApiResponse<bool>.ErrorResult($"Failed to delete bank statement: {ex.Message}");
             }
         }
@@ -1234,16 +1300,6 @@ IMPORTANT:
                 _logger.LogWarning($"Error parsing decimal from JSON element: {ex.Message}");
             }
             return null;
-        }
-
-        private bool ContainsOnlyEnglishText(string text)
-        {
-            if (string.IsNullOrWhiteSpace(text))
-                return false;
-            
-            // Only allow ASCII characters (0-127) - this excludes all non-English scripts
-            // (Arabic, Chinese, Japanese, Korean, Hebrew, Thai, etc.)
-            return text.All(c => c <= 127 || char.IsWhiteSpace(c));
         }
 
         private async Task AutoMatchStatementItemsAsync(string statementId, string userId)

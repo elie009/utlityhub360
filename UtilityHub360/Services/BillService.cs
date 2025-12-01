@@ -808,6 +808,26 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<List<BillDto>>> GetUnpaidAndOverdueBillsAsync(string userId)
+        {
+            try
+            {
+                // Get all unpaid (PENDING) bills - this includes both unpaid and overdue bills
+                var unpaidBills = await _context.Bills
+                    .Where(b => b.UserId == userId && 
+                               b.Status == "PENDING")
+                    .OrderBy(b => b.DueDate)
+                    .ToListAsync();
+
+                var billDtos = unpaidBills.Select(MapToBillDto).ToList();
+                return ApiResponse<List<BillDto>>.SuccessResult(billDtos);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<List<BillDto>>.ErrorResult($"Failed to get unpaid and overdue bills: {ex.Message}");
+            }
+        }
+
         public async Task<ApiResponse<List<BillDto>>> GetUpcomingBillsAsync(string userId, int days = 7)
         {
             try

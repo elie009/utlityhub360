@@ -365,8 +365,8 @@ namespace UtilityHub360.Controllers
             }
         }
 
-        [HttpGet("overdue")]
-        public async Task<ActionResult<ApiResponse<List<BillDto>>>> GetOverdueBills()
+        [HttpGet("summary")]
+        public async Task<ActionResult<ApiResponse<List<BillDto>>>> GetBillsSummary()
         {
             try
             {
@@ -377,7 +377,7 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<List<BillDto>>.ErrorResult("User not authenticated"));
                 }
 
-                var result = await _billService.GetOverdueBillsAsync(userId);
+                var result = await _billService.GetUnpaidAndOverdueBillsAsync(userId);
                 
                 if (result.Success)
                 {
@@ -388,7 +388,7 @@ namespace UtilityHub360.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(ApiResponse<List<BillDto>>.ErrorResult($"Failed to get overdue bills: {ex.Message}"));
+                return BadRequest(ApiResponse<List<BillDto>>.ErrorResult($"Failed to get bills summary: {ex.Message}"));
             }
         }
 
