@@ -325,9 +325,28 @@ namespace UtilityHub360.Data
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.NoAction);
 
+                entity.HasOne(d => d.Bill)
+                    .WithMany()
+                    .HasForeignKey(d => d.BillId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(d => d.Loan)
+                    .WithMany()
+                    .HasForeignKey(d => d.LoanId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(d => d.SavingsAccount)
+                    .WithMany()
+                    .HasForeignKey(d => d.SavingsAccountId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
                 entity.HasIndex(e => e.ExternalTransactionId);
                 entity.HasIndex(e => e.TransactionDate);
                 entity.HasIndex(e => e.IsDeleted);
+                entity.HasIndex(e => e.BillId);
+                entity.HasIndex(e => e.LoanId);
+                entity.HasIndex(e => e.SavingsAccountId);
+                entity.HasIndex(e => e.TransactionPurpose);
             });
 
             // ClosedMonth configuration

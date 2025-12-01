@@ -836,6 +836,100 @@ namespace UtilityHub360.Services
         }
 
         // Helper Methods
+        public async Task<ApiResponse<SavingsAccountDto>> MarkSavingsAsPaidAsync(string savingsAccountId, string userId, decimal amount, string? notes = null)
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var savingsAccount = await _context.SavingsAccounts
+                    .FirstOrDefaultAsync(s => s.Id == savingsAccountId && s.UserId == userId);
+
+                if (savingsAccount == null)
+                {
+                    return ApiResponse<SavingsAccountDto>.ErrorResult("Savings account not found");
+                }
+
+                if (amount <= 0)
+                {
+                    return ApiResponse<SavingsAccountDto>.ErrorResult("Amount must be greater than 0");
+                }
+
+                // Get a default bank account for the user (required for SavingsTransaction entity)
+                // Even though this is "without bank transfer", we need a valid SourceBankAccountId
+                var defaultBankAccount = await _context.BankAccounts
+                    .Where(b => b.UserId == userId && b.IsActive && !b.IsDeleted)
+                    .FirstOrDefaultAsync();
+
+                if (defaultBankAccount == null)
+                {
+                    return ApiResponse<SavingsAccountDto>.ErrorResult("No active bank account found. Please add a bank account first.");
+                }
+
+                // Create a savings transaction for the specified amount (without bank transfer)
+                var savingsTransaction = new SavingsTransaction
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    SavingsAccountId = savingsAccountId,
+                    SourceBankAccountId = defaultBankAccount.Id,
+                    Amount = amount,
+                    TransactionType = "DEPOSIT",
+                    Description = $"Marked as paid - Savings deposit",
+                    Category = "GOAL_COMPLETION",
+                    Currency = savingsAccount.Currency,
+                    Notes = notes ?? "Savings goal marked as paid without bank transfer",
+                    TransactionDate = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.SavingsTransactions.Add(savingsTransaction);
+
+                // Update savings account balance
+                savingsAccount.CurrentBalance += amount;
+                // Ensure balance doesn't exceed target amount
+                if (savingsAccount.CurrentBalance > savingsAccount.TargetAmount)
+                {
+                    savingsAccount.CurrentBalance = savingsAccount.TargetAmount;
+                }
+                savingsAccount.UpdatedAt = DateTime.UtcNow;
+
+                // Create a payment record for tracking (without bank account)
+                var paymentReference = $"SAVINGS_PAID_{savingsAccountId.Substring(0, 8)}_{DateTime.UtcNow:yyyyMMddHHmmss}";
+                var payment = new Entities.Payment
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    SavingsAccountId = savingsAccountId,
+                    UserId = userId,
+                    Amount = amount,
+                    Method = "CASH", // No bank transfer
+                    Reference = paymentReference,
+                    Status = "COMPLETED",
+                    IsBankTransaction = false, // Not a bank transaction
+                    TransactionType = "DEPOSIT",
+                    Description = $"Savings goal marked as paid - {savingsAccount.AccountName}",
+                    Category = "SAVINGS_PAYMENT",
+                    ExternalTransactionId = $"SAVINGS_PAID_{savingsAccountId}",
+                    Notes = notes ?? "Savings goal marked as paid without bank transfer",
+                    ProcessedAt = DateTime.UtcNow,
+                    TransactionDate = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.Payments.Add(payment);
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                var savingsDto = MapToSavingsAccountDto(savingsAccount);
+                return ApiResponse<SavingsAccountDto>.SuccessResult(savingsDto, $"Savings deposit of {amount:C} recorded successfully (no bank transfer)");
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return ApiResponse<SavingsAccountDto>.ErrorResult($"Failed to mark savings as paid: {ex.Message}");
+            }
+        }
+
         private SavingsAccountDto MapToSavingsAccountDto(SavingsAccount savingsAccount)
         {
             var progressPercentage = savingsAccount.TargetAmount > 0 

@@ -206,6 +206,7 @@ builder.Services.AddHostedService<BillReminderBackgroundService>();
 builder.Services.AddHostedService<BillPaymentSchedulingService>();
 builder.Services.AddHostedService<BankAccountSyncBackgroundService>();
 builder.Services.AddHostedService<SavingsInterestBackgroundService>();
+builder.Services.AddHostedService<LoanDueDateBackgroundService>();
 
 var app = builder.Build();
 

@@ -63,6 +63,20 @@ namespace UtilityHub360.Entities
         [Column(TypeName = "decimal(18,2)")]
         public decimal BalanceAfterTransaction { get; set; }
 
+        // Link to other entities (Bills, Savings, Loans)
+        [StringLength(450)]
+        public string? BillId { get; set; }
+
+        [StringLength(450)]
+        public string? LoanId { get; set; }
+
+        [StringLength(450)]
+        public string? SavingsAccountId { get; set; }
+
+        // Transaction purpose/category for linking
+        [StringLength(50)]
+        public string? TransactionPurpose { get; set; } // BILL, UTILITY, SAVINGS, LOAN, OTHER
+
         // Soft Delete Properties
         public bool IsDeleted { get; set; } = false;
         public DateTime? DeletedAt { get; set; }
@@ -79,5 +93,14 @@ namespace UtilityHub360.Entities
 
         [ForeignKey("UserId")]
         public virtual User User { get; set; } = null!;
+
+        [ForeignKey("BillId")]
+        public virtual Bill? Bill { get; set; }
+
+        [ForeignKey("LoanId")]
+        public virtual Loan? Loan { get; set; }
+
+        [ForeignKey("SavingsAccountId")]
+        public virtual SavingsAccount? SavingsAccount { get; set; }
     }
 }

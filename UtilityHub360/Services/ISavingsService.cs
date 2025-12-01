@@ -37,5 +37,8 @@ namespace UtilityHub360.Services
         // Bank Account Integration
         Task<ApiResponse<bool>> TransferFromBankToSavingsAsync(string bankAccountId, string savingsAccountId, decimal amount, string description, string userId);
         Task<ApiResponse<bool>> TransferFromSavingsToBankAsync(string savingsAccountId, string bankAccountId, decimal amount, string description, string userId);
+
+        // Mark Savings as Paid
+        Task<ApiResponse<SavingsAccountDto>> MarkSavingsAsPaidAsync(string savingsAccountId, string userId, decimal amount, string? notes = null);
     }
 }

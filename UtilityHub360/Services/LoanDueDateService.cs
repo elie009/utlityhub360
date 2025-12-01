@@ -40,12 +40,21 @@ namespace UtilityHub360.Services
                 // Send notification to user (skip if notification service not available)
                 if (_notificationService != null)
                 {
+                    // Create metadata with loanId for navigation
+                    var metadata = new Dictionary<string, string>
+                    {
+                        { "loanId", payment.LoanId }
+                    };
+
                     await _notificationService.SendNotificationAsync(new CreateNotificationDto
                     {
                         UserId = payment.Loan.UserId,
-                        Title = "Overdue Payment",
-                        Message = $"Your loan payment of ${payment.TotalAmount} was due on {payment.DueDate:MMM dd, yyyy}. Please make a payment as soon as possible.",
-                        Type = "WARNING"
+                        Title = "Overdue Loan Payment",
+                        Message = $"Your loan payment of ${payment.TotalAmount:F2} was due on {payment.DueDate:MMM dd, yyyy}. Please make a payment as soon as possible.",
+                        Type = "PAYMENT_OVERDUE",
+                        Channel = "IN_APP",
+                        Priority = "HIGH",
+                        TemplateVariables = metadata
                     });
                 }
             }
@@ -84,12 +93,21 @@ namespace UtilityHub360.Services
                 // Send notification (skip if notification service not available)
                 if (_notificationService != null)
                 {
+                    // Create metadata with loanId for navigation
+                    var metadata = new Dictionary<string, string>
+                    {
+                        { "loanId", payment.LoanId }
+                    };
+
                     await _notificationService.SendNotificationAsync(new CreateNotificationDto
                     {
                         UserId = payment.Loan.UserId,
-                        Title = "Payment Reminder",
+                        Title = daysUntilDue == 0 ? "Loan Payment Due Today" : "Loan Payment Reminder",
                         Message = message,
-                        Type = daysUntilDue == 0 ? "WARNING" : "INFO"
+                        Type = daysUntilDue == 0 ? "PAYMENT_DUE" : "UPCOMING_DUE",
+                        Channel = "IN_APP",
+                        Priority = daysUntilDue == 0 ? "HIGH" : "NORMAL",
+                        TemplateVariables = metadata
                     });
                 }
             }

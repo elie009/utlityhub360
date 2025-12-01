@@ -585,7 +585,7 @@ namespace UtilityHub360.Controllers
         /// Get all transactions for the user
         /// </summary>
         [HttpGet("transactions")]
-        public async Task<ActionResult<ApiResponse<List<BankTransactionDto>>>> GetUserTransactions([FromQuery] string? accountType = null, [FromQuery] int page = 1, [FromQuery] int limit = 50)
+        public async Task<ActionResult<ApiResponse<List<BankTransactionDto>>>> GetUserTransactions([FromQuery] string? bankAccountId = null, [FromQuery] string? accountType = null, [FromQuery] int page = 1, [FromQuery] int limit = 50)
         {
             try
             {
@@ -595,7 +595,7 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<List<BankTransactionDto>>.ErrorResult("User not authenticated"));
                 }
 
-                var result = await _bankAccountService.GetUserTransactionsAsync(userId, accountType, page, limit);
+                var result = await _bankAccountService.GetUserTransactionsAsync(userId, bankAccountId, accountType, page, limit);
                 
                 if (!result.Success)
                 {

@@ -640,18 +640,18 @@ namespace UtilityHub360.Services
                     bill.Notes = notes;
                 }
 
-                // Create payment transaction if bank account is available
-                if (bankAccount != null && !string.IsNullOrEmpty(accountIdToUse))
+                // Check if a payment transaction already exists for this bill
+                var existingPayment = await _context.Payments
+                    .FirstOrDefaultAsync(p => p.BillId == billId && p.Status == "COMPLETED");
+
+                if (existingPayment == null)
                 {
-                    // Check if a payment transaction already exists for this bill
-                    var existingPayment = await _context.Payments
-                        .FirstOrDefaultAsync(p => p.BillId == billId && p.Status == "COMPLETED");
+                    // Generate a reference number for the payment
+                    var paymentReference = $"BILL_PAID_{billId.Substring(0, 8)}_{DateTime.UtcNow:yyyyMMddHHmmss}";
 
-                    if (existingPayment == null)
+                    // Create payment transaction if bank account is available
+                    if (bankAccount != null && !string.IsNullOrEmpty(accountIdToUse))
                     {
-                        // Generate a reference number for the payment
-                        var paymentReference = $"BILL_PAID_{billId.Substring(0, 8)}_{DateTime.UtcNow:yyyyMMddHHmmss}";
-
                         // Create payment transaction record
                         var bankTransaction = new Entities.Payment
                         {
@@ -739,6 +739,33 @@ namespace UtilityHub360.Services
                                 DateTime.UtcNow
                             );
                         }
+                    }
+                    else
+                    {
+                        // Create payment record without bank account (cash payment)
+                        var cashPayment = new Entities.Payment
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            BillId = billId,
+                            UserId = userId,
+                            Amount = bill.Amount,
+                            Method = "CASH", // No bank transfer
+                            Reference = paymentReference,
+                            Status = "COMPLETED",
+                            IsBankTransaction = false, // Not a bank transaction
+                            TransactionType = "DEBIT",
+                            Description = $"Bill payment - {bill.BillName}",
+                            Category = "BILL_PAYMENT",
+                            ExternalTransactionId = $"BILL_PAY_{billId}",
+                            Notes = notes ?? "Bill marked as paid without bank transfer",
+                            ProcessedAt = DateTime.UtcNow,
+                            TransactionDate = DateTime.UtcNow,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+
+                        _context.Payments.Add(cashPayment);
+                        Console.WriteLine($"DEBUG: Created cash payment record for bill {billId}. Payment ID: {cashPayment.Id}");
                     }
                 }
 

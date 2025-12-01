@@ -1665,8 +1665,67 @@ namespace UtilityHub360.Services
                     BalanceAfterTransaction = bankAccount.CurrentBalance,
                     TransactionDate = createTransactionDto.TransactionDate,
                     CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
+                    UpdatedAt = DateTime.UtcNow,
+                    // Add linking fields
+                    BillId = createTransactionDto.BillId,
+                    LoanId = createTransactionDto.LoanId,
+                    SavingsAccountId = createTransactionDto.SavingsAccountId,
+                    TransactionPurpose = createTransactionDto.TransactionPurpose
                 };
+
+                // Validate and handle linked entities
+                if (!string.IsNullOrEmpty(createTransactionDto.BillId))
+                {
+                    var bill = await _context.Bills
+                        .FirstOrDefaultAsync(b => b.Id == createTransactionDto.BillId && b.UserId == userId);
+                    
+                    if (bill == null)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            $"Bill not found. BillId: {createTransactionDto.BillId}");
+                    }
+                    
+                    // Auto-set purpose if not provided
+                    if (string.IsNullOrEmpty(bankTransaction.TransactionPurpose))
+                    {
+                        bankTransaction.TransactionPurpose = bill.BillType.ToUpper() == "UTILITY" ? "UTILITY" : "BILL";
+                    }
+                    
+                    // Update bill status if payment is for a bill (DEBIT transaction)
+                    if (payment.TransactionType == "DEBIT" && bill.Status == "PENDING")
+                    {
+                        bill.Status = "PAID";
+                        bill.PaidAt = DateTime.UtcNow;
+                        bill.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(createTransactionDto.LoanId))
+                {
+                    var loan = await _context.Loans
+                        .FirstOrDefaultAsync(l => l.Id == createTransactionDto.LoanId && l.UserId == userId);
+                    
+                    if (loan == null)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            $"Loan not found. LoanId: {createTransactionDto.LoanId}");
+                    }
+                    
+                    // Auto-set purpose if not provided
+                    if (string.IsNullOrEmpty(bankTransaction.TransactionPurpose))
+                    {
+                        bankTransaction.TransactionPurpose = "LOAN";
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(createTransactionDto.SavingsAccountId))
+                {
+                    // Auto-set purpose if not provided
+                    if (string.IsNullOrEmpty(bankTransaction.TransactionPurpose))
+                    {
+                        bankTransaction.TransactionPurpose = "SAVINGS";
+                    }
+                }
 
                 _context.BankTransactions.Add(bankTransaction);
 
@@ -2287,14 +2346,24 @@ namespace UtilityHub360.Services
             }
         }
 
-        public async Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? accountType = null, int page = 1, int limit = 50)
+        public async Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? bankAccountId = null, string? accountType = null, int page = 1, int limit = 50)
         {
             try
             {
-                // Use projection to avoid reading soft delete columns
-                var allTransactionsData = await _context.BankTransactions
+                var allTransactionDtos = new List<BankTransactionDto>();
+
+                // Query BankTransactions table
+                var bankTransactionsQuery = _context.BankTransactions
                     .AsNoTracking()
-                    .Where(t => t.UserId == userId)
+                    .Where(t => t.UserId == userId);
+
+                // Filter by bankAccountId if provided
+                if (!string.IsNullOrEmpty(bankAccountId))
+                {
+                    bankTransactionsQuery = bankTransactionsQuery.Where(t => t.BankAccountId == bankAccountId);
+                }
+
+                var bankTransactionsData = await bankTransactionsQuery
                     .Select(t => new
                     {
                         t.Id,
@@ -2325,8 +2394,8 @@ namespace UtilityHub360.Services
                     })
                     .ToListAsync();
 
-                // Convert to BankTransaction entities (filter out soft-deleted in memory)
-                var filteredTransactions = allTransactionsData.Select(t => new BankTransaction
+                // Convert BankTransactions to entities
+                var bankTransactions = bankTransactionsData.Select(t => new BankTransaction
                 {
                     Id = t.Id,
                     BankAccountId = t.BankAccountId,
@@ -2356,19 +2425,116 @@ namespace UtilityHub360.Services
                     } : null
                 }).ToList();
 
+                // Filter by accountType if provided
                 if (!string.IsNullOrEmpty(accountType))
                 {
-                    filteredTransactions = filteredTransactions.Where(t => t.BankAccount.AccountType == accountType.ToLower()).ToList();
+                    bankTransactions = bankTransactions
+                        .Where(t => t.BankAccount != null && t.BankAccount.AccountType.ToLower() == accountType.ToLower())
+                        .ToList();
                 }
 
-                var transactions = filteredTransactions
-                    .OrderByDescending(t => t.TransactionDate)
+                // Query Payments table (where IsBankTransaction == true)
+                var paymentsQuery = _context.Payments
+                    .AsNoTracking()
+                    .Where(p => p.UserId == userId && p.IsBankTransaction);
+
+                // Filter by bankAccountId if provided
+                if (!string.IsNullOrEmpty(bankAccountId))
+                {
+                    paymentsQuery = paymentsQuery.Where(p => p.BankAccountId != null && p.BankAccountId == bankAccountId);
+                }
+
+                var paymentsData = await paymentsQuery
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.UserId,
+                        p.Amount,
+                        p.TransactionType,
+                        p.Description,
+                        p.Category,
+                        p.TransactionDate,
+                        p.ProcessedAt,
+                        p.CreatedAt,
+                        p.UpdatedAt,
+                        p.BankAccountId,
+                        p.Reference,
+                        p.Status,
+                        p.Method,
+                        p.Notes,
+                        p.Merchant,
+                        p.Location,
+                        p.IsRecurring,
+                        p.RecurringFrequency,
+                        p.Currency,
+                        p.BalanceAfterTransaction,
+                        p.ExternalTransactionId,
+                        BankAccount = p.BankAccount != null ? new
+                        {
+                            p.BankAccount.Id,
+                            p.BankAccount.AccountName,
+                            p.BankAccount.AccountType
+                        } : null
+                    })
+                    .ToListAsync();
+
+                // Convert Payments to entities
+                var payments = paymentsData.Select(p => new Payment
+                {
+                    Id = p.Id,
+                    UserId = p.UserId,
+                    Amount = p.Amount,
+                    TransactionType = p.TransactionType,
+                    Description = p.Description,
+                    Category = p.Category,
+                    TransactionDate = p.TransactionDate,
+                    ProcessedAt = p.ProcessedAt,
+                    CreatedAt = p.CreatedAt,
+                    UpdatedAt = p.UpdatedAt,
+                    BankAccountId = p.BankAccountId,
+                    Reference = p.Reference,
+                    Status = p.Status,
+                    Method = p.Method,
+                    Notes = p.Notes,
+                    Merchant = p.Merchant,
+                    Location = p.Location,
+                    IsRecurring = p.IsRecurring,
+                    RecurringFrequency = p.RecurringFrequency,
+                    Currency = p.Currency,
+                    BalanceAfterTransaction = p.BalanceAfterTransaction,
+                    ExternalTransactionId = p.ExternalTransactionId,
+                    IsBankTransaction = true,
+                    IsDeleted = false,
+                    BankAccount = p.BankAccount != null ? new BankAccount
+                    {
+                        Id = p.BankAccount.Id,
+                        AccountName = p.BankAccount.AccountName,
+                        AccountType = p.BankAccount.AccountType
+                    } : null
+                }).ToList();
+
+                // Filter by accountType if provided
+                if (!string.IsNullOrEmpty(accountType))
+                {
+                    payments = payments
+                        .Where(p => p.BankAccount != null && p.BankAccount.AccountType.ToLower() == accountType.ToLower())
+                        .ToList();
+                }
+
+                // Convert to DTOs and combine
+                allTransactionDtos.AddRange(bankTransactions.Select(MapToBankTransactionDto));
+                allTransactionDtos.AddRange(payments.Select(p => MapPaymentToBankTransactionDto(p)));
+
+                // Remove duplicates (in case same transaction exists in both tables)
+                allTransactionDtos = allTransactionDtos
+                    .GroupBy(dto => dto.Id)
+                    .Select(g => g.First())
+                    .OrderByDescending(dto => dto.TransactionDate)
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToList();
 
-                var transactionDtos = transactions.Select(MapToBankTransactionDto).ToList();
-                return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
+                return ApiResponse<List<BankTransactionDto>>.SuccessResult(allTransactionDtos);
             }
             catch (Exception ex)
             {
@@ -3855,7 +4021,16 @@ namespace UtilityHub360.Services
                 IsRecurring = transaction.IsRecurring,
                 RecurringFrequency = transaction.RecurringFrequency,
                 Currency = transaction.Currency,
-                BalanceAfterTransaction = transaction.BalanceAfterTransaction
+                BalanceAfterTransaction = transaction.BalanceAfterTransaction,
+                // Link fields
+                BillId = transaction.BillId,
+                LoanId = transaction.LoanId,
+                SavingsAccountId = transaction.SavingsAccountId,
+                TransactionPurpose = transaction.TransactionPurpose,
+                // Related entity names
+                BillName = transaction.Bill?.BillName,
+                LoanPurpose = transaction.Loan?.Purpose,
+                SavingsAccountName = transaction.SavingsAccount?.AccountName
             };
         }
 
@@ -3882,7 +4057,21 @@ namespace UtilityHub360.Services
                 IsRecurring = payment.IsRecurring,
                 RecurringFrequency = payment.RecurringFrequency,
                 Currency = payment.Currency,
-                BalanceAfterTransaction = payment.BalanceAfterTransaction ?? 0
+                BalanceAfterTransaction = payment.BalanceAfterTransaction ?? 0,
+                // Link fields from Payment entity
+                BillId = payment.BillId,
+                LoanId = payment.LoanId,
+                SavingsAccountId = payment.SavingsAccountId,
+                // TransactionPurpose can be derived from linked entities
+                TransactionPurpose = payment.BillId != null 
+                    ? (payment.Bill?.BillType.ToUpper() == "UTILITY" ? "UTILITY" : "BILL")
+                    : payment.LoanId != null ? "LOAN"
+                    : payment.SavingsAccountId != null ? "SAVINGS"
+                    : null,
+                // Related entity names
+                BillName = payment.Bill?.BillName,
+                LoanPurpose = payment.Loan?.Purpose,
+                SavingsAccountName = payment.SavingsAccount?.AccountName
             };
         }
 
@@ -4032,14 +4221,37 @@ namespace UtilityHub360.Services
             }
         }
 
-        public async Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? accountType = null, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null)
+        public async Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? bankAccountId = null, string? accountType = null, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null)
         {
             try
             {
                 // Use projection to avoid reading soft delete columns
                 var query = _context.Payments
                     .AsNoTracking()
-                    .Where(p => p.UserId == userId && p.IsBankTransaction)
+                    .Where(p => p.UserId == userId && p.IsBankTransaction);
+
+                // Filter by bankAccountId if provided
+                if (!string.IsNullOrEmpty(bankAccountId))
+                {
+                    query = query.Where(p => p.BankAccountId == bankAccountId);
+                }
+
+                if (!string.IsNullOrEmpty(accountType))
+                {
+                    query = query.Where(p => p.BankAccount != null && p.BankAccount.AccountType == accountType);
+                }
+
+                if (dateFrom.HasValue)
+                {
+                    query = query.Where(p => p.TransactionDate >= dateFrom.Value);
+                }
+
+                if (dateTo.HasValue)
+                {
+                    query = query.Where(p => p.TransactionDate <= dateTo.Value);
+                }
+
+                var transactionsQuery = query
                     .Select(p => new
                     {
                         p.Id,
@@ -4072,22 +4284,7 @@ namespace UtilityHub360.Services
                         } : null
                     });
 
-                if (!string.IsNullOrEmpty(accountType))
-                {
-                    query = query.Where(p => p.BankAccount != null && p.BankAccount.AccountType == accountType);
-                }
-
-                if (dateFrom.HasValue)
-                {
-                    query = query.Where(p => p.TransactionDate >= dateFrom.Value);
-                }
-
-                if (dateTo.HasValue)
-                {
-                    query = query.Where(p => p.TransactionDate <= dateTo.Value);
-                }
-
-                var transactionsData = await query
+                var transactionsData = await transactionsQuery
                     .OrderByDescending(p => p.TransactionDate)
                     .Skip((page - 1) * limit)
                     .Take(limit)

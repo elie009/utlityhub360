@@ -130,6 +130,17 @@ namespace UtilityHub360.DTOs
         public string? RecurringFrequency { get; set; }
         public string Currency { get; set; } = string.Empty;
         public decimal BalanceAfterTransaction { get; set; }
+        
+        // Link fields
+        public string? BillId { get; set; }
+        public string? LoanId { get; set; }
+        public string? SavingsAccountId { get; set; }
+        public string? TransactionPurpose { get; set; }
+        
+        // Optional: Include linked entity names for display
+        public string? BillName { get; set; }
+        public string? LoanPurpose { get; set; }
+        public string? SavingsAccountName { get; set; }
     }
 
     public class CreateBankTransactionDto
@@ -187,6 +198,9 @@ namespace UtilityHub360.DTOs
 
         [StringLength(450)]
         public string? LoanId { get; set; } // Reference to loan if category is loan-related
+
+        [StringLength(50)]
+        public string? TransactionPurpose { get; set; } // BILL, UTILITY, SAVINGS, LOAN, OTHER
 
         [StringLength(450)]
         public string? ToBankAccountId { get; set; } // Destination account for bank transfer transactions

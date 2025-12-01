@@ -30,7 +30,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<BankTransactionDto>> CreateTransactionAsync(CreateBankTransactionDto createTransactionDto, string userId);
         Task<ApiResponse<BankTransactionDto>> UpdateTransactionAsync(string transactionId, UpdateBankTransactionDto updateTransactionDto, string userId);
         Task<ApiResponse<List<BankTransactionDto>>> GetAccountTransactionsAsync(string bankAccountId, string userId, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null);
-        Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? accountType = null, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null);
+        Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? bankAccountId = null, string? accountType = null, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null);
         Task<ApiResponse<BankTransactionDto>> GetTransactionAsync(string transactionId, string userId);
         Task<ApiResponse<bool>> DeleteTransactionAsync(string transactionId, string userId);
         Task<ApiResponse<bool>> SoftDeleteTransactionAsync(string transactionId, string userId, string? reason = null);

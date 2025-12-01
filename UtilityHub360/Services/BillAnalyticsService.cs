@@ -13,11 +13,13 @@ namespace UtilityHub360.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly IBillService _billService;
+        private readonly INotificationService? _notificationService;
 
-        public BillAnalyticsService(ApplicationDbContext context, IBillService billService)
+        public BillAnalyticsService(ApplicationDbContext context, IBillService billService, INotificationService? notificationService = null)
         {
             _context = context;
             _billService = billService;
+            _notificationService = notificationService;
         }
 
         #region Analytics Calculations
@@ -865,6 +867,39 @@ namespace UtilityHub360.Services
                 {
                     _context.BillAlerts.AddRange(alerts);
                     await _context.SaveChangesAsync();
+
+                    // Also create Notification entities for the notification system
+                    if (_notificationService != null)
+                    {
+                        foreach (var alert in alerts)
+                        {
+                            try
+                            {
+                                // Create metadata with billId for navigation
+                                var metadata = new Dictionary<string, string>
+                                {
+                                    { "billId", alert.BillId ?? "" }
+                                };
+
+                                await _notificationService.SendNotificationAsync(new CreateNotificationDto
+                                {
+                                    UserId = alert.UserId,
+                                    Type = alert.AlertType == "overdue" ? "PAYMENT_OVERDUE" : "PAYMENT_DUE",
+                                    Title = alert.Title,
+                                    Message = alert.Message,
+                                    Channel = "IN_APP",
+                                    Priority = alert.Severity == "error" ? "HIGH" : alert.Severity == "warning" ? "NORMAL" : "LOW",
+                                    TemplateVariables = metadata
+                                });
+                            }
+                            catch (Exception ex)
+                            {
+                                // Log error but don't fail the entire operation
+                                // Notification creation failure shouldn't break alert generation
+                                System.Diagnostics.Debug.WriteLine($"Failed to create notification for alert {alert.Id}: {ex.Message}");
+                            }
+                        }
+                    }
                 }
 
                 var result = alerts.Select(MapToBillAlertDto).ToList();
@@ -1388,6 +1423,35 @@ namespace UtilityHub360.Services
 
                 _context.BillAlerts.Add(alert);
                 await _context.SaveChangesAsync();
+
+                // Also create Notification entity for the notification system
+                if (_notificationService != null)
+                {
+                    try
+                    {
+                        // Create metadata with billId for navigation
+                        var metadata = new Dictionary<string, string>
+                        {
+                            { "billId", nextBill.Id }
+                        };
+
+                        await _notificationService.SendNotificationAsync(new CreateNotificationDto
+                        {
+                            UserId = userId,
+                            Type = "BILL_AUTO_GENERATED",
+                            Title = alert.Title,
+                            Message = alert.Message,
+                            Channel = "IN_APP",
+                            Priority = "NORMAL",
+                            TemplateVariables = metadata
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log error but don't fail the entire operation
+                        System.Diagnostics.Debug.WriteLine($"Failed to create notification for auto-generated bill: {ex.Message}");
+                    }
+                }
 
                 var billDto = new BillDto
                 {

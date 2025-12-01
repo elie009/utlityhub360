@@ -322,6 +322,43 @@ namespace UtilityHub360.Controllers
             return Ok(result);
         }
 
+        [HttpPut("accounts/{savingsAccountId}/mark-paid")]
+        public async Task<ActionResult<ApiResponse<SavingsAccountDto>>> MarkSavingsAsPaid(
+            string savingsAccountId, 
+            [FromBody] MarkSavingsPaidDto? request = null)
+        {
+            var userId = GetUserId();
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new ApiResponse<SavingsAccountDto>
+                {
+                    Success = false,
+                    Message = "User not authenticated"
+                });
+            }
+
+            var amount = request?.Amount ?? 0;
+            var notes = request?.Notes;
+            
+            if (amount <= 0)
+            {
+                return BadRequest(new ApiResponse<SavingsAccountDto>
+                {
+                    Success = false,
+                    Message = "Amount must be greater than 0"
+                });
+            }
+            
+            var result = await _savingsService.MarkSavingsAsPaidAsync(savingsAccountId, userId, amount, notes);
+            
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+
         // Bank Account Integration
         [HttpPost("transfer/bank-to-savings")]
         public async Task<ActionResult<ApiResponse<bool>>> TransferFromBankToSavings([FromBody] TransferToSavingsDto transferDto)
@@ -478,5 +515,14 @@ namespace UtilityHub360.Controllers
         [Required]
         [StringLength(255)]
         public string Description { get; set; } = string.Empty;
+    }
+
+    public class MarkSavingsPaidDto
+    {
+        [Required]
+        [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than 0")]
+        public decimal Amount { get; set; }
+        
+        public string? Notes { get; set; }
     }
 }
