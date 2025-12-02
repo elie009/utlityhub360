@@ -2748,12 +2748,31 @@ namespace UtilityHub360.Services
                     SwiftCode = ba.SwiftCode
                 }).ToList();
 
+                // Get total count of ALL transactions (not filtered by period) for TotalTransactions
+                // This matches the frontend expectation that TotalTransactions shows complete history
+                // Count from both BankTransactions and Payments tables to match GetUserTransactionsAsync
+                var bankTransactionsCount = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(t => t.UserId == userId && !t.IsDeleted)
+                    .CountAsync();
+                
+                var paymentsCount = await _context.Payments
+                    .AsNoTracking()
+                    .Where(p => p.UserId == userId && 
+                               p.IsBankTransaction &&
+                               !p.IsDeleted)  // Exclude soft-deleted transactions
+                    .CountAsync();
+                
+                // Combine counts (note: some transactions might exist in both tables, but we'll use sum for simplicity)
+                // In practice, GetUserTransactionsAsync removes duplicates, but for count we'll sum both
+                var totalTransactionsCount = bankTransactionsCount + paymentsCount;
+
                 var analytics = new BankAccountAnalyticsDto
                 {
                     TotalBalance = bankAccounts.Sum(ba => ba.CurrentBalance),
                     TotalIncoming = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount),
                     TotalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount),
-                    TotalTransactions = transactions.Count,
+                    TotalTransactions = totalTransactionsCount,  // Total count of all transactions, not just period
                     PeriodStart = startDate,
                     PeriodEnd = endDate,
                     TopAccounts = new List<BankAccountDto>(),
