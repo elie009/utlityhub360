@@ -585,6 +585,57 @@ namespace UtilityHub360.Services
 
             return insights;
         }
+
+        public async Task<RecentActivityDto> GetRecentActivityAsync(string userId)
+        {
+            var activity = new RecentActivityDto
+            {
+                UserId = userId,
+                GeneratedAt = DateTime.UtcNow
+            };
+
+            // Get income sources count and total monthly income
+            var incomeSources = await _context.IncomeSources
+                .Where(i => i.UserId == userId && i.IsActive)
+                .ToListAsync();
+
+            activity.IncomeSourcesCount = incomeSources.Count;
+            activity.TotalMonthlyIncome = incomeSources.Sum(i => i.MonthlyAmount);
+
+            // Get user profile for monthly goals
+            var userProfile = await _context.UserProfiles
+                .Where(p => p.UserId == userId && p.IsActive)
+                .FirstOrDefaultAsync();
+
+            if (userProfile != null)
+            {
+                activity.HasProfile = true;
+                activity.ProfileStatus = $"Profile completed with {activity.IncomeSourcesCount} income source{(activity.IncomeSourcesCount != 1 ? "s" : "")}";
+                activity.TotalMonthlyGoals = (userProfile.MonthlySavingsGoal ?? 0) +
+                                           (userProfile.MonthlyInvestmentGoal ?? 0) +
+                                           (userProfile.MonthlyEmergencyFundGoal ?? 0);
+            }
+            else
+            {
+                activity.HasProfile = false;
+                activity.ProfileStatus = "Profile setup required";
+                activity.TotalMonthlyGoals = 0;
+            }
+
+            // Get disposable amount for current month
+            try
+            {
+                var disposableAmountDto = await GetCurrentMonthDisposableAmountAsync(userId);
+                activity.DisposableAmount = disposableAmountDto.DisposableAmount;
+            }
+            catch
+            {
+                // If calculation fails, use 0
+                activity.DisposableAmount = 0;
+            }
+
+            return activity;
+        }
     }
 }
 

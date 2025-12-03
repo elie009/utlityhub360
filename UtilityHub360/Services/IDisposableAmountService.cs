@@ -9,6 +9,7 @@ namespace UtilityHub360.Services
         Task<FinancialSummaryDto> GetFinancialSummaryAsync(string userId);
         Task<DisposableAmountDto> GetCurrentMonthDisposableAmountAsync(string userId, decimal? targetSavings = null, decimal? investmentAllocation = null);
         Task<SimpleFinancialSummaryDto> GetSimpleFinancialSummaryAsync(string userId, int? year = null, int? month = null);
+        Task<RecentActivityDto> GetRecentActivityAsync(string userId);
     }
 }
 

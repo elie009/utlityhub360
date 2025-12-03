@@ -837,21 +837,24 @@ namespace UtilityHub360.Services
                     }
                 }
 
-                // Current Liabilities: Unpaid Bills
-                var unpaidBills = await _context.Bills
+                // Current Liabilities: Overdue Bills Only
+                // Only include bills that are past their due date as liabilities
+                // Future bills are not yet obligations and should not appear as liabilities
+                var overdueBills = await _context.Bills
                     .Where(b => b.UserId == userId && 
                                b.Status != null && 
-                               b.Status.ToUpper() != "PAID")
+                               b.Status.ToUpper() != "PAID" &&
+                               b.DueDate <= reportDate)
                     .ToListAsync();
 
-                foreach (var bill in unpaidBills)
+                foreach (var bill in overdueBills)
                 {
                     liabilities.CurrentLiabilities.Add(new DTOs.BalanceSheetItemDto
                     {
                         AccountName = bill.Provider ?? "Unnamed Bill",
                         AccountType = bill.BillType ?? "Bill",
                         Amount = bill.Amount,
-                        Description = $"{bill.BillType} - {bill.Provider}",
+                        Description = $"{bill.BillType} - {bill.Provider} (Overdue)",
                         ReferenceId = bill.Id
                     });
                 }

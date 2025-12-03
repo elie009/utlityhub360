@@ -144,6 +144,32 @@ namespace UtilityHub360.Controllers
         }
 
         /// <summary>
+        /// Get recent activity data for dashboard
+        /// Returns income sources count, monthly income, goals, and disposable amount
+        /// </summary>
+        [HttpGet("recent-activity")]
+        public async Task<ActionResult<ApiResponse<RecentActivityDto>>> GetRecentActivity()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<RecentActivityDto>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _disposableAmountService.GetRecentActivityAsync(userId);
+
+                return Ok(ApiResponse<RecentActivityDto>.SuccessResult(result, "Recent activity retrieved successfully"));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<RecentActivityDto>.ErrorResult(
+                    $"Failed to get recent activity: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
         /// Get disposable amount for any user (Admin only)
         /// </summary>
         [HttpGet("disposable-amount/{userId}")]
