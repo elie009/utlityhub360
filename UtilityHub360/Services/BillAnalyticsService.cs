@@ -820,6 +820,14 @@ namespace UtilityHub360.Services
 
                 foreach (var bill in upcomingBills)
                 {
+                    // Check if alert already exists for this bill (within last 24 hours to prevent duplicates)
+                    var existingAlert = await _context.BillAlerts
+                        .FirstOrDefaultAsync(a => a.BillId == bill.Id && 
+                                                a.AlertType == "due_date" &&
+                                                a.CreatedAt >= DateTime.UtcNow.AddHours(-24));
+                    
+                    if (existingAlert != null) continue; // Skip if alert already exists
+
                     alerts.Add(new BillAlert
                     {
                         Id = Guid.NewGuid().ToString(),
@@ -846,6 +854,14 @@ namespace UtilityHub360.Services
 
                 foreach (var bill in overdueBills)
                 {
+                    // Check if alert already exists for this bill (within last 24 hours to prevent duplicates)
+                    var existingAlert = await _context.BillAlerts
+                        .FirstOrDefaultAsync(a => a.BillId == bill.Id && 
+                                                a.AlertType == "overdue" &&
+                                                a.CreatedAt >= DateTime.UtcNow.AddHours(-24));
+                    
+                    if (existingAlert != null) continue; // Skip if alert already exists
+
                     alerts.Add(new BillAlert
                     {
                         Id = Guid.NewGuid().ToString(),

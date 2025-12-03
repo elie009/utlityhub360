@@ -193,6 +193,35 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to cancel scheduled notification: {ex.Message}"));
             }
         }
+
+        [HttpDelete("user/{userId}/all")]
+        public async Task<ActionResult<ApiResponse<int>>> DeleteAllNotifications(string userId)
+        {
+            try
+            {
+                var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var currentUserRole = User.FindFirst(ClaimTypes.Role)?.Value;
+
+                // Users can only delete their own notifications unless they're admin
+                if (currentUserId != userId && currentUserRole != "ADMIN")
+                {
+                    return Forbid();
+                }
+
+                var result = await _notificationService.DeleteAllNotificationsAsync(userId);
+                
+                if (result.Success)
+                {
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<int>.ErrorResult($"Failed to delete all notifications: {ex.Message}"));
+            }
+        }
     }
 }
 

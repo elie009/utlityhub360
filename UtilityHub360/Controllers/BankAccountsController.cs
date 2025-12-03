@@ -585,7 +585,13 @@ namespace UtilityHub360.Controllers
         /// Get all transactions for the user
         /// </summary>
         [HttpGet("transactions")]
-        public async Task<ActionResult<ApiResponse<List<BankTransactionDto>>>> GetUserTransactions([FromQuery] string? bankAccountId = null, [FromQuery] string? accountType = null, [FromQuery] int page = 1, [FromQuery] int limit = 50)
+        public async Task<ActionResult<ApiResponse<List<BankTransactionDto>>>> GetUserTransactions(
+            [FromQuery] string? bankAccountId = null, 
+            [FromQuery] string? accountType = null, 
+            [FromQuery] int page = 1, 
+            [FromQuery] int limit = 50,
+            [FromQuery] string? startDate = null,
+            [FromQuery] string? endDate = null)
         {
             try
             {
@@ -595,7 +601,24 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<List<BankTransactionDto>>.ErrorResult("User not authenticated"));
                 }
 
-                var result = await _bankAccountService.GetUserTransactionsAsync(userId, bankAccountId, accountType, page, limit);
+                DateTime? dateFrom = null;
+                DateTime? dateTo = null;
+
+                // Parse startDate if provided
+                if (!string.IsNullOrEmpty(startDate) && DateTime.TryParse(startDate, out var parsedStartDate))
+                {
+                    // Use only the date part, set time to 00:00:00 UTC
+                    dateFrom = DateTime.SpecifyKind(parsedStartDate.Date, DateTimeKind.Utc);
+                }
+
+                // Parse endDate if provided
+                if (!string.IsNullOrEmpty(endDate) && DateTime.TryParse(endDate, out var parsedEndDate))
+                {
+                    // Set to end of day (23:59:59.9999999) UTC for inclusive comparison
+                    dateTo = DateTime.SpecifyKind(parsedEndDate.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+                }
+
+                var result = await _bankAccountService.GetUserTransactionsAsync(userId, bankAccountId, accountType, page, limit, dateFrom, dateTo);
                 
                 if (!result.Success)
                 {

@@ -1365,12 +1365,9 @@ namespace UtilityHub360.Services
 
                 // ==================== DOUBLE-ENTRY VALIDATION FOR TRANSFERS ====================
                 // Detect if this is a bank transfer transaction
-                var categoryLower = (createTransactionDto.Category ?? "").ToLower();
-                bool isBankTransfer = !string.IsNullOrEmpty(createTransactionDto.ToBankAccountId) ||
-                                    categoryLower.Contains("transfer") || 
-                                    categoryLower == "transfer" ||
-                                    (!string.IsNullOrEmpty(createTransactionDto.Category) && 
-                                     createTransactionDto.Category.ToUpper() == "TRANSFER");
+                // Only consider it a transfer if ToBankAccountId is explicitly provided
+                // Category alone should not trigger transfer validation - user must explicitly provide ToBankAccountId
+                bool isBankTransfer = !string.IsNullOrEmpty(createTransactionDto.ToBankAccountId);
 
                 // If it's a transfer, validate double-entry accounting rules
                 if (isBankTransfer)
@@ -1665,13 +1662,18 @@ namespace UtilityHub360.Services
                     BalanceAfterTransaction = bankAccount.CurrentBalance,
                     TransactionDate = createTransactionDto.TransactionDate,
                     CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow,
-                    // Add linking fields
-                    BillId = createTransactionDto.BillId,
-                    LoanId = createTransactionDto.LoanId,
-                    SavingsAccountId = createTransactionDto.SavingsAccountId,
-                    TransactionPurpose = createTransactionDto.TransactionPurpose
+                    UpdatedAt = DateTime.UtcNow
                 };
+
+                // Add linking fields only if columns exist in database
+                var hasLinkingColumns = await CheckIfLinkingColumnsExistAsync();
+                if (hasLinkingColumns)
+                {
+                    bankTransaction.BillId = createTransactionDto.BillId;
+                    bankTransaction.LoanId = createTransactionDto.LoanId;
+                    bankTransaction.SavingsAccountId = createTransactionDto.SavingsAccountId;
+                    bankTransaction.TransactionPurpose = createTransactionDto.TransactionPurpose;
+                }
 
                 // Validate and handle linked entities
                 if (!string.IsNullOrEmpty(createTransactionDto.BillId))
@@ -1685,8 +1687,8 @@ namespace UtilityHub360.Services
                             $"Bill not found. BillId: {createTransactionDto.BillId}");
                     }
                     
-                    // Auto-set purpose if not provided
-                    if (string.IsNullOrEmpty(bankTransaction.TransactionPurpose))
+                    // Auto-set purpose if not provided and columns exist
+                    if (hasLinkingColumns && string.IsNullOrEmpty(bankTransaction.TransactionPurpose))
                     {
                         bankTransaction.TransactionPurpose = bill.BillType.ToUpper() == "UTILITY" ? "UTILITY" : "BILL";
                     }
@@ -1711,8 +1713,8 @@ namespace UtilityHub360.Services
                             $"Loan not found. LoanId: {createTransactionDto.LoanId}");
                     }
                     
-                    // Auto-set purpose if not provided
-                    if (string.IsNullOrEmpty(bankTransaction.TransactionPurpose))
+                    // Auto-set purpose if not provided and columns exist
+                    if (hasLinkingColumns && string.IsNullOrEmpty(bankTransaction.TransactionPurpose))
                     {
                         bankTransaction.TransactionPurpose = "LOAN";
                     }
@@ -1720,8 +1722,8 @@ namespace UtilityHub360.Services
 
                 if (!string.IsNullOrEmpty(createTransactionDto.SavingsAccountId))
                 {
-                    // Auto-set purpose if not provided
-                    if (string.IsNullOrEmpty(bankTransaction.TransactionPurpose))
+                    // Auto-set purpose if not provided and columns exist
+                    if (hasLinkingColumns && string.IsNullOrEmpty(bankTransaction.TransactionPurpose))
                     {
                         bankTransaction.TransactionPurpose = "SAVINGS";
                     }
@@ -1916,8 +1918,14 @@ namespace UtilityHub360.Services
                 catch (Exception journalEx)
                 {
                     await transaction.RollbackAsync();
+                    // Include inner exception details if available (usually contains the actual database error)
+                    var errorMessage = journalEx.Message;
+                    if (journalEx.InnerException != null)
+                    {
+                        errorMessage += $" Inner exception: {journalEx.InnerException.Message}";
+                    }
                     return ApiResponse<BankTransactionDto>.ErrorResult(
-                        $"Failed to create transaction with double-entry validation: {journalEx.Message}");
+                        $"Failed to create transaction with double-entry validation: {errorMessage}");
                 }
             }
             catch (Exception ex)
@@ -2167,84 +2175,115 @@ namespace UtilityHub360.Services
                 }
 
                 // Update BankTransaction record if it exists
-                var bankTransaction = await _context.BankTransactions
-                    .FirstOrDefaultAsync(bt => bt.Id == transactionId && bt.UserId == userId);
+                // Use AsNoTracking first to check if it exists, then attach and update only tracked properties
+                var bankTransactionExists = await _context.BankTransactions
+                    .AsNoTracking()
+                    .AnyAsync(bt => bt.Id == transactionId && bt.UserId == userId);
 
-                if (bankTransaction != null)
+                if (bankTransactionExists)
                 {
-                    if (updateTransactionDto.Amount.HasValue)
-                    {
-                        bankTransaction.Amount = updateTransactionDto.Amount.Value;
-                    }
+                    // Check if linking columns exist in database before trying to update them
+                    var hasLinkingColumns = await CheckIfLinkingColumnsExistAsync();
+                    
+                    // Load the entity for update
+                    var bankTransaction = await _context.BankTransactions
+                        .FirstOrDefaultAsync(bt => bt.Id == transactionId && bt.UserId == userId);
 
-                    if (!string.IsNullOrEmpty(updateTransactionDto.TransactionType))
+                    if (bankTransaction != null)
                     {
-                        bankTransaction.TransactionType = updateTransactionDto.TransactionType.ToUpper();
-                    }
+                        if (updateTransactionDto.Amount.HasValue)
+                        {
+                            bankTransaction.Amount = updateTransactionDto.Amount.Value;
+                        }
 
-                    if (!string.IsNullOrEmpty(updateTransactionDto.Description))
-                    {
-                        bankTransaction.Description = updateTransactionDto.Description;
-                    }
+                        if (!string.IsNullOrEmpty(updateTransactionDto.TransactionType))
+                        {
+                            bankTransaction.TransactionType = updateTransactionDto.TransactionType.ToUpper();
+                        }
 
-                    if (updateTransactionDto.Category != null)
-                    {
-                        bankTransaction.Category = updateTransactionDto.Category;
-                    }
+                        if (!string.IsNullOrEmpty(updateTransactionDto.Description))
+                        {
+                            bankTransaction.Description = updateTransactionDto.Description;
+                        }
 
-                    if (updateTransactionDto.ReferenceNumber != null)
-                    {
-                        bankTransaction.ReferenceNumber = updateTransactionDto.ReferenceNumber;
-                    }
+                        if (updateTransactionDto.Category != null)
+                        {
+                            bankTransaction.Category = updateTransactionDto.Category;
+                        }
 
-                    if (updateTransactionDto.ExternalTransactionId != null)
-                    {
-                        bankTransaction.ExternalTransactionId = updateTransactionDto.ExternalTransactionId;
-                    }
+                        if (updateTransactionDto.ReferenceNumber != null)
+                        {
+                            bankTransaction.ReferenceNumber = updateTransactionDto.ReferenceNumber;
+                        }
 
-                    if (updateTransactionDto.TransactionDate.HasValue)
-                    {
-                        bankTransaction.TransactionDate = updateTransactionDto.TransactionDate.Value;
-                    }
+                        if (updateTransactionDto.ExternalTransactionId != null)
+                        {
+                            bankTransaction.ExternalTransactionId = updateTransactionDto.ExternalTransactionId;
+                        }
 
-                    if (updateTransactionDto.Notes != null)
-                    {
-                        bankTransaction.Notes = updateTransactionDto.Notes;
-                    }
+                        if (updateTransactionDto.TransactionDate.HasValue)
+                        {
+                            bankTransaction.TransactionDate = updateTransactionDto.TransactionDate.Value;
+                        }
 
-                    if (updateTransactionDto.Merchant != null)
-                    {
-                        bankTransaction.Merchant = updateTransactionDto.Merchant;
-                    }
+                        if (updateTransactionDto.Notes != null)
+                        {
+                            bankTransaction.Notes = updateTransactionDto.Notes;
+                        }
 
-                    if (updateTransactionDto.Location != null)
-                    {
-                        bankTransaction.Location = updateTransactionDto.Location;
-                    }
+                        if (updateTransactionDto.Merchant != null)
+                        {
+                            bankTransaction.Merchant = updateTransactionDto.Merchant;
+                        }
 
-                    // Update BankAccountId if account was changed
-                    if (newBankAccount != null)
-                    {
-                        bankTransaction.BankAccountId = newBankAccount.Id;
-                    }
+                        if (updateTransactionDto.Location != null)
+                        {
+                            bankTransaction.Location = updateTransactionDto.Location;
+                        }
 
-                    if (updateTransactionDto.IsRecurring.HasValue)
-                    {
-                        bankTransaction.IsRecurring = updateTransactionDto.IsRecurring.Value;
-                    }
+                        // Update BankAccountId if account was changed
+                        if (newBankAccount != null)
+                        {
+                            bankTransaction.BankAccountId = newBankAccount.Id;
+                        }
 
-                    if (updateTransactionDto.RecurringFrequency != null)
-                    {
-                        bankTransaction.RecurringFrequency = updateTransactionDto.RecurringFrequency;
-                    }
+                        if (updateTransactionDto.IsRecurring.HasValue)
+                        {
+                            bankTransaction.IsRecurring = updateTransactionDto.IsRecurring.Value;
+                        }
 
-                    if (!string.IsNullOrEmpty(updateTransactionDto.Currency))
-                    {
-                        bankTransaction.Currency = updateTransactionDto.Currency.ToUpper();
-                    }
+                        if (updateTransactionDto.RecurringFrequency != null)
+                        {
+                            bankTransaction.RecurringFrequency = updateTransactionDto.RecurringFrequency;
+                        }
 
-                    bankTransaction.BalanceAfterTransaction = bankAccount.CurrentBalance;
-                    bankTransaction.UpdatedAt = DateTime.UtcNow;
+                        if (!string.IsNullOrEmpty(updateTransactionDto.Currency))
+                        {
+                            bankTransaction.Currency = updateTransactionDto.Currency.ToUpper();
+                        }
+
+                        // Update linking fields only if columns exist in database
+                        if (hasLinkingColumns)
+                        {
+                            if (!string.IsNullOrEmpty(updateTransactionDto.BillId))
+                            {
+                                bankTransaction.BillId = updateTransactionDto.BillId;
+                            }
+
+                            if (!string.IsNullOrEmpty(updateTransactionDto.SavingsAccountId))
+                            {
+                                bankTransaction.SavingsAccountId = updateTransactionDto.SavingsAccountId;
+                            }
+
+                            if (!string.IsNullOrEmpty(updateTransactionDto.LoanId))
+                            {
+                                bankTransaction.LoanId = updateTransactionDto.LoanId;
+                            }
+                        }
+
+                        bankTransaction.BalanceAfterTransaction = bankAccount.CurrentBalance;
+                        bankTransaction.UpdatedAt = DateTime.UtcNow;
+                    }
                 }
 
                 await _context.SaveChangesAsync();
@@ -2767,11 +2806,16 @@ namespace UtilityHub360.Services
                 // In practice, GetUserTransactionsAsync removes duplicates, but for count we'll sum both
                 var totalTransactionsCount = bankTransactionsCount + paymentsCount;
 
+                // Calculate period-based totals for TotalIncoming and TotalOutgoing
+                // These are filtered by the selected period (month, week, etc.)
+                var periodTotalIncoming = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount);
+                var periodTotalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount);
+
                 var analytics = new BankAccountAnalyticsDto
                 {
                     TotalBalance = bankAccounts.Sum(ba => ba.CurrentBalance),
-                    TotalIncoming = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount),
-                    TotalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount),
+                    TotalIncoming = periodTotalIncoming,  // Period-based total (based on selected month/period)
+                    TotalOutgoing = periodTotalOutgoing,  // Period-based total (based on selected month/period)
                     TotalTransactions = totalTransactionsCount,  // Total count of all transactions, not just period
                     PeriodStart = startDate,
                     PeriodEnd = endDate,
@@ -4104,6 +4148,26 @@ namespace UtilityHub360.Services
             // Start of current month (1st day of month at 00:00:00)
             var startOfCurrentMonth = new DateTime(now.Year, now.Month, 1);
             
+            // Check if period is in format "YYYY-MM" for specific month selection
+            if (System.Text.RegularExpressions.Regex.IsMatch(period, @"^\d{4}-\d{2}$"))
+            {
+                var parts = period.Split('-');
+                if (parts.Length == 2 && int.TryParse(parts[0], out int year) && int.TryParse(parts[1], out int month))
+                {
+                    if (month >= 1 && month <= 12 && year >= 2000 && year <= 2100)
+                    {
+                        var selectedMonthStart = new DateTime(year, month, 1);
+                        var selectedMonthEnd = selectedMonthStart.AddMonths(1).AddTicks(-1);
+                        // If selected month is current month, use endOfToday; otherwise use end of that month
+                        if (year == now.Year && month == now.Month)
+                        {
+                            return (selectedMonthStart, endOfToday);
+                        }
+                        return (selectedMonthStart, selectedMonthEnd);
+                    }
+                }
+            }
+            
             return period.ToLower() switch
             {
                 "weekly" or "week" => (now.AddDays(-7).Date, endOfToday),
@@ -4247,7 +4311,7 @@ namespace UtilityHub360.Services
                 // Use projection to avoid reading soft delete columns
                 var query = _context.Payments
                     .AsNoTracking()
-                    .Where(p => p.UserId == userId && p.IsBankTransaction);
+                    .Where(p => p.UserId == userId && p.IsBankTransaction && !p.IsDeleted);
 
                 // Filter by bankAccountId if provided
                 if (!string.IsNullOrEmpty(bankAccountId))
@@ -4262,12 +4326,30 @@ namespace UtilityHub360.Services
 
                 if (dateFrom.HasValue)
                 {
-                    query = query.Where(p => p.TransactionDate >= dateFrom.Value);
+                    // Extract date components for comparison (avoids timezone issues)
+                    var dateFromYear = dateFrom.Value.Year;
+                    var dateFromMonth = dateFrom.Value.Month;
+                    var dateFromDay = dateFrom.Value.Day;
+                    
+                    // Filter: TransactionDate >= dateFrom (comparing date parts only)
+                    query = query.Where(p => p.TransactionDate.HasValue && 
+                                           (p.TransactionDate.Value.Year > dateFromYear ||
+                                            (p.TransactionDate.Value.Year == dateFromYear && p.TransactionDate.Value.Month > dateFromMonth) ||
+                                            (p.TransactionDate.Value.Year == dateFromYear && p.TransactionDate.Value.Month == dateFromMonth && p.TransactionDate.Value.Day >= dateFromDay)));
                 }
 
                 if (dateTo.HasValue)
                 {
-                    query = query.Where(p => p.TransactionDate <= dateTo.Value);
+                    // Extract date components for comparison (avoids timezone issues)
+                    var dateToYear = dateTo.Value.Year;
+                    var dateToMonth = dateTo.Value.Month;
+                    var dateToDay = dateTo.Value.Day;
+                    
+                    // Filter: TransactionDate <= dateTo (comparing date parts only)
+                    query = query.Where(p => p.TransactionDate.HasValue && 
+                                           (p.TransactionDate.Value.Year < dateToYear ||
+                                            (p.TransactionDate.Value.Year == dateToYear && p.TransactionDate.Value.Month < dateToMonth) ||
+                                            (p.TransactionDate.Value.Year == dateToYear && p.TransactionDate.Value.Month == dateToMonth && p.TransactionDate.Value.Day <= dateToDay)));
                 }
 
                 var transactionsQuery = query
@@ -4760,6 +4842,36 @@ namespace UtilityHub360.Services
                 Notes = closedMonth.Notes,
                 CreatedAt = closedMonth.CreatedAt
             };
+        }
+
+        /// <summary>
+        /// Checks if the linking columns (BillId, LoanId, SavingsAccountId, TransactionPurpose) exist in the BankTransactions table
+        /// </summary>
+        private async Task<bool> CheckIfLinkingColumnsExistAsync()
+        {
+            try
+            {
+                // Use INFORMATION_SCHEMA to check if columns exist (more reliable than trying to query them)
+                var sql = @"
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_NAME = 'BankTransactions' 
+                    AND COLUMN_NAME IN ('BillId', 'LoanId', 'SavingsAccountId', 'TransactionPurpose')";
+                
+                var result = await _context.Database
+                    .SqlQueryRaw<int>(sql)
+                    .ToListAsync();
+                
+                var columnCount = result.FirstOrDefault();
+                
+                // All 4 columns should exist
+                return columnCount == 4;
+            }
+            catch
+            {
+                // If query fails (table doesn't exist, etc.), assume columns don't exist
+                return false;
+            }
         }
     }
 }

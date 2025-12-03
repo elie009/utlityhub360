@@ -211,6 +211,75 @@ namespace UtilityHub360.Services
         {
             try
             {
+                // Check for duplicate notifications within the last 24 hours
+                // This prevents spam from background services running multiple times
+                var twentyFourHoursAgo = DateTime.UtcNow.AddHours(-24);
+                var existingNotifications = await _context.Notifications
+                    .Where(n => 
+                        n.UserId == notification.UserId &&
+                        n.Type == notification.Type &&
+                        n.CreatedAt >= twentyFourHoursAgo)
+                    .ToListAsync();
+                
+                // Check if any existing notification matches this one
+                // For bill/loan notifications, also check template variables to match specific bill/loan
+                Entities.Notification? existingNotification = null;
+                if (existingNotifications.Any())
+                {
+                    if (notification.TemplateVariables != null && notification.TemplateVariables.Count > 0)
+                    {
+                        // Check for matching billId or loanId in template variables
+                        var billId = notification.TemplateVariables.ContainsKey("billId") 
+                            ? notification.TemplateVariables["billId"] 
+                            : null;
+                        var loanId = notification.TemplateVariables.ContainsKey("loanId") 
+                            ? notification.TemplateVariables["loanId"] 
+                            : null;
+                        
+                        foreach (var existing in existingNotifications)
+                        {
+                            if (string.IsNullOrEmpty(existing.TemplateVariables)) continue;
+                            
+                            try
+                            {
+                                var existingVars = JsonSerializer.Deserialize<Dictionary<string, string>>(existing.TemplateVariables);
+                                if (existingVars != null)
+                                {
+                                    var matches = true;
+                                    if (billId != null && (!existingVars.ContainsKey("billId") || existingVars["billId"] != billId))
+                                        matches = false;
+                                    if (loanId != null && (!existingVars.ContainsKey("loanId") || existingVars["loanId"] != loanId))
+                                        matches = false;
+                                    
+                                    if (matches)
+                                    {
+                                        existingNotification = existing;
+                                        break;
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // If JSON parsing fails, skip this notification
+                                continue;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // No template variables, just check type and user
+                        existingNotification = existingNotifications.FirstOrDefault();
+                    }
+                }
+                
+                // If duplicate found and it's not scheduled, return the existing notification
+                if (existingNotification != null && !notification.ScheduledFor.HasValue)
+                {
+                    _logger?.LogInformation($"Duplicate notification prevented for user {notification.UserId}, type {notification.Type}");
+                    var existingDto = MapToDto(existingNotification);
+                    return ApiResponse<NotificationDto>.SuccessResult(existingDto, "Notification already exists (duplicate prevented)");
+                }
+
                 var newNotification = new Entities.Notification
                 {
                     UserId = notification.UserId,
@@ -259,6 +328,32 @@ namespace UtilityHub360.Services
             catch (Exception ex)
             {
                 return ApiResponse<int>.ErrorResult($"Failed to get unread notification count: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<int>> DeleteAllNotificationsAsync(string userId)
+        {
+            try
+            {
+                var notifications = await _context.Notifications
+                    .Where(n => n.UserId == userId)
+                    .ToListAsync();
+
+                var count = notifications.Count;
+
+                if (count > 0)
+                {
+                    _context.Notifications.RemoveRange(notifications);
+                    await _context.SaveChangesAsync();
+                    _logger?.LogInformation($"Deleted {count} notifications for user {userId}");
+                }
+
+                return ApiResponse<int>.SuccessResult(count, $"Successfully deleted {count} notification(s)");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, $"Failed to delete all notifications for user {userId}");
+                return ApiResponse<int>.ErrorResult($"Failed to delete notifications: {ex.Message}");
             }
         }
 
