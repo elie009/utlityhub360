@@ -92,6 +92,10 @@ namespace UtilityHub360.Data
         
         // Month Closing Tables
         public DbSet<ClosedMonth> ClosedMonths { get; set; }
+        
+        // Subscription Tables
+        public DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
+        public DbSet<UserSubscription> UserSubscriptions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -992,6 +996,35 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => new { e.UserId, e.CreatedAt });
                 entity.HasIndex(e => new { e.EntityType, e.EntityId });
                 entity.HasIndex(e => new { e.LogType, e.Severity });
+            });
+
+            // SubscriptionPlan configuration
+            modelBuilder.Entity<SubscriptionPlan>(entity =>
+            {
+                entity.HasIndex(e => e.Name).IsUnique();
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => e.DisplayOrder);
+            });
+
+            // UserSubscription configuration
+            modelBuilder.Entity<UserSubscription>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.SubscriptionPlan)
+                    .WithMany(p => p.UserSubscriptions)
+                    .HasForeignKey(d => d.SubscriptionPlanId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.SubscriptionPlanId);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.BillingCycle);
+                entity.HasIndex(e => e.NextBillingDate);
+                entity.HasIndex(e => new { e.UserId, e.Status });
             });
 
             // Seed data
