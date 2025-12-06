@@ -43,6 +43,7 @@ namespace UtilityHub360.Services
                     MonthlyTaxDeductions = createProfileDto.MonthlyTaxDeductions,
                     Industry = createProfileDto.Industry,
                     Location = createProfileDto.Location,
+                    Country = createProfileDto.Country,
                     Notes = createProfileDto.Notes,
                     PreferredCurrency = !string.IsNullOrEmpty(createProfileDto.PreferredCurrency) 
                         ? createProfileDto.PreferredCurrency.ToUpper() 
@@ -183,6 +184,8 @@ namespace UtilityHub360.Services
                     userProfile.Industry = updateProfileDto.Industry;
                 if (!string.IsNullOrEmpty(updateProfileDto.Location))
                     userProfile.Location = updateProfileDto.Location;
+                if (!string.IsNullOrEmpty(updateProfileDto.Country))
+                    userProfile.Country = updateProfileDto.Country;
                 if (!string.IsNullOrEmpty(updateProfileDto.Notes))
                     userProfile.Notes = updateProfileDto.Notes;
                 if (!string.IsNullOrEmpty(updateProfileDto.PreferredCurrency))
@@ -690,6 +693,7 @@ namespace UtilityHub360.Services
                 MonthlyTaxDeductions = userProfile.MonthlyTaxDeductions,
                 Industry = userProfile.Industry,
                 Location = userProfile.Location,
+                Country = userProfile.Country,
                 Notes = userProfile.Notes,
                 PreferredCurrency = userProfile.PreferredCurrency,
                 IsActive = userProfile.IsActive,

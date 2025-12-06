@@ -38,6 +38,9 @@ namespace UtilityHub360.DTOs
         [StringLength(200, ErrorMessage = "Location cannot exceed 200 characters")]
         public string? Location { get; set; }
 
+        [StringLength(100, ErrorMessage = "Country cannot exceed 100 characters")]
+        public string? Country { get; set; }
+
         [StringLength(500, ErrorMessage = "Notes cannot exceed 500 characters")]
         public string? Notes { get; set; }
 
@@ -85,6 +88,9 @@ namespace UtilityHub360.DTOs
         [StringLength(200, ErrorMessage = "Location cannot exceed 200 characters")]
         public string? Location { get; set; }
 
+        [StringLength(100, ErrorMessage = "Country cannot exceed 100 characters")]
+        public string? Country { get; set; }
+
         [StringLength(500, ErrorMessage = "Notes cannot exceed 500 characters")]
         public string? Notes { get; set; }
 
@@ -115,6 +121,7 @@ namespace UtilityHub360.DTOs
         // Additional Information
         public string? Industry { get; set; }
         public string? Location { get; set; }
+        public string? Country { get; set; }
         public string? Notes { get; set; }
 
         // Currency Preference

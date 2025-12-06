@@ -49,6 +49,9 @@ namespace UtilityHub360.Entities
         [StringLength(100)]
         public string? Location { get; set; }
 
+        [StringLength(100)]
+        public string? Country { get; set; }
+
         // Currency Preference
         [StringLength(10)]
         public string PreferredCurrency { get; set; } = "USD";
