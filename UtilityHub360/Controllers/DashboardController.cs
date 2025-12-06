@@ -13,10 +13,12 @@ namespace UtilityHub360.Controllers
     public class DashboardController : ControllerBase
     {
         private readonly IDisposableAmountService _disposableAmountService;
+        private readonly ISubscriptionService _subscriptionService;
 
-        public DashboardController(IDisposableAmountService disposableAmountService)
+        public DashboardController(IDisposableAmountService disposableAmountService, ISubscriptionService subscriptionService)
         {
             _disposableAmountService = disposableAmountService;
+            _subscriptionService = subscriptionService;
         }
 
         /// <summary>
@@ -130,6 +132,14 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId))
                 {
                     return Unauthorized(ApiResponse<FinancialSummaryDto>.ErrorResult("User not authenticated"));
+                }
+
+                // Check if user has access to Financial Health Score feature
+                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "FINANCIAL_HEALTH_SCORE");
+                if (!featureCheck.Success || !featureCheck.Data)
+                {
+                    return BadRequest(ApiResponse<FinancialSummaryDto>.ErrorResult(
+                        "Financial Health Score is a Premium feature. Please upgrade to Premium to access this feature."));
                 }
 
                 var result = await _disposableAmountService.GetFinancialSummaryAsync(userId);

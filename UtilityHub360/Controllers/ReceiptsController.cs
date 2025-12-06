@@ -14,11 +14,13 @@ namespace UtilityHub360.Controllers
     {
         private readonly IReceiptService _receiptService;
         private readonly ILogger<ReceiptsController> _logger;
+        private readonly ISubscriptionService _subscriptionService;
 
-        public ReceiptsController(IReceiptService receiptService, ILogger<ReceiptsController> logger)
+        public ReceiptsController(IReceiptService receiptService, ILogger<ReceiptsController> logger, ISubscriptionService subscriptionService)
         {
             _receiptService = receiptService;
             _logger = logger;
+            _subscriptionService = subscriptionService;
         }
 
         /// <summary>
@@ -33,6 +35,14 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId))
                 {
                     return Unauthorized(ApiResponse<ReceiptDto>.ErrorResult("User not authenticated"));
+                }
+
+                // Check if user has access to Receipt OCR feature
+                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "RECEIPT_OCR");
+                if (!featureCheck.Success || !featureCheck.Data)
+                {
+                    return BadRequest(ApiResponse<ReceiptDto>.ErrorResult(
+                        "Receipt OCR is a Premium feature. Please upgrade to Premium to access this feature."));
                 }
 
                 if (file == null || file.Length == 0)
@@ -69,6 +79,14 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId))
                 {
                     return Unauthorized(ApiResponse<ReceiptDto>.ErrorResult("User not authenticated"));
+                }
+
+                // Check if user has access to Receipt OCR feature
+                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "RECEIPT_OCR");
+                if (!featureCheck.Success || !featureCheck.Data)
+                {
+                    return BadRequest(ApiResponse<ReceiptDto>.ErrorResult(
+                        "Receipt OCR is a Premium feature. Please upgrade to Premium to access this feature."));
                 }
 
                 var result = await _receiptService.ProcessReceiptOcrAsync(receiptId, userId);

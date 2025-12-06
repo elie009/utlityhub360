@@ -9,6 +9,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<NotificationDto>> MarkNotificationAsReadAsync(string notificationId, string userId);
         Task<ApiResponse<NotificationDto>> SendNotificationAsync(CreateNotificationDto notification);
         Task<ApiResponse<int>> GetUnreadNotificationCountAsync(string userId);
+        Task<ApiResponse<bool>> DeleteNotificationAsync(string notificationId, string userId);
         Task<ApiResponse<int>> DeleteAllNotificationsAsync(string userId);
     }
 }

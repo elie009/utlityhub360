@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
+using UtilityHub360.Data;
 using UtilityHub360.DTOs;
 using UtilityHub360.Models;
 using UtilityHub360.Services;
@@ -15,11 +17,15 @@ namespace UtilityHub360.Controllers
     {
         private readonly ISavingsService _savingsService;
         private readonly IPaymentService _paymentService;
+        private readonly ISubscriptionService _subscriptionService;
+        private readonly ApplicationDbContext _context;
 
-        public SavingsController(ISavingsService savingsService, IPaymentService paymentService)
+        public SavingsController(ISavingsService savingsService, IPaymentService paymentService, ISubscriptionService subscriptionService, ApplicationDbContext context)
         {
             _savingsService = savingsService;
             _paymentService = paymentService;
+            _subscriptionService = subscriptionService;
+            _context = context;
         }
 
         private string GetUserId()
@@ -38,6 +44,20 @@ namespace UtilityHub360.Controllers
                 {
                     Success = false,
                     Message = "User not authenticated"
+                });
+            }
+
+            // Check subscription limit for savings goals
+            var activeSavingsGoalsCount = await _context.SavingsAccounts
+                .CountAsync(sa => sa.UserId == userId && sa.IsActive);
+            
+            var limitCheck = await _subscriptionService.CheckLimitAsync(userId, "SAVINGS_GOALS", activeSavingsGoalsCount);
+            if (!limitCheck.Success || !limitCheck.Data)
+            {
+                return BadRequest(new ApiResponse<SavingsAccountDto>
+                {
+                    Success = false,
+                    Message = "You have reached your savings goals limit. Please upgrade to Premium for unlimited savings goals."
                 });
             }
 

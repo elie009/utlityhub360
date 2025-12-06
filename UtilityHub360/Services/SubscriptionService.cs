@@ -96,6 +96,9 @@ namespace UtilityHub360.Services
                     HasCustomReporting = createDto.HasCustomReporting,
                     HasAdvancedSecurity = createDto.HasAdvancedSecurity,
                     HasComplianceReports = createDto.HasComplianceReports,
+                    HasFinancialHealthScore = createDto.HasFinancialHealthScore,
+                    HasBillForecasting = createDto.HasBillForecasting,
+                    HasDebtOptimizer = createDto.HasDebtOptimizer,
                     DisplayOrder = createDto.DisplayOrder,
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow,
@@ -154,6 +157,9 @@ namespace UtilityHub360.Services
                 if (updateDto.HasCustomReporting.HasValue) plan.HasCustomReporting = updateDto.HasCustomReporting.Value;
                 if (updateDto.HasAdvancedSecurity.HasValue) plan.HasAdvancedSecurity = updateDto.HasAdvancedSecurity.Value;
                 if (updateDto.HasComplianceReports.HasValue) plan.HasComplianceReports = updateDto.HasComplianceReports.Value;
+                if (updateDto.HasFinancialHealthScore.HasValue) plan.HasFinancialHealthScore = updateDto.HasFinancialHealthScore.Value;
+                if (updateDto.HasBillForecasting.HasValue) plan.HasBillForecasting = updateDto.HasBillForecasting.Value;
+                if (updateDto.HasDebtOptimizer.HasValue) plan.HasDebtOptimizer = updateDto.HasDebtOptimizer.Value;
                 if (updateDto.IsActive.HasValue) plan.IsActive = updateDto.IsActive.Value;
                 if (updateDto.DisplayOrder.HasValue) plan.DisplayOrder = updateDto.DisplayOrder.Value;
 
@@ -606,6 +612,9 @@ namespace UtilityHub360.Services
                     "CUSTOM_REPORTING" => plan.HasCustomReporting,
                     "ADVANCED_SECURITY" => plan.HasAdvancedSecurity,
                     "COMPLIANCE_REPORTS" => plan.HasComplianceReports,
+                    "FINANCIAL_HEALTH_SCORE" => plan.HasFinancialHealthScore,
+                    "BILL_FORECASTING" => plan.HasBillForecasting,
+                    "DEBT_OPTIMIZER" => plan.HasDebtOptimizer,
                     _ => false
                 };
 
@@ -698,6 +707,9 @@ namespace UtilityHub360.Services
                 HasCustomReporting = plan.HasCustomReporting,
                 HasAdvancedSecurity = plan.HasAdvancedSecurity,
                 HasComplianceReports = plan.HasComplianceReports,
+                HasFinancialHealthScore = plan.HasFinancialHealthScore,
+                HasBillForecasting = plan.HasBillForecasting,
+                HasDebtOptimizer = plan.HasDebtOptimizer,
                 IsActive = plan.IsActive,
                 DisplayOrder = plan.DisplayOrder,
                 CreatedAt = plan.CreatedAt,

@@ -12,7 +12,7 @@ namespace UtilityHub360.Services
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<LoanDueDateBackgroundService> _logger;
-        private readonly TimeSpan _interval = TimeSpan.FromHours(12); // Run every 12 hours
+        private readonly TimeSpan _interval = TimeSpan.FromHours(24); // Run every 24 hours (reduced frequency to prevent excessive notifications)
 
         public LoanDueDateBackgroundService(
             IServiceProvider serviceProvider,

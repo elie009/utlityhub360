@@ -55,9 +55,19 @@ namespace UtilityHub360.Entities
         public bool HasCustomReporting { get; set; }
         public bool HasAdvancedSecurity { get; set; }
         public bool HasComplianceReports { get; set; }
+        public bool HasFinancialHealthScore { get; set; }
+        public bool HasBillForecasting { get; set; }
+        public bool HasDebtOptimizer { get; set; }
 
         public bool IsActive { get; set; } = true;
         public int DisplayOrder { get; set; } = 0; // For ordering in UI
+
+        // Stripe Integration Fields
+        [StringLength(255)]
+        public string? StripeMonthlyPriceId { get; set; }
+
+        [StringLength(255)]
+        public string? StripeYearlyPriceId { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

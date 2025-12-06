@@ -11,7 +11,7 @@ namespace UtilityHub360.Services
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<BillReminderBackgroundService> _logger;
-        private readonly TimeSpan _interval = TimeSpan.FromHours(6); // Run every 6 hours
+        private readonly TimeSpan _interval = TimeSpan.FromHours(12); // Run every 12 hours (reduced frequency to prevent excessive notifications)
 
         public BillReminderBackgroundService(
             IServiceProvider serviceProvider,

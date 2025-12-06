@@ -41,6 +41,9 @@ BEGIN
         [HasCustomReporting] BIT NOT NULL DEFAULT 0,
         [HasAdvancedSecurity] BIT NOT NULL DEFAULT 0,
         [HasComplianceReports] BIT NOT NULL DEFAULT 0,
+        [HasFinancialHealthScore] BIT NOT NULL DEFAULT 0,
+        [HasBillForecasting] BIT NOT NULL DEFAULT 0,
+        [HasDebtOptimizer] BIT NOT NULL DEFAULT 0,
         [IsActive] BIT NOT NULL DEFAULT 1,
         [DisplayOrder] INT NOT NULL DEFAULT 0,
         [CreatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
@@ -120,6 +123,7 @@ BEGIN
         [HasPrioritySupport], [HasApiAccess], [HasInvestmentTracking], [HasTaxOptimization],
         [HasMultiUserSupport], [HasWhiteLabelOptions], [HasCustomIntegrations], [HasDedicatedSupport],
         [HasAccountManager], [HasCustomReporting], [HasAdvancedSecurity], [HasComplianceReports],
+        [HasFinancialHealthScore], [HasBillForecasting], [HasDebtOptimizer],
         [IsActive], [DisplayOrder], [CreatedAt], [UpdatedAt]
     ) VALUES (
         NEWID(), 'STARTER', 'Free Plan - Starter', 'Perfect for getting started with financial tracking', 0.00, 0.00,
@@ -130,6 +134,7 @@ BEGIN
         0, 0, 0, 0,
         0, 0, 0, 0,
         0, 0, 0, 0,
+        0, 0, 0,
         1, 1, GETUTCDATE(), GETUTCDATE()
     );
 END
@@ -147,6 +152,7 @@ BEGIN
         [HasPrioritySupport], [HasApiAccess], [HasInvestmentTracking], [HasTaxOptimization],
         [HasMultiUserSupport], [HasWhiteLabelOptions], [HasCustomIntegrations], [HasDedicatedSupport],
         [HasAccountManager], [HasCustomReporting], [HasAdvancedSecurity], [HasComplianceReports],
+        [HasFinancialHealthScore], [HasBillForecasting], [HasDebtOptimizer],
         [IsActive], [DisplayOrder], [CreatedAt], [UpdatedAt]
     ) VALUES (
         NEWID(), 'PROFESSIONAL', 'Premium Plan - Professional', 'Unlock AI-powered insights and automation for smarter financial decisions', 9.99, 99.00,
@@ -157,6 +163,7 @@ BEGIN
         1, 0, 0, 0,
         0, 0, 0, 0,
         0, 1, 0, 0,
+        1, 1, 1,
         1, 2, GETUTCDATE(), GETUTCDATE()
     );
 END
@@ -174,6 +181,7 @@ BEGIN
         [HasPrioritySupport], [HasApiAccess], [HasInvestmentTracking], [HasTaxOptimization],
         [HasMultiUserSupport], [HasWhiteLabelOptions], [HasCustomIntegrations], [HasDedicatedSupport],
         [HasAccountManager], [HasCustomReporting], [HasAdvancedSecurity], [HasComplianceReports],
+        [HasFinancialHealthScore], [HasBillForecasting], [HasDebtOptimizer],
         [IsActive], [DisplayOrder], [CreatedAt], [UpdatedAt]
     ) VALUES (
         NEWID(), 'ENTERPRISE', 'Premium Plus Plan - Enterprise', 'Enterprise-grade financial intelligence for serious users and families', 29.99, 299.00,
@@ -184,6 +192,7 @@ BEGIN
         1, 1, 1, 1,
         1, 1, 1, 1,
         1, 1, 1, 1,
+        1, 1, 1,
         1, 3, GETUTCDATE(), GETUTCDATE()
     );
 END

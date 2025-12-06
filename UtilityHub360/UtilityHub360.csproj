@@ -25,6 +25,7 @@
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.5" />
     <PackageReference Include="AWSSDK.Textract" Version="3.7.400.11" />
     <PackageReference Include="Google.Cloud.Vision.V1" Version="3.7.0" />
+    <PackageReference Include="Stripe.net" Version="45.0.0" />
   </ItemGroup>
 
 </Project>

@@ -18,11 +18,13 @@ namespace UtilityHub360.Controllers
     {
         private readonly ILoanService _loanService;
         private readonly ApplicationDbContext _context;
+        private readonly ISubscriptionService _subscriptionService;
 
-        public LoansController(ILoanService loanService, ApplicationDbContext context)
+        public LoansController(ILoanService loanService, ApplicationDbContext context, ISubscriptionService subscriptionService)
         {
             _loanService = loanService;
             _context = context;
+            _subscriptionService = subscriptionService;
         }
 
         [HttpPost("apply")]
@@ -58,6 +60,26 @@ namespace UtilityHub360.Controllers
                         title = "One or more validation errors occurred.",
                         status = 200,
                         errors = errors,
+                        traceId = HttpContext.TraceIdentifier
+                    });
+                }
+
+                // Check subscription limit for loans
+                var activeLoansCount = await _context.Loans
+                    .CountAsync(l => l.UserId == userId && 
+                                   !string.IsNullOrWhiteSpace(l.Status) &&
+                                   l.Status.Trim().ToUpper() != "REJECTED" &&
+                                   l.Status.Trim().ToUpper() != "COMPLETED");
+                
+                var limitCheck = await _subscriptionService.CheckLimitAsync(userId, "LOANS", activeLoansCount);
+                if (!limitCheck.Success || !limitCheck.Data)
+                {
+                    return Ok(new
+                    {
+                        type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+                        title = "Loan limit reached",
+                        status = 200,
+                        detail = "You have reached your loan limit. Please upgrade to Premium for unlimited loans.",
                         traceId = HttpContext.TraceIdentifier
                     });
                 }

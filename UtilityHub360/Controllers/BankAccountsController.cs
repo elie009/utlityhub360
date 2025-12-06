@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
 using UtilityHub360.DTOs;
 using UtilityHub360.Models;
 using UtilityHub360.Services;
+using UtilityHub360.Data;
 
 namespace UtilityHub360.Controllers
 {
@@ -14,11 +16,19 @@ namespace UtilityHub360.Controllers
     {
         private readonly IBankAccountService _bankAccountService;
         private readonly IAIAgentService _aiAgentService;
+        private readonly ISubscriptionService _subscriptionService;
+        private readonly ApplicationDbContext _context;
 
-        public BankAccountsController(IBankAccountService bankAccountService, IAIAgentService aiAgentService)
+        public BankAccountsController(
+            IBankAccountService bankAccountService, 
+            IAIAgentService aiAgentService,
+            ISubscriptionService subscriptionService,
+            ApplicationDbContext context)
         {
             _bankAccountService = bankAccountService;
             _aiAgentService = aiAgentService;
+            _subscriptionService = subscriptionService;
+            _context = context;
         }
 
         /// <summary>
@@ -33,6 +43,17 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId))
                 {
                     return Unauthorized(ApiResponse<BankAccountDto>.ErrorResult("User not authenticated"));
+                }
+
+                // Check subscription limit for bank accounts
+                var activeAccountsCount = await _context.BankAccounts
+                    .CountAsync(ba => ba.UserId == userId && ba.IsActive);
+                
+                var limitCheck = await _subscriptionService.CheckLimitAsync(userId, "BANK_ACCOUNTS", activeAccountsCount);
+                if (!limitCheck.Success || !limitCheck.Data)
+                {
+                    return BadRequest(ApiResponse<BankAccountDto>.ErrorResult(
+                        $"You have reached your bank account limit. Please upgrade to Premium for unlimited bank accounts."));
                 }
 
                 var result = await _bankAccountService.CreateBankAccountAsync(createBankAccountDto, userId);

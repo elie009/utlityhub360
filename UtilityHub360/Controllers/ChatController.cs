@@ -20,19 +20,22 @@ namespace UtilityHub360.Controllers
         private readonly IReceiptService _receiptService;
         private readonly IBankAccountService _bankAccountService;
         private readonly ApplicationDbContext _context;
+        private readonly ISubscriptionService _subscriptionService;
 
         public ChatController(
             IChatService chatService, 
             ILogger<ChatController> logger,
             IReceiptService receiptService,
             IBankAccountService bankAccountService,
-            ApplicationDbContext context)
+            ApplicationDbContext context,
+            ISubscriptionService subscriptionService)
         {
             _chatService = chatService;
             _logger = logger;
             _receiptService = receiptService;
             _bankAccountService = bankAccountService;
             _context = context;
+            _subscriptionService = subscriptionService;
         }
 
         /// <summary>
@@ -47,6 +50,38 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId))
                 {
                     return Unauthorized(ApiResponse<ChatResponseDto>.ErrorResult("User not authenticated"));
+                }
+
+                // Check if user has access to AI Assistant feature
+                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "AI_ASSISTANT");
+                if (!featureCheck.Success || !featureCheck.Data)
+                {
+                    return BadRequest(ApiResponse<ChatResponseDto>.ErrorResult(
+                        "AI Assistant is a Premium feature. Please upgrade to Premium to access this feature."));
+                }
+
+                // Check AI query limit for Free tier (10 queries/month)
+                var subscription = await _subscriptionService.GetUserSubscriptionAsync(userId);
+                if (subscription?.Success == true && subscription.Data != null)
+                {
+                    var userSubscription = subscription.Data;
+                    
+                    // Get the plan to check limits
+                    var planResult = await _subscriptionService.GetSubscriptionPlanAsync(userSubscription.SubscriptionPlanId);
+                    if (planResult?.Success == true && planResult.Data != null)
+                    {
+                        var plan = planResult.Data;
+                        
+                        // If plan has a limit on AI queries, check it
+                        if (plan.MaxAiQueriesPerMonth.HasValue)
+                        {
+                            if (userSubscription.AiQueriesThisMonth >= plan.MaxAiQueriesPerMonth.Value)
+                            {
+                                return BadRequest(ApiResponse<ChatResponseDto>.ErrorResult(
+                                    $"You have reached your monthly AI query limit ({plan.MaxAiQueriesPerMonth.Value} queries/month). Please upgrade to Premium for unlimited AI queries."));
+                            }
+                        }
+                    }
                 }
 
                 if (string.IsNullOrWhiteSpace(messageDto.Message))
@@ -207,6 +242,14 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<string>.ErrorResult("User not authenticated"));
                 }
 
+                // Check if user has access to Advanced Reports feature
+                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "ADVANCED_REPORTS");
+                if (!featureCheck.Success || !featureCheck.Data)
+                {
+                    return BadRequest(ApiResponse<string>.ErrorResult(
+                        "Advanced Reports is a Premium feature. Please upgrade to Premium to access this feature."));
+                }
+
                 var result = await _chatService.GenerateReportAsync(userId, reportDto.ReportType, reportDto.Format);
                 
                 if (result.Success)
@@ -357,6 +400,14 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId))
                 {
                     return Unauthorized(ApiResponse<ChatResponseDto>.ErrorResult("User not authenticated"));
+                }
+
+                // Check if user has access to Receipt OCR feature
+                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "RECEIPT_OCR");
+                if (!featureCheck.Success || !featureCheck.Data)
+                {
+                    return BadRequest(ApiResponse<ChatResponseDto>.ErrorResult(
+                        "Receipt OCR is a Premium feature. Please upgrade to Premium to access this feature."));
                 }
 
                 if (file == null || file.Length == 0)

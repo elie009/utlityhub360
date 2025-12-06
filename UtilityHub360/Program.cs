@@ -201,6 +201,7 @@ builder.Services.AddScoped<IOcrService, OcrService>();
 builder.Services.AddScoped<IReceiptService, ReceiptService>();
 builder.Services.AddScoped<ITicketService, TicketService>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+builder.Services.AddScoped<IStripePaymentService, StripePaymentService>();
 
 // Add Background Services
 builder.Services.AddHostedService<BillReminderBackgroundService>();

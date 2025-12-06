@@ -17,7 +17,8 @@ namespace UtilityHub360.Services
 
         public async Task<bool> SendPasswordResetEmailAsync(string email, string resetToken, string userName)
         {
-            var resetUrl = $"{_configuration["AppSettings:BaseUrl"]}/reset-password?token={resetToken}&email={Uri.EscapeDataString(email)}";
+            var baseUrl = (_configuration["AppSettings:BaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
+            var resetUrl = $"{baseUrl}/reset-password?token={resetToken}&email={Uri.EscapeDataString(email)}";
             
             var subject = "Password Reset Request - UtilityHub360";
             var body = $@"

@@ -13,10 +13,12 @@ namespace UtilityHub360.Controllers
     public class FinancialReportsController : ControllerBase
     {
         private readonly IFinancialReportService _reportService;
+        private readonly ISubscriptionService _subscriptionService;
 
-        public FinancialReportsController(IFinancialReportService reportService)
+        public FinancialReportsController(IFinancialReportService reportService, ISubscriptionService subscriptionService)
         {
             _reportService = reportService;
+            _subscriptionService = subscriptionService;
         }
 
         private string GetUserId()
@@ -203,6 +205,15 @@ namespace UtilityHub360.Controllers
             try
             {
                 var userId = GetUserId();
+                
+                // Check if user has access to Debt Optimizer feature
+                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "DEBT_OPTIMIZER");
+                if (!featureCheck.Success || !featureCheck.Data)
+                {
+                    return BadRequest(ApiResponse<LoanReportDto>.ErrorResult(
+                        "Debt Optimizer is a Premium feature. Please upgrade to Premium to access this feature."));
+                }
+                
                 var result = await _reportService.GetLoanReportAsync(userId, query);
 
                 if (!result.Success)
@@ -493,6 +504,15 @@ namespace UtilityHub360.Controllers
             try
             {
                 var userId = GetUserId();
+                
+                // Check if user has access to Tax Optimization feature
+                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "TAX_OPTIMIZATION");
+                if (!featureCheck.Success || !featureCheck.Data)
+                {
+                    return BadRequest(ApiResponse<TaxReportDto>.ErrorResult(
+                        "Tax Optimization is an Enterprise feature. Please upgrade to Premium Plus (Enterprise) to access this feature."));
+                }
+                
                 var result = await _reportService.GetTaxReportAsync(userId, taxYear, startDate, endDate);
 
                 if (!result.Success)

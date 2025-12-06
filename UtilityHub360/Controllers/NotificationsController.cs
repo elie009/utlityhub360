@@ -194,6 +194,32 @@ namespace UtilityHub360.Controllers
             }
         }
 
+        [HttpDelete("{notificationId}")]
+        public async Task<ActionResult<ApiResponse<bool>>> DeleteNotification(string notificationId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _notificationService.DeleteNotificationAsync(notificationId, userId);
+                
+                if (result.Success)
+                {
+                    return Ok(result);
+                }
+                
+                return NotFound(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete notification: {ex.Message}"));
+            }
+        }
+
         [HttpDelete("user/{userId}/all")]
         public async Task<ActionResult<ApiResponse<int>>> DeleteAllNotifications(string userId)
         {

@@ -19,12 +19,14 @@ namespace UtilityHub360.Controllers
         private readonly IBillService _billService;
         private readonly IBillAnalyticsService _billAnalyticsService;
         private readonly ApplicationDbContext _context;
+        private readonly ISubscriptionService _subscriptionService;
 
-        public BillsController(IBillService billService, IBillAnalyticsService billAnalyticsService, ApplicationDbContext context)
+        public BillsController(IBillService billService, IBillAnalyticsService billAnalyticsService, ApplicationDbContext context, ISubscriptionService subscriptionService)
         {
             _billService = billService;
             _billAnalyticsService = billAnalyticsService;
             _context = context;
+            _subscriptionService = subscriptionService;
         }
 
         [HttpPost]
@@ -51,6 +53,21 @@ namespace UtilityHub360.Controllers
                         $"Bills can only be created for the current year ({currentYear}). " +
                         $"You tried to create a bill for {createBillDto.DueDate:MMMM yyyy}. " +
                         $"Please select a date within {currentYear}."));
+                }
+
+                // Check subscription limit for bills
+                var currentMonth = DateTime.UtcNow.Month;
+                var currentYearForLimit = DateTime.UtcNow.Year;
+                var billsThisMonth = await _context.Bills
+                    .CountAsync(b => b.UserId == userId && 
+                                   b.CreatedAt.Month == currentMonth && 
+                                   b.CreatedAt.Year == currentYearForLimit);
+                
+                var limitCheck = await _subscriptionService.CheckLimitAsync(userId, "BILLS", billsThisMonth);
+                if (!limitCheck.Success || !limitCheck.Data)
+                {
+                    return BadRequest(ApiResponse<BillDto>.ErrorResult(
+                        $"You have reached your monthly bill limit. Please upgrade to Premium for unlimited bills."));
                 }
 
                 var result = await _billService.CreateBillAsync(createBillDto, userId);
@@ -624,6 +641,14 @@ namespace UtilityHub360.Controllers
 
                 if (string.IsNullOrEmpty(provider) || string.IsNullOrEmpty(billType))
                     return BadRequest(ApiResponse<BillForecastDto>.ErrorResult("Provider and billType are required"));
+
+                // Check if user has access to Bill Forecasting feature
+                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "BILL_FORECASTING");
+                if (!featureCheck.Success || !featureCheck.Data)
+                {
+                    return BadRequest(ApiResponse<BillForecastDto>.ErrorResult(
+                        "Bill Forecasting is a Premium feature. Please upgrade to Premium to access this feature."));
+                }
 
                 var result = await _billAnalyticsService.GetForecastAsync(userId, provider, billType, method);
                 return result.Success ? Ok(result) : BadRequest(result);

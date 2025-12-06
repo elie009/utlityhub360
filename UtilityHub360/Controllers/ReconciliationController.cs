@@ -14,10 +14,12 @@ namespace UtilityHub360.Controllers
     public class ReconciliationController : ControllerBase
     {
         private readonly IReconciliationService _reconciliationService;
+        private readonly ISubscriptionService _subscriptionService;
 
-        public ReconciliationController(IReconciliationService reconciliationService)
+        public ReconciliationController(IReconciliationService reconciliationService, ISubscriptionService subscriptionService)
         {
             _reconciliationService = reconciliationService;
+            _subscriptionService = subscriptionService;
         }
 
         // ==================== BANK STATEMENT ENDPOINTS ====================
@@ -36,6 +38,14 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId))
                 {
                     return Unauthorized(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("User not authenticated"));
+                }
+
+                // Check if user has access to Bank Feed feature
+                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "BANK_FEED");
+                if (!featureCheck.Success || !featureCheck.Data)
+                {
+                    return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(
+                        "Bank Feed Integration is a Premium feature. Please upgrade to Premium to access this feature."));
                 }
 
                 if (file == null || file.Length == 0)
@@ -86,6 +96,14 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId))
                 {
                     return Unauthorized(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("User not authenticated"));
+                }
+
+                // Check if user has access to Bank Feed feature
+                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "BANK_FEED");
+                if (!featureCheck.Success || !featureCheck.Data)
+                {
+                    return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(
+                        "Bank Feed Integration is a Premium feature. Please upgrade to Premium to access this feature."));
                 }
 
                 if (file == null || file.Length == 0)

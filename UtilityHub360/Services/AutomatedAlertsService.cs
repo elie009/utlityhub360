@@ -74,12 +74,30 @@ namespace UtilityHub360.Services
                 // Create notifications for all alerts
                 foreach (var alert in alerts)
                 {
+                    // Extract account ID from metadata if available for better duplicate detection
+                    Dictionary<string, string>? templateVariables = null;
+                    if (alert.Metadata != null && alert.Metadata.ContainsKey("AccountId"))
+                    {
+                        templateVariables = new Dictionary<string, string>
+                        {
+                            { "AccountId", alert.Metadata["AccountId"].ToString() ?? "" }
+                        };
+                    }
+                    else if (alert.Metadata != null && alert.Metadata.ContainsKey("TransactionId"))
+                    {
+                        templateVariables = new Dictionary<string, string>
+                        {
+                            { "TransactionId", alert.Metadata["TransactionId"].ToString() ?? "" }
+                        };
+                    }
+
                     await _notificationService.SendNotificationAsync(new CreateNotificationDto
                     {
                         UserId = userId,
                         Type = alert.Type,
                         Title = alert.Title,
-                        Message = alert.Message
+                        Message = alert.Message,
+                        TemplateVariables = templateVariables
                     });
                 }
             }

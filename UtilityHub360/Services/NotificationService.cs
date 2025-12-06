@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Text.Json;
+using System.Linq;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
 using UtilityHub360.Entities;
@@ -211,14 +212,15 @@ namespace UtilityHub360.Services
         {
             try
             {
-                // Check for duplicate notifications within the last 24 hours
+                // Check for duplicate notifications within the last 48 hours (increased from 24)
                 // This prevents spam from background services running multiple times
-                var twentyFourHoursAgo = DateTime.UtcNow.AddHours(-24);
+                // Extended window helps with persistent conditions like low balance
+                var duplicateCheckWindow = DateTime.UtcNow.AddHours(-48);
                 var existingNotifications = await _context.Notifications
                     .Where(n => 
                         n.UserId == notification.UserId &&
                         n.Type == notification.Type &&
-                        n.CreatedAt >= twentyFourHoursAgo)
+                        n.CreatedAt >= duplicateCheckWindow)
                     .ToListAsync();
                 
                 // Check if any existing notification matches this one
@@ -235,6 +237,9 @@ namespace UtilityHub360.Services
                         var loanId = notification.TemplateVariables.ContainsKey("loanId") 
                             ? notification.TemplateVariables["loanId"] 
                             : null;
+                        var accountId = notification.TemplateVariables.ContainsKey("AccountId") 
+                            ? notification.TemplateVariables["AccountId"] 
+                            : null;
                         
                         foreach (var existing in existingNotifications)
                         {
@@ -249,6 +254,8 @@ namespace UtilityHub360.Services
                                     if (billId != null && (!existingVars.ContainsKey("billId") || existingVars["billId"] != billId))
                                         matches = false;
                                     if (loanId != null && (!existingVars.ContainsKey("loanId") || existingVars["loanId"] != loanId))
+                                        matches = false;
+                                    if (accountId != null && (!existingVars.ContainsKey("AccountId") || existingVars["AccountId"] != accountId))
                                         matches = false;
                                     
                                     if (matches)
@@ -267,8 +274,64 @@ namespace UtilityHub360.Services
                     }
                     else
                     {
-                        // No template variables, just check type and user
-                        existingNotification = existingNotifications.FirstOrDefault();
+                        // No template variables - check type, user, and message content for better duplicate detection
+                        // This helps prevent duplicate alerts for the same condition (e.g., low balance on same account)
+                        foreach (var existing in existingNotifications)
+                        {
+                            // For alerts without template variables, check if message content is similar
+                            // This prevents duplicate notifications for the same condition
+                            if (string.IsNullOrEmpty(notification.Message) || string.IsNullOrEmpty(existing.Message))
+                            {
+                                // If no message, just match by type (fallback to old behavior)
+                                existingNotification = existing;
+                                break;
+                            }
+                            
+                            // Check if messages are similar (same condition)
+                            // For LOW_BALANCE, UNUSUAL_SPENDING, etc., compare message content
+                            if (notification.Type == "LOW_BALANCE" || 
+                                notification.Type == "UNUSUAL_SPENDING" || 
+                                notification.Type == "LARGE_TRANSACTION")
+                            {
+                                // Extract key parts of message for comparison
+                                // For LOW_BALANCE: check if it's about the same account
+                                if (notification.Type == "LOW_BALANCE")
+                                {
+                                    // Extract account name from message if possible
+                                    // If messages are very similar, consider it a duplicate
+                                    var similarity = CalculateMessageSimilarity(notification.Message, existing.Message);
+                                    if (similarity > 0.8) // 80% similar
+                                    {
+                                        existingNotification = existing;
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    // For other types, if message is identical, it's a duplicate
+                                    if (notification.Message.Equals(existing.Message, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        existingNotification = existing;
+                                        break;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // For other notification types, if message is identical, it's a duplicate
+                                if (notification.Message.Equals(existing.Message, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    existingNotification = existing;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // If no match found by message, use first one (fallback)
+                        if (existingNotification == null)
+                        {
+                            existingNotification = existingNotifications.FirstOrDefault();
+                        }
                     }
                 }
                 
@@ -331,6 +394,31 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<bool>> DeleteNotificationAsync(string notificationId, string userId)
+        {
+            try
+            {
+                var notification = await _context.Notifications
+                    .FirstOrDefaultAsync(n => n.Id == notificationId && n.UserId == userId);
+
+                if (notification == null)
+                {
+                    return ApiResponse<bool>.ErrorResult("Notification not found or you don't have permission to delete it");
+                }
+
+                _context.Notifications.Remove(notification);
+                await _context.SaveChangesAsync();
+                
+                _logger?.LogInformation($"Deleted notification {notificationId} for user {userId}");
+                return ApiResponse<bool>.SuccessResult(true, "Notification deleted successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, $"Failed to delete notification {notificationId} for user {userId}");
+                return ApiResponse<bool>.ErrorResult($"Failed to delete notification: {ex.Message}");
+            }
+        }
+
         public async Task<ApiResponse<int>> DeleteAllNotificationsAsync(string userId)
         {
             try
@@ -382,6 +470,39 @@ namespace UtilityHub360.Services
                     : null,
                 Status = notification.Status
             };
+        }
+
+        /// <summary>
+        /// Calculate similarity between two messages (0.0 to 1.0)
+        /// Simple implementation using word overlap
+        /// </summary>
+        private double CalculateMessageSimilarity(string message1, string message2)
+        {
+            if (string.IsNullOrEmpty(message1) || string.IsNullOrEmpty(message2))
+                return 0.0;
+
+            if (message1.Equals(message2, StringComparison.OrdinalIgnoreCase))
+                return 1.0;
+
+            // Normalize messages (lowercase, remove punctuation)
+            var words1 = message1.ToLowerInvariant()
+                .Split(new[] { ' ', '.', ',', '!', '?', ':', ';', '-', '_' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length > 2) // Ignore very short words
+                .ToHashSet();
+            
+            var words2 = message2.ToLowerInvariant()
+                .Split(new[] { ' ', '.', ',', '!', '?', ':', ';', '-', '_' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length > 2)
+                .ToHashSet();
+
+            if (words1.Count == 0 || words2.Count == 0)
+                return 0.0;
+
+            // Calculate Jaccard similarity (intersection over union)
+            var intersection = words1.Intersect(words2).Count();
+            var union = words1.Union(words2).Count();
+            
+            return union > 0 ? (double)intersection / union : 0.0;
         }
 
         private async Task ProcessNotificationAsync(Notification notification)

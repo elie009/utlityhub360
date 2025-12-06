@@ -34,6 +34,9 @@ namespace UtilityHub360.DTOs
         public bool HasCustomReporting { get; set; }
         public bool HasAdvancedSecurity { get; set; }
         public bool HasComplianceReports { get; set; }
+        public bool HasFinancialHealthScore { get; set; }
+        public bool HasBillForecasting { get; set; }
+        public bool HasDebtOptimizer { get; set; }
         public bool IsActive { get; set; }
         public int DisplayOrder { get; set; }
         public DateTime CreatedAt { get; set; }
@@ -73,6 +76,9 @@ namespace UtilityHub360.DTOs
         public bool HasCustomReporting { get; set; }
         public bool HasAdvancedSecurity { get; set; }
         public bool HasComplianceReports { get; set; }
+        public bool HasFinancialHealthScore { get; set; }
+        public bool HasBillForecasting { get; set; }
+        public bool HasDebtOptimizer { get; set; }
         public int DisplayOrder { get; set; }
     }
 
@@ -108,6 +114,9 @@ namespace UtilityHub360.DTOs
         public bool? HasCustomReporting { get; set; }
         public bool? HasAdvancedSecurity { get; set; }
         public bool? HasComplianceReports { get; set; }
+        public bool? HasFinancialHealthScore { get; set; }
+        public bool? HasBillForecasting { get; set; }
+        public bool? HasDebtOptimizer { get; set; }
         public bool? IsActive { get; set; }
         public int? DisplayOrder { get; set; }
     }
