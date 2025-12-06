@@ -99,6 +99,11 @@ builder.Services.AddSingleton(jwtSettings);
 var openAISettings = builder.Configuration.GetSection("OpenAISettings").Get<OpenAISettings>() ?? new OpenAISettings();
 builder.Services.AddSingleton(openAISettings);
 
+// Add Plaid Settings
+var plaidSettings = builder.Configuration.GetSection("Plaid").Get<PlaidSettings>() ?? new PlaidSettings();
+builder.Services.AddSingleton(plaidSettings);
+builder.Services.AddHttpClient<PlaidService>();
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {

@@ -297,6 +297,26 @@ namespace UtilityHub360.DTOs
         public string? ConnectionId { get; set; }
     }
 
+    public class PlaidLinkTokenRequestDto
+    {
+        public string? WebhookUrl { get; set; }
+    }
+
+    public class PlaidLinkTokenResponseDto
+    {
+        public string LinkToken { get; set; } = string.Empty;
+        public DateTime Expiration { get; set; }
+    }
+
+    public class PlaidExchangeTokenDto
+    {
+        [Required]
+        public string PublicToken { get; set; } = string.Empty;
+
+        [Required]
+        public string BankAccountId { get; set; } = string.Empty;
+    }
+
     public class SyncBankAccountDto
     {
         [Required]
