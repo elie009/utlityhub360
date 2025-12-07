@@ -96,6 +96,14 @@ namespace UtilityHub360.Data
         // Subscription Tables
         public DbSet<SubscriptionPlan> SubscriptionPlans { get; set; }
         public DbSet<UserSubscription> UserSubscriptions { get; set; }
+        
+        // White-Label Settings
+        public DbSet<WhiteLabelSettings> WhiteLabelSettings { get; set; }
+        
+        // Team Management
+        public DbSet<Team> Teams { get; set; }
+        public DbSet<TeamMember> TeamMembers { get; set; }
+        public DbSet<TeamInvitation> TeamInvitations { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1025,6 +1033,74 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.BillingCycle);
                 entity.HasIndex(e => e.NextBillingDate);
                 entity.HasIndex(e => new { e.UserId, e.Status });
+            });
+
+            // WhiteLabelSettings configuration
+            modelBuilder.Entity<WhiteLabelSettings>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UserId).IsUnique();
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // Team configuration
+            modelBuilder.Entity<Team>(entity =>
+            {
+                entity.HasOne(d => d.Owner)
+                    .WithMany()
+                    .HasForeignKey(d => d.OwnerId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(e => e.OwnerId);
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // TeamMember configuration
+            modelBuilder.Entity<TeamMember>(entity =>
+            {
+                entity.HasOne(d => d.Team)
+                    .WithMany(p => p.Members)
+                    .HasForeignKey(d => d.TeamId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.TeamId);
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => new { e.TeamId, e.UserId }).IsUnique();
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // TeamInvitation configuration
+            modelBuilder.Entity<TeamInvitation>(entity =>
+            {
+                entity.HasOne(d => d.Team)
+                    .WithMany(p => p.Invitations)
+                    .HasForeignKey(d => d.TeamId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.InvitedBy)
+                    .WithMany()
+                    .HasForeignKey(d => d.InvitedByUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(d => d.AcceptedBy)
+                    .WithMany()
+                    .HasForeignKey(d => d.AcceptedByUserId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(e => e.TeamId);
+                entity.HasIndex(e => e.Email);
+                entity.HasIndex(e => e.Token).IsUnique();
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.ExpiresAt);
             });
 
             // Seed data

@@ -34,5 +34,12 @@ namespace UtilityHub360.DTOs
         public int CurrentUserCount { get; set; }
         public bool AllowInvitations { get; set; } = true;
     }
+
+    public class UpdateTeamMemberRoleDto
+    {
+        [Required]
+        [StringLength(50)]
+        public string Role { get; set; } = "MEMBER"; // ADMIN, MEMBER, VIEWER
+    }
 }
 

@@ -242,6 +242,9 @@ app.UseCors("AllowAll");
 // Disable HTTPS redirection completely for local development
 // app.UseHttpsRedirection(); // Commented out to prevent any HTTPS redirects
 
+// Serve static files (for uploaded logos, receipts, etc.)
+app.UseStaticFiles();
+
 // Add Response Caching Middleware
 app.UseResponseCaching();
 

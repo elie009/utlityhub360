@@ -2,10 +2,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using System.IO;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
+using UtilityHub360.Entities;
 using UtilityHub360.Models;
 using UtilityHub360.Services;
+using Microsoft.AspNetCore.Hosting;
 
 namespace UtilityHub360.Controllers
 {
@@ -16,11 +19,19 @@ namespace UtilityHub360.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly ISubscriptionService _subscriptionService;
+        private readonly IWebHostEnvironment _environment;
+        private readonly ILogger<WhiteLabelController> _logger;
 
-        public WhiteLabelController(ApplicationDbContext context, ISubscriptionService subscriptionService)
+        public WhiteLabelController(
+            ApplicationDbContext context, 
+            ISubscriptionService subscriptionService,
+            IWebHostEnvironment environment,
+            ILogger<WhiteLabelController> logger)
         {
             _context = context;
             _subscriptionService = subscriptionService;
+            _environment = environment;
+            _logger = logger;
         }
 
         private string GetUserId()
@@ -51,16 +62,33 @@ namespace UtilityHub360.Controllers
                         "White-Label is an Enterprise feature. Please upgrade to Premium Plus (Enterprise) to access this feature."));
                 }
 
-                // TODO: Retrieve white-label settings from database
-                // This would require a WhiteLabelSettings entity
+                // Retrieve white-label settings from database
+                var whiteLabelSettings = await _context.WhiteLabelSettings
+                    .FirstOrDefaultAsync(w => w.UserId == userId);
+
+                if (whiteLabelSettings == null)
+                {
+                    // Return default settings if none exist
+                    var defaultSettings = new WhiteLabelSettingsDto
+                    {
+                        CompanyName = "Your Company",
+                        LogoUrl = null,
+                        PrimaryColor = "#1976d2",
+                        SecondaryColor = "#424242",
+                        CustomDomain = null,
+                        IsActive = false
+                    };
+                    return Ok(ApiResponse<WhiteLabelSettingsDto>.SuccessResult(defaultSettings));
+                }
+
                 var settings = new WhiteLabelSettingsDto
                 {
-                    CompanyName = "Your Company",
-                    LogoUrl = null,
-                    PrimaryColor = "#1976d2",
-                    SecondaryColor = "#424242",
-                    CustomDomain = null,
-                    IsActive = false
+                    CompanyName = whiteLabelSettings.CompanyName,
+                    LogoUrl = whiteLabelSettings.LogoUrl,
+                    PrimaryColor = whiteLabelSettings.PrimaryColor,
+                    SecondaryColor = whiteLabelSettings.SecondaryColor,
+                    CustomDomain = whiteLabelSettings.CustomDomain,
+                    IsActive = whiteLabelSettings.IsActive
                 };
 
                 return Ok(ApiResponse<WhiteLabelSettingsDto>.SuccessResult(settings));
@@ -94,17 +122,54 @@ namespace UtilityHub360.Controllers
                         "White-Label is an Enterprise feature. Please upgrade to Premium Plus (Enterprise) to access this feature."));
                 }
 
-                // TODO: Update white-label settings in database
-                // This would require saving to a WhiteLabelSettings entity
+                // Get or create white-label settings
+                var whiteLabelSettings = await _context.WhiteLabelSettings
+                    .FirstOrDefaultAsync(w => w.UserId == userId);
+
+                if (whiteLabelSettings == null)
+                {
+                    whiteLabelSettings = new WhiteLabelSettings
+                    {
+                        UserId = userId,
+                        CompanyName = updateDto.CompanyName ?? "Your Company",
+                        LogoUrl = updateDto.LogoUrl,
+                        PrimaryColor = updateDto.PrimaryColor ?? "#1976d2",
+                        SecondaryColor = updateDto.SecondaryColor ?? "#424242",
+                        CustomDomain = updateDto.CustomDomain,
+                        IsActive = updateDto.IsActive ?? false,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    _context.WhiteLabelSettings.Add(whiteLabelSettings);
+                }
+                else
+                {
+                    // Update existing settings
+                    if (!string.IsNullOrEmpty(updateDto.CompanyName))
+                        whiteLabelSettings.CompanyName = updateDto.CompanyName;
+                    if (updateDto.LogoUrl != null)
+                        whiteLabelSettings.LogoUrl = updateDto.LogoUrl;
+                    if (!string.IsNullOrEmpty(updateDto.PrimaryColor))
+                        whiteLabelSettings.PrimaryColor = updateDto.PrimaryColor;
+                    if (!string.IsNullOrEmpty(updateDto.SecondaryColor))
+                        whiteLabelSettings.SecondaryColor = updateDto.SecondaryColor;
+                    if (updateDto.CustomDomain != null)
+                        whiteLabelSettings.CustomDomain = updateDto.CustomDomain;
+                    if (updateDto.IsActive.HasValue)
+                        whiteLabelSettings.IsActive = updateDto.IsActive.Value;
+                    whiteLabelSettings.UpdatedAt = DateTime.UtcNow;
+                }
+
+                await _context.SaveChangesAsync();
 
                 var settings = new WhiteLabelSettingsDto
                 {
-                    CompanyName = updateDto.CompanyName ?? "Your Company",
-                    LogoUrl = updateDto.LogoUrl,
-                    PrimaryColor = updateDto.PrimaryColor ?? "#1976d2",
-                    SecondaryColor = updateDto.SecondaryColor ?? "#424242",
-                    CustomDomain = updateDto.CustomDomain,
-                    IsActive = updateDto.IsActive ?? false
+                    CompanyName = whiteLabelSettings.CompanyName,
+                    LogoUrl = whiteLabelSettings.LogoUrl,
+                    PrimaryColor = whiteLabelSettings.PrimaryColor,
+                    SecondaryColor = whiteLabelSettings.SecondaryColor,
+                    CustomDomain = whiteLabelSettings.CustomDomain,
+                    IsActive = whiteLabelSettings.IsActive
                 };
 
                 return Ok(ApiResponse<WhiteLabelSettingsDto>.SuccessResult(settings, "White-label settings updated successfully"));
@@ -151,11 +216,60 @@ namespace UtilityHub360.Controllers
                     return BadRequest(ApiResponse<string>.ErrorResult("Invalid file type. Only PNG, JPG, JPEG, and SVG files are allowed."));
                 }
 
-                // TODO: Upload file to storage (Azure Blob, S3, or local storage)
-                // For now, return a placeholder URL
-                var logoUrl = $"/uploads/whitelabel/{userId}/logo{extension}";
+                // Validate file size (max 5MB)
+                var maxFileSize = 5 * 1024 * 1024; // 5MB
+                if (logoFile.Length > maxFileSize)
+                {
+                    return BadRequest(ApiResponse<string>.ErrorResult("File size exceeds maximum limit of 5MB."));
+                }
 
-                return Ok(ApiResponse<string>.SuccessResult(logoUrl, "Logo uploaded successfully"));
+                // Create uploads directory if it doesn't exist
+                var uploadsPath = Path.Combine(_environment.ContentRootPath, "uploads", "whitelabel", userId);
+                if (!Directory.Exists(uploadsPath))
+                {
+                    Directory.CreateDirectory(uploadsPath);
+                }
+
+                // Generate unique filename
+                var fileName = $"logo_{Guid.NewGuid()}{extension}";
+                var filePath = Path.Combine(uploadsPath, fileName);
+                var relativePath = Path.Combine("uploads", "whitelabel", userId, fileName).Replace("\\", "/");
+
+                // Save file
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await logoFile.CopyToAsync(stream);
+                }
+
+                // Update white-label settings with logo URL
+                var whiteLabelSettings = await _context.WhiteLabelSettings
+                    .FirstOrDefaultAsync(w => w.UserId == userId);
+
+                if (whiteLabelSettings != null)
+                {
+                    // Delete old logo if exists
+                    if (!string.IsNullOrEmpty(whiteLabelSettings.LogoUrl))
+                    {
+                        var oldLogoPath = Path.Combine(_environment.ContentRootPath, whiteLabelSettings.LogoUrl.TrimStart('/'));
+                        if (System.IO.File.Exists(oldLogoPath))
+                        {
+                            try
+                            {
+                                System.IO.File.Delete(oldLogoPath);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to delete old logo file: {Path}", oldLogoPath);
+                            }
+                        }
+                    }
+
+                    whiteLabelSettings.LogoUrl = $"/{relativePath}";
+                    whiteLabelSettings.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                }
+
+                return Ok(ApiResponse<string>.SuccessResult($"/{relativePath}", "Logo uploaded successfully"));
             }
             catch (Exception ex)
             {
