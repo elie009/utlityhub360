@@ -32,7 +32,7 @@ namespace UtilityHub360.DTOs
 
     public class CreatePaymentDto
     {
-        [Required]
+        // LoanId is provided via route for loan-specific payment endpoint; keep optional for model binding
         [StringLength(450)]
         public string LoanId { get; set; } = string.Empty;
 

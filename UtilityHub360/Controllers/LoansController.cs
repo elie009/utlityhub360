@@ -573,6 +573,16 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<PaymentDto>.ErrorResult("User not authenticated"));
                 }
 
+                // Ensure loanId from route is applied before validation so Required passes
+                payment.LoanId = loanId;
+                // Clear any prior model binding errors for LoanId (handles different casings/paths)
+                ModelState.Remove("LoanId");
+                ModelState.Remove("loanId");
+                ModelState.Remove("payment.LoanId");
+                ModelState.Remove("payment.loanId");
+                ModelState.Clear();
+                TryValidateModel(payment);
+
                 if (!ModelState.IsValid)
                 {
                     var errors = ModelState.Values

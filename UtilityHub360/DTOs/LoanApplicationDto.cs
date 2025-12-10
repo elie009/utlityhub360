@@ -9,8 +9,8 @@ namespace UtilityHub360.DTOs
         public decimal Principal { get; set; }
         public string Purpose { get; set; } = string.Empty;
         public int Term { get; set; }
-        public decimal MonthlyIncome { get; set; }
-        public string EmploymentStatus { get; set; } = string.Empty;
+        public decimal? MonthlyIncome { get; set; }
+        public string? EmploymentStatus { get; set; }
         public string? AdditionalInfo { get; set; }
         public string Status { get; set; } = string.Empty;
         public DateTime AppliedAt { get; set; }
@@ -37,13 +37,10 @@ namespace UtilityHub360.DTOs
         [Range(1, int.MaxValue, ErrorMessage = "Term must be at least 1 month")]
         public int Term { get; set; }
 
-        [Required]
-        [Range(1000, double.MaxValue)]
-        public decimal MonthlyIncome { get; set; }
+        public decimal? MonthlyIncome { get; set; }
 
-        [Required]
         [StringLength(20)]
-        public string EmploymentStatus { get; set; } = string.Empty;
+        public string? EmploymentStatus { get; set; }
 
         [StringLength(1000)]
         public string? AdditionalInfo { get; set; }

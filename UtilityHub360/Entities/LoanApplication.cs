@@ -23,13 +23,11 @@ namespace UtilityHub360.Entities
         [Required]
         public int Term { get; set; }
 
-        [Required]
         [Column(TypeName = "decimal(18,2)")]
-        public decimal MonthlyIncome { get; set; }
+        public decimal? MonthlyIncome { get; set; }
 
-        [Required]
         [StringLength(20)]
-        public string EmploymentStatus { get; set; } = string.Empty; // employed, self-employed, unemployed, retired, student
+        public string? EmploymentStatus { get; set; } // employed, self-employed, unemployed, retired, student
 
         [StringLength(1000)]
         public string? AdditionalInfo { get; set; }
