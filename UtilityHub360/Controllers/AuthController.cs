@@ -48,20 +48,39 @@ namespace UtilityHub360.Controllers
         {
             try
             {
+                // Log the incoming request for debugging
+                Console.WriteLine($"[Login] Attempting login for email: {loginCredentials?.Email ?? "null"}");
+
+                if (loginCredentials == null)
+                {
+                    return BadRequest(ApiResponse<AuthResponseDto>.ErrorResult("Login credentials are required"));
+                }
+
                 if (!ModelState.IsValid)
                 {
                     var errors = ModelState.Values
                         .SelectMany(v => v.Errors)
                         .Select(e => e.ErrorMessage)
                         .ToList();
+                    Console.WriteLine($"[Login] Validation failed: {string.Join(", ", errors)}");
                     return BadRequest(ApiResponse<AuthResponseDto>.ErrorResult("Validation failed", errors));
                 }
 
                 var result = await _authService.LoginAsync(loginCredentials);
+                Console.WriteLine($"[Login] Login successful for email: {loginCredentials.Email}");
                 return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                // This is expected for invalid credentials
+                Console.WriteLine($"[Login] Unauthorized: {ex.Message}");
+                return Unauthorized(ApiResponse<AuthResponseDto>.ErrorResult(ex.Message));
             }
             catch (Exception ex)
             {
+                // Log unexpected errors for debugging
+                Console.WriteLine($"[Login] Unexpected error: {ex.GetType().Name} - {ex.Message}");
+                Console.WriteLine($"[Login] Stack trace: {ex.StackTrace}");
                 return Unauthorized(ApiResponse<AuthResponseDto>.ErrorResult($"Login failed: {ex.Message}"));
             }
         }

@@ -12,7 +12,10 @@ namespace UtilityHub360.DTOs
         [EmailAddress]
         public string Email { get; set; } = string.Empty;
 
-        [Phone]
+        [Required]
+        [StringLength(100)]
+        public string Country { get; set; } = string.Empty;
+
         public string? Phone { get; set; }
 
         [Required]

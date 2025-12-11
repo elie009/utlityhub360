@@ -28,6 +28,7 @@ namespace UtilityHub360.Services
         // Subscription Validation
         Task<ApiResponse<bool>> CheckFeatureAccessAsync(string userId, string feature);
         Task<ApiResponse<bool>> CheckLimitAsync(string userId, string limitType, int currentCount);
+        Task<ApiResponse<BankStatementUploadLimitDto>> CheckBankStatementUploadLimitAsync(string userId);
     }
 }
 

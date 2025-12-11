@@ -56,6 +56,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpPut("{notificationId}/read")]
+        [HttpPost("{notificationId}/read")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<NotificationDto>>> MarkNotificationAsRead(string notificationId)
         {
             try
@@ -181,6 +182,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpPut("{notificationId}/cancel")]
+        [HttpPost("{notificationId}/cancel")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<bool>>> CancelScheduledNotification(string notificationId)
         {
             try
@@ -195,6 +197,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpDelete("{notificationId}")]
+        [HttpPost("{notificationId}/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeleteNotification(string notificationId)
         {
             try
@@ -221,6 +224,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpDelete("user/{userId}/all")]
+        [HttpPost("user/{userId}/all/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<int>>> DeleteAllNotifications(string userId)
         {
             try

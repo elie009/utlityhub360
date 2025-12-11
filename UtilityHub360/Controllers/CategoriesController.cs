@@ -49,6 +49,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpPut("{categoryId}")]
+        [HttpPost("{categoryId}/update")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<TransactionCategoryDto>>> UpdateCategory(string categoryId, [FromBody] UpdateTransactionCategoryDto updateDto)
         {
             try
@@ -76,6 +77,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpDelete("{categoryId}")]
+        [HttpPost("{categoryId}/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeleteCategory(string categoryId)
         {
             try

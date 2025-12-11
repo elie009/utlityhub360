@@ -194,10 +194,52 @@ namespace UtilityHub360.Controllers
         }
 
         /// <summary>
+        /// Update income source (POST alternative for environments where PUT is blocked)
+        /// </summary>
+        [HttpPost("{incomeSourceId}/update")]
+        public async Task<ActionResult<ApiResponse<IncomeSourceDto>>> UpdateIncomeSourcePost(string incomeSourceId, [FromBody] UpdateIncomeSourceDto updateIncomeSourceDto)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var result = await _incomeSourceService.UpdateIncomeSourceAsync(incomeSourceId, updateIncomeSourceDto, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<IncomeSourceDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<IncomeSourceDto>.ErrorResult($"Failed to update income source: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
         /// Delete income source
         /// </summary>
         [HttpDelete("{incomeSourceId}")]
         public async Task<ActionResult<ApiResponse<bool>>> DeleteIncomeSource(string incomeSourceId)
+        {
+            return await DeleteIncomeSourceInternal(incomeSourceId);
+        }
+
+        /// <summary>
+        /// Delete income source (POST alternative for environments where DELETE is blocked)
+        /// </summary>
+        [HttpPost("{incomeSourceId}/delete")]
+        public async Task<ActionResult<ApiResponse<bool>>> DeleteIncomeSourcePost(string incomeSourceId)
+        {
+            return await DeleteIncomeSourceInternal(incomeSourceId);
+        }
+
+        private async Task<ActionResult<ApiResponse<bool>>> DeleteIncomeSourceInternal(string incomeSourceId)
         {
             try
             {

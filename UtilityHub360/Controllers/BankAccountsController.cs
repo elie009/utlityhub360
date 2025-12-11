@@ -133,6 +133,7 @@ namespace UtilityHub360.Controllers
         /// Update a bank account
         /// </summary>
         [HttpPut("{bankAccountId}")]
+        [HttpPost("{bankAccountId}/update")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<BankAccountDto>>> UpdateBankAccount(string bankAccountId, [FromBody] UpdateBankAccountDto updateBankAccountDto)
         {
             try
@@ -162,6 +163,7 @@ namespace UtilityHub360.Controllers
         /// Delete a bank account
         /// </summary>
         [HttpDelete("{bankAccountId}")]
+        [HttpPost("{bankAccountId}/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeleteBankAccount(string bankAccountId)
         {
             try
@@ -517,6 +519,7 @@ namespace UtilityHub360.Controllers
         /// Update account balance
         /// </summary>
         [HttpPut("{bankAccountId}/balance")]
+        [HttpPost("{bankAccountId}/balance")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<bool>>> UpdateAccountBalance(string bankAccountId, [FromBody] decimal newBalance)
         {
             try
@@ -658,6 +661,7 @@ namespace UtilityHub360.Controllers
         /// Update a bank transaction
         /// </summary>
         [HttpPut("transactions/{transactionId}")]
+        [HttpPost("transactions/{transactionId}/update")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<BankTransactionDto>>> UpdateTransaction(
             string transactionId,
             [FromBody] UpdateBankTransactionDto updateTransactionDto)
@@ -689,6 +693,7 @@ namespace UtilityHub360.Controllers
         /// Hide (soft delete) a bank transaction
         /// </summary>
         [HttpPut("transactions/{transactionId}/hide")]
+        [HttpPost("transactions/{transactionId}/hide")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<bool>>> HideTransaction(
             string transactionId,
             [FromBody] HideTransactionDto? hideDto = null)
@@ -721,6 +726,7 @@ namespace UtilityHub360.Controllers
         /// Restore a hidden (soft-deleted) bank transaction
         /// </summary>
         [HttpPut("transactions/{transactionId}/restore")]
+        [HttpPost("transactions/{transactionId}/restore")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<BankTransactionDto>>> RestoreTransaction(string transactionId)
         {
             try
@@ -779,6 +785,7 @@ namespace UtilityHub360.Controllers
         /// Delete a bank transaction
         /// </summary>
         [HttpDelete("transactions/{transactionId}")]
+        [HttpPost("transactions/{transactionId}/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeleteTransaction(string transactionId)
         {
             try

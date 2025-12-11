@@ -40,12 +40,15 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("User not authenticated"));
                 }
 
-                // Check if user has access to Bank Feed feature
-                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "BANK_FEED");
-                if (!featureCheck.Success || !featureCheck.Data)
+                // Check bank statement upload limit (applies to all tiers including Free)
+                var uploadLimitCheck = await _subscriptionService.CheckBankStatementUploadLimitAsync(userId);
+                if (!uploadLimitCheck.Success || !uploadLimitCheck.Data.CanUpload)
                 {
-                    return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(
-                        "Bank Feed Integration is a Premium feature. Please upgrade to Premium to access this feature."));
+                    var limitInfo = uploadLimitCheck.Data;
+                    var message = limitInfo.UploadLimit.HasValue
+                        ? $"Monthly upload limit reached. You have used {limitInfo.CurrentUploads} of {limitInfo.UploadLimit} allowed uploads this month. Please upgrade to Premium for unlimited uploads."
+                        : "Unable to upload bank statement at this time.";
+                    return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(message));
                 }
 
                 if (file == null || file.Length == 0)
@@ -98,12 +101,15 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("User not authenticated"));
                 }
 
-                // Check if user has access to Bank Feed feature
-                var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "BANK_FEED");
-                if (!featureCheck.Success || !featureCheck.Data)
+                // Check bank statement upload limit (applies to all tiers including Free)
+                var uploadLimitCheck = await _subscriptionService.CheckBankStatementUploadLimitAsync(userId);
+                if (!uploadLimitCheck.Success || !uploadLimitCheck.Data.CanUpload)
                 {
-                    return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(
-                        "Bank Feed Integration is a Premium feature. Please upgrade to Premium to access this feature."));
+                    var limitInfo = uploadLimitCheck.Data;
+                    var message = limitInfo.UploadLimit.HasValue
+                        ? $"Monthly upload limit reached. You have used {limitInfo.CurrentUploads} of {limitInfo.UploadLimit} allowed uploads this month. Please upgrade to Premium for unlimited uploads."
+                        : "Unable to upload bank statement at this time.";
+                    return BadRequest(ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(message));
                 }
 
                 if (file == null || file.Length == 0)
@@ -150,6 +156,17 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId))
                 {
                     return Unauthorized(ApiResponse<BankStatementDto>.ErrorResult("User not authenticated"));
+                }
+
+                // Check bank statement upload limit before importing
+                var uploadLimitCheck = await _subscriptionService.CheckBankStatementUploadLimitAsync(userId);
+                if (!uploadLimitCheck.Success || !uploadLimitCheck.Data.CanUpload)
+                {
+                    var limitInfo = uploadLimitCheck.Data;
+                    var message = limitInfo.UploadLimit.HasValue
+                        ? $"Monthly upload limit reached. You have used {limitInfo.CurrentUploads} of {limitInfo.UploadLimit} allowed uploads this month. Please upgrade to Premium for unlimited uploads."
+                        : "Unable to upload bank statement at this time.";
+                    return BadRequest(ApiResponse<BankStatementDto>.ErrorResult(message));
                 }
 
                 var result = await _reconciliationService.ImportBankStatementAsync(importDto, userId);
@@ -251,6 +268,35 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete bank statement: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Get bank statement upload limit information for the current user
+        /// </summary>
+        [HttpGet("statements/upload-limit")]
+        public async Task<ActionResult<ApiResponse<BankStatementUploadLimitDto>>> GetUploadLimit()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<BankStatementUploadLimitDto>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _subscriptionService.CheckBankStatementUploadLimitAsync(userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BankStatementUploadLimitDto>.ErrorResult($"Failed to get upload limit: {ex.Message}"));
             }
         }
 

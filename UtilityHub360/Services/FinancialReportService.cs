@@ -32,23 +32,58 @@ namespace UtilityHub360.Services
                     Period = query.Period
                 };
 
-                // Generate all report sections
-                var summaryResult = await GetFinancialSummaryAsync(userId, endDate);
+                // Start all report sections in parallel for better performance
+                var summaryTask = GetFinancialSummaryAsync(userId, endDate);
+                var incomeTask = GetIncomeReportAsync(userId, query);
+                var expenseTask = GetExpenseReportAsync(userId, query);
+                var disposableTask = GetDisposableIncomeReportAsync(userId, query);
+                var billsTask = GetBillsReportAsync(userId, query);
+                var loanTask = GetLoanReportAsync(userId, query);
+                var savingsTask = GetSavingsReportAsync(userId, query);
+                var netWorthTask = GetNetWorthReportAsync(userId, query);
+
+                // Conditional tasks - start them in parallel too
+                var insightsTask = query.IncludeInsights ? GetFinancialInsightsAsync(userId, endDate) : null;
+                var predictionsTask = query.IncludePredictions ? GetFinancialPredictionsAsync(userId) : null;
+                var transactionsTask = query.IncludeTransactions ? GetTransactionLogsAsync(userId, 20) : null;
+
+                // Build list of tasks to wait for (only include non-null tasks)
+                var tasksToWait = new List<Task>
+                {
+                    summaryTask,
+                    incomeTask,
+                    expenseTask,
+                    disposableTask,
+                    billsTask,
+                    loanTask,
+                    savingsTask,
+                    netWorthTask
+                };
+
+                if (insightsTask != null) tasksToWait.Add(insightsTask);
+                if (predictionsTask != null) tasksToWait.Add(predictionsTask);
+                if (transactionsTask != null) tasksToWait.Add(transactionsTask);
+
+                // Wait for all tasks to complete in parallel
+                await Task.WhenAll(tasksToWait);
+
+                // Process main report results
+                var summaryResult = await summaryTask;
                 if (summaryResult.Success) report.Summary = summaryResult.Data!;
 
-                var incomeResult = await GetIncomeReportAsync(userId, query);
+                var incomeResult = await incomeTask;
                 if (incomeResult.Success) report.IncomeReport = incomeResult.Data!;
 
-                var expenseResult = await GetExpenseReportAsync(userId, query);
+                var expenseResult = await expenseTask;
                 if (expenseResult.Success) report.ExpenseReport = expenseResult.Data!;
 
-                var disposableResult = await GetDisposableIncomeReportAsync(userId, query);
+                var disposableResult = await disposableTask;
                 if (disposableResult.Success) report.DisposableIncomeReport = disposableResult.Data!;
 
-                var billsResult = await GetBillsReportAsync(userId, query);
+                var billsResult = await billsTask;
                 if (billsResult.Success) report.BillsReport = billsResult.Data!;
 
-                var loanResult = await GetLoanReportAsync(userId, query);
+                var loanResult = await loanTask;
                 if (loanResult.Success)
                 {
                     report.LoanReport = loanResult.Data!;
@@ -60,10 +95,10 @@ namespace UtilityHub360.Services
                     Console.WriteLine($"[FULL REPORT ERROR] Loan report failed: {loanResult.Message}");
                 }
 
-                var savingsResult = await GetSavingsReportAsync(userId, query);
+                var savingsResult = await savingsTask;
                 if (savingsResult.Success) report.SavingsReport = savingsResult.Data!;
 
-                var netWorthResult = await GetNetWorthReportAsync(userId, query);
+                var netWorthResult = await netWorthTask;
                 if (netWorthResult.Success)
                 {
                     report.NetWorthReport = netWorthResult.Data!;
@@ -75,21 +110,22 @@ namespace UtilityHub360.Services
                     Console.WriteLine($"[FULL REPORT ERROR] Net Worth report failed: {netWorthResult.Message}");
                 }
 
-                if (query.IncludeInsights)
+                // Wait for and process conditional tasks
+                if (insightsTask != null)
                 {
-                    var insightsResult = await GetFinancialInsightsAsync(userId, endDate);
+                    var insightsResult = await insightsTask;
                     if (insightsResult.Success) report.Insights = insightsResult.Data!;
                 }
 
-                if (query.IncludePredictions)
+                if (predictionsTask != null)
                 {
-                    var predictionsResult = await GetFinancialPredictionsAsync(userId);
+                    var predictionsResult = await predictionsTask;
                     if (predictionsResult.Success) report.Predictions = predictionsResult.Data!;
                 }
 
-                if (query.IncludeTransactions)
+                if (transactionsTask != null)
                 {
-                    var transactionsResult = await GetTransactionLogsAsync(userId, 20);
+                    var transactionsResult = await transactionsTask;
                     if (transactionsResult.Success) report.RecentTransactions = transactionsResult.Data!;
                 }
 
@@ -807,11 +843,51 @@ namespace UtilityHub360.Services
 
                 assets.TotalCurrentAssets = assets.CurrentAssets.Sum(a => a.Amount);
 
-                // Fixed Assets: None for personal finance (could add property, vehicles, etc. in future)
-                assets.TotalFixedAssets = 0;
+                // Fixed Assets: Include real estate investments
+                var realEstateInvestments = await _context.Investments
+                    .Where(i => i.UserId == userId && 
+                               !i.IsDeleted && 
+                               i.IsActive &&
+                               i.InvestmentType == "REAL_ESTATE" &&
+                               i.CurrentValue > 0)
+                    .ToListAsync();
 
-                // Other Assets: None for now
-                assets.TotalOtherAssets = 0;
+                foreach (var investment in realEstateInvestments)
+                {
+                    assets.FixedAssets.Add(new DTOs.BalanceSheetItemDto
+                    {
+                        AccountName = investment.AccountName ?? "Unnamed Property",
+                        AccountType = "Property",
+                        Amount = investment.CurrentValue,
+                        Description = $"Property - {investment.AccountName}",
+                        ReferenceId = investment.Id
+                    });
+                }
+
+                assets.TotalFixedAssets = assets.FixedAssets.Sum(a => a.Amount);
+
+                // Other Assets: Include all other investments (stocks, bonds, etc.)
+                var otherInvestments = await _context.Investments
+                    .Where(i => i.UserId == userId && 
+                               !i.IsDeleted && 
+                               i.IsActive &&
+                               i.InvestmentType != "REAL_ESTATE" &&
+                               i.CurrentValue > 0)
+                    .ToListAsync();
+
+                foreach (var investment in otherInvestments)
+                {
+                    assets.OtherAssets.Add(new DTOs.BalanceSheetItemDto
+                    {
+                        AccountName = investment.AccountName ?? "Unnamed Investment",
+                        AccountType = investment.InvestmentType ?? "Investment",
+                        Amount = investment.CurrentValue,
+                        Description = $"{investment.InvestmentType} - {investment.AccountName}",
+                        ReferenceId = investment.Id
+                    });
+                }
+
+                assets.TotalOtherAssets = assets.OtherAssets.Sum(a => a.Amount);
 
                 // LIABILITIES SECTION
                 var liabilities = new DTOs.LiabilitiesSectionDto();

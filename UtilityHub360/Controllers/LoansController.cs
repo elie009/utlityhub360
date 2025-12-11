@@ -318,6 +318,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpPut("{loanId}")]
+        [HttpPost("{loanId}/update")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<LoanDto>>> UpdateLoan(string loanId, [FromBody] UpdateLoanDto updateLoanDto)
         {
             try
@@ -535,6 +536,20 @@ namespace UtilityHub360.Controllers
         /// </summary>
         [HttpDelete("{loanId}")]
         public async Task<ActionResult<ApiResponse<bool>>> DeleteLoan(string loanId)
+        {
+            return await DeleteLoanInternal(loanId);
+        }
+
+        /// <summary>
+        /// Delete a loan (POST alternative for environments where DELETE is blocked)
+        /// </summary>
+        [HttpPost("{loanId}/delete")]
+        public async Task<ActionResult<ApiResponse<bool>>> DeleteLoanPost(string loanId)
+        {
+            return await DeleteLoanInternal(loanId);
+        }
+
+        private async Task<ActionResult<ApiResponse<bool>>> DeleteLoanInternal(string loanId)
         {
             try
             {
@@ -843,6 +858,7 @@ namespace UtilityHub360.Controllers
         /// Update a repayment schedule due date (Admin or loan owner)
         /// </summary>
         [HttpPut("{loanId}/schedule/{installmentNumber}")]
+        [HttpPost("{loanId}/schedule/{installmentNumber}/update")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<RepaymentScheduleDto>>> UpdateRepaymentScheduleDueDate(
             string loanId, 
             int installmentNumber, 
@@ -1136,6 +1152,7 @@ namespace UtilityHub360.Controllers
         /// Delete a specific payment schedule installment (only unpaid ones)
         /// </summary>
         [HttpDelete("{loanId}/schedule/{installmentNumber}")]
+        [HttpPost("{loanId}/schedule/{installmentNumber}/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeletePaymentScheduleInstallment(
             string loanId, 
             int installmentNumber)
