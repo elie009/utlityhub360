@@ -1367,13 +1367,15 @@ namespace UtilityHub360.Services
                 // DEBUG: Log the period being used
                 Console.WriteLine($"[IncomeStatement] Period: {period}, Start: {periodStart:yyyy-MM-dd}, End: {periodEnd:yyyy-MM-dd}");
 
-                // Get all CREDIT transactions (deposits/income) for the period
-                var creditTransactions = await _context.BankTransactions
-                    .Where(t => t.UserId == userId && 
-                               t.TransactionType == "CREDIT" &&
-                               t.TransactionDate >= periodStart && 
-                               t.TransactionDate <= periodEnd &&
-                               !t.IsDeleted)
+                // Get all CREDIT transactions (deposits/income) for the period from Payments table
+                var creditTransactions = await _context.Payments
+                    .Where(p => p.UserId == userId &&
+                               p.IsBankTransaction &&
+                              // p.TransactionType == "CREDIT" &&
+                               p.TransactionDate.HasValue &&
+                               p.TransactionDate >= periodStart &&
+                               p.TransactionDate <= periodEnd &&
+                               !p.IsDeleted)
                     .ToListAsync();
 
                 // DEBUG: Log transaction count
@@ -1459,7 +1461,7 @@ namespace UtilityHub360.Services
                         Amount = amount,
                         Description = $"{transaction.Description} ({transaction.TransactionDate:MMM dd, yyyy})",
                         ReferenceId = transaction.Id,
-                        ReferenceType = "BANK_TRANSACTION"
+                        ReferenceType = "PAYMENT"
                     });
                 }
 
@@ -1471,101 +1473,53 @@ namespace UtilityHub360.Services
                 // EXPENSES SECTION - Calculate from actual bank transactions (DEBIT/withdrawals)
                 var expenses = new DTOs.ExpensesSectionDto();
 
-                // Get all DEBIT transactions (expenses/withdrawals) for the period
-                var debitTransactions = await _context.BankTransactions
-                    .Where(t => t.UserId == userId && 
-                               t.TransactionType == "DEBIT" &&
-                               t.TransactionDate >= periodStart && 
-                               t.TransactionDate <= periodEnd &&
-                               !t.IsDeleted)
+                // Get all DEBIT transactions (expenses/withdrawals) for the period from Payments table
+                var debitTransactions = await _context.Payments
+                    .Where(p => p.UserId == userId &&
+                               p.IsBankTransaction &&
+                               p.TransactionType == "DEBIT" &&
+                               p.TransactionDate.HasValue &&
+                               p.TransactionDate >= periodStart &&
+                               p.TransactionDate <= periodEnd &&
+                               !p.IsDeleted)
                     .ToListAsync();
 
-                // Expense category keywords for classification
-                var utilityKeywords = new[] { "UTILITY", "UTILITIES", "ELECTRIC", "WATER", "GAS", "POWER", "ENERGY" };
-                var rentKeywords = new[] { "RENT", "LEASE", "HOUSING", "MORTGAGE" };
-                var insuranceKeywords = new[] { "INSURANCE", "COVERAGE", "PREMIUM" };
-                var subscriptionKeywords = new[] { "SUBSCRIPTION", "NETFLIX", "SPOTIFY", "MEMBERSHIP", "MONTHLY FEE" };
-                var foodKeywords = new[] { "FOOD", "GROCERIES", "GROCERY", "RESTAURANT", "DINING", "CAFE", "COFFEE" };
-                var transportKeywords = new[] { "TRANSPORT", "TRANSPORTATION", "GAS STATION", "FUEL", "TAXI", "UBER", "LYFT", "PARKING", "TOLL" };
-                var healthKeywords = new[] { "HEALTH", "HEALTHCARE", "MEDICAL", "DOCTOR", "PHARMACY", "HOSPITAL", "CLINIC" };
-                var educationKeywords = new[] { "EDUCATION", "SCHOOL", "COURSE", "TRAINING", "TUITION", "BOOK" };
-                var entertainmentKeywords = new[] { "ENTERTAINMENT", "MOVIE", "GAME", "CONCERT", "TICKET", "RECREATION" };
-                var loanKeywords = new[] { "LOAN", "PAYMENT", "PRINCIPAL", "INTEREST" };
+                // Get user's categories (including system-seeded ones) that are expense types
+                var expenseCategories = await _context.TransactionCategories
+                    .Where(c => c.UserId == userId && !c.IsDeleted &&
+                               (c.Type == "EXPENSE" || c.Type == "BILL"))
+                    .ToDictionaryAsync(c => c.Name.ToUpper(), c => c);
+
+                // Group transactions by their category and calculate totals
+                var categoryTotals = new Dictionary<string, decimal>();
 
                 foreach (var transaction in debitTransactions)
                 {
                     var amount = transaction.Amount;
                     var category = transaction.Category?.ToUpper() ?? "";
-                    var description = transaction.Description?.ToUpper() ?? "";
-                    var merchant = transaction.Merchant?.ToUpper() ?? "";
-                    var purpose = transaction.TransactionPurpose?.ToUpper() ?? "";
-                    
-                    // Check if category is marked as specific type in TransactionCategories
-                    var categoryType = userCategories.GetValueOrDefault(category, "EXPENSE");
 
-                    // Classify based on keywords
-                    if (utilityKeywords.Any(k => category.Contains(k) || description.Contains(k) || purpose == "UTILITY"))
+                    // Skip non-expense transactions - Payment table has specific foreign keys for different types
+                    if (transaction.SavingsAccountId != null || transaction.LoanId != null)
                     {
-                        expenses.UtilitiesExpense += amount;
-                    }
-                    else if (rentKeywords.Any(k => category.Contains(k) || description.Contains(k)))
-                    {
-                        expenses.RentExpense += amount;
-                    }
-                    else if (insuranceKeywords.Any(k => category.Contains(k) || description.Contains(k)))
-                    {
-                        expenses.InsuranceExpense += amount;
-                    }
-                    else if (subscriptionKeywords.Any(k => category.Contains(k) || description.Contains(k) || merchant.Contains(k)))
-                    {
-                        expenses.SubscriptionExpense += amount;
-                    }
-                    else if (foodKeywords.Any(k => category.Contains(k) || description.Contains(k) || merchant.Contains(k)))
-                    {
-                        expenses.FoodExpense += amount;
-                    }
-                    else if (transportKeywords.Any(k => category.Contains(k) || description.Contains(k) || merchant.Contains(k)))
-                    {
-                        expenses.TransportationExpense += amount;
-                    }
-                    else if (healthKeywords.Any(k => category.Contains(k) || description.Contains(k) || merchant.Contains(k)))
-                    {
-                        expenses.HealthcareExpense += amount;
-                    }
-                    else if (educationKeywords.Any(k => category.Contains(k) || description.Contains(k)))
-                    {
-                        expenses.EducationExpense += amount;
-                    }
-                    else if (entertainmentKeywords.Any(k => category.Contains(k) || description.Contains(k) || merchant.Contains(k)))
-                    {
-                        expenses.EntertainmentExpense += amount;
-                    }
-                    else if (loanKeywords.Any(k => category.Contains(k) || description.Contains(k)) || 
-                             purpose == "LOAN" || transaction.LoanId != null)
-                    {
-                        // Loan payments - classify as financial expense
-                        expenses.InterestExpense += amount * 0.2m; // Estimate 20% as interest
-                        expenses.OtherOperatingExpenses += amount * 0.8m; // 80% as principal (operating)
-                    }
-                    else if (purpose == "BILL" || transaction.BillId != null)
-                    {
-                        // Bill payments not matching other categories
-                        expenses.OtherOperatingExpenses += amount;
-                    }
-                    else if (purpose == "SAVINGS" || transaction.SavingsAccountId != null || categoryType == "SAVINGS")
-                    {
-                        // Savings deposits are not expenses - skip (they are transfers)
                         continue;
                     }
-                    else if (categoryType == "TRANSFER")
+
+                    // Group by category if it exists in user's categories or create "OTHER" for uncategorized
+                    var displayCategory = "OTHER";
+                    if (expenseCategories.ContainsKey(category))
                     {
-                        // Transfers between accounts are not expenses - skip
-                        continue;
+                        displayCategory = expenseCategories[category].Name; // Use original case
                     }
-                    else
+                    else if (!string.IsNullOrEmpty(transaction.Category))
                     {
-                        expenses.OtherOperatingExpenses += amount;
+                        displayCategory = transaction.Category; // Use transaction's category if not in user's list
                     }
+
+                    if (!categoryTotals.ContainsKey(displayCategory))
+                    {
+                        categoryTotals[displayCategory] = 0;
+                    }
+                    categoryTotals[displayCategory] += amount;
 
                     expenses.ExpenseItems.Add(new DTOs.IncomeStatementItemDto
                     {
@@ -1574,8 +1528,62 @@ namespace UtilityHub360.Services
                         Amount = amount,
                         Description = $"{transaction.Description} ({transaction.TransactionDate:MMM dd, yyyy})",
                         ReferenceId = transaction.Id,
-                        ReferenceType = "BANK_TRANSACTION"
+                        ReferenceType = "PAYMENT"
                     });
+                }
+
+                // Map category totals to the standard expense buckets or add to Other Operating
+                foreach (var categoryTotal in categoryTotals)
+                {
+                    var categoryName = categoryTotal.Key.ToUpper();
+                    var amount = categoryTotal.Value;
+
+                    // Check if this category should map to a standard expense bucket
+                    if (categoryName.Contains("UTILIT") || categoryName == "UTILITIES")
+                    {
+                        expenses.UtilitiesExpense += amount;
+                    }
+                    else if (categoryName.Contains("RENT") || categoryName == "RENT")
+                    {
+                        expenses.RentExpense += amount;
+                    }
+                    else if (categoryName.Contains("INSURANCE") || categoryName == "INSURANCE")
+                    {
+                        expenses.InsuranceExpense += amount;
+                    }
+                    else if (categoryName.Contains("SUBSCRIP") || categoryName == "SUBSCRIPTIONS")
+                    {
+                        expenses.SubscriptionExpense += amount;
+                    }
+                    else if (categoryName.Contains("FOOD") || categoryName == "FOOD" ||
+                             categoryName.Contains("GROCER") || categoryName == "GROCERIES" ||
+                             categoryName.Contains("RESTAURANT") || categoryName == "RESTAURANTS")
+                    {
+                        expenses.FoodExpense += amount;
+                    }
+                    else if (categoryName.Contains("TRANSPORT") || categoryName == "TRANSPORTATION" ||
+                             categoryName.Contains("GAS") || categoryName == "GAS")
+                    {
+                        expenses.TransportationExpense += amount;
+                    }
+                    else if (categoryName.Contains("HEALTH") || categoryName == "HEALTHCARE")
+                    {
+                        expenses.HealthcareExpense += amount;
+                    }
+                    else if (categoryName.Contains("EDUCATION") || categoryName == "EDUCATION")
+                    {
+                        expenses.EducationExpense += amount;
+                    }
+                    else if (categoryName.Contains("ENTERTAINMENT") || categoryName == "ENTERTAINMENT" ||
+                             categoryName.Contains("SHOPPING") || categoryName == "SHOPPING")
+                    {
+                        expenses.EntertainmentExpense += amount;
+                    }
+                    else
+                    {
+                        // For categories not mapping to standard buckets, add to Other Operating
+                        expenses.OtherOperatingExpenses += amount;
+                    }
                 }
 
                 expenses.TotalOperatingExpenses = expenses.UtilitiesExpense + expenses.RentExpense +
