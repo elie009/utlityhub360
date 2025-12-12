@@ -1308,13 +1308,14 @@ namespace UtilityHub360.Services
                                 $"Category '{createTransactionDto.Category}' exists but is inactive. Please activate it or choose a different category.");
                         }
 
-                        // Auto-create "Expenses" as a default category if it doesn't exist
-                        if (createTransactionDto.Category.Equals("Expenses", StringComparison.OrdinalIgnoreCase))
+                        // Auto-create default categories if they don't exist
+                        if (createTransactionDto.Category.Equals("Expenses", StringComparison.OrdinalIgnoreCase) ||
+                            createTransactionDto.Category.Equals("Expense", StringComparison.OrdinalIgnoreCase))
                         {
                             var defaultExpensesCategory = new TransactionCategory
                             {
                                 UserId = userId,
-                                Name = "Expenses",
+                                Name = "Expense",
                                 Description = "Default expense category for general transactions",
                                 Type = "EXPENSE",
                                 IsActive = true,
@@ -1327,6 +1328,35 @@ namespace UtilityHub360.Services
                             _context.TransactionCategories.Add(defaultExpensesCategory);
                             await _context.SaveChangesAsync();
 
+                            // Update the category name to match what was created
+                            createTransactionDto.Category = "Expense";
+                            // Category is now created, continue with validation
+                        }
+                        else if (createTransactionDto.Category.Equals("Bank Transfer", StringComparison.OrdinalIgnoreCase) ||
+                                 createTransactionDto.Category.Equals("Transfer", StringComparison.OrdinalIgnoreCase) ||
+                                 createTransactionDto.Category.Equals("TRANSFER", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var defaultTransferCategory = new TransactionCategory
+                            {
+                                Id = Guid.NewGuid().ToString(),
+                                UserId = userId,
+                                Name = "TRANSFER",
+                                Description = "Bank transfer between accounts",
+                                Type = "TRANSFER",
+                                Icon = "swap_horiz",
+                                Color = "#95E1D3",
+                                IsActive = true,
+                                IsSystemCategory = false,
+                                DisplayOrder = 18,
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow
+                            };
+
+                            _context.TransactionCategories.Add(defaultTransferCategory);
+                            await _context.SaveChangesAsync();
+
+                            // Update the category name to match what was created
+                            createTransactionDto.Category = "TRANSFER";
                             // Category is now created, continue with validation
                         }
                         else
@@ -1828,6 +1858,36 @@ namespace UtilityHub360.Services
                             // Update destination account balance
                             destinationAccount.CurrentBalance += payment.Amount;
                             destinationAccount.UpdatedAt = DateTime.UtcNow;
+
+                            // Create a corresponding CREDIT transaction for the destination bank account
+                            var destinationPayment = new Payment
+                            {
+                                Id = Guid.NewGuid().ToString(),
+                                UserId = userId,
+                                BankAccountId = destinationAccount.Id,
+                                Amount = payment.Amount,
+                                TransactionType = "CREDIT",
+                                Description = $"Received from {bankAccount.AccountName}",
+                                Category = "TRANSFER",
+                                TransactionDate = payment.TransactionDate ?? DateTime.UtcNow,
+                                Currency = payment.Currency,
+                                IsBankTransaction = true,
+                                Status = "COMPLETED",
+                                Method = "BANK_TRANSFER",
+                                Reference = reference,
+                                ProcessedAt = DateTime.UtcNow,
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow,
+                                Notes = $"Bank transfer from {bankAccount.AccountName}. Reference: {reference}"
+                            };
+
+                            _context.Payments.Add(destinationPayment);
+
+                            // Update source transaction description to indicate transfer
+                            if (string.IsNullOrEmpty(payment.Description) || payment.Description == "Transfer to Bank Account")
+                            {
+                                payment.Description = $"Transfer to {destinationAccount.AccountName}";
+                            }
 
                             journalEntry = await _accountingService.CreateBankTransferEntryAsync(
                                 userId: userId,
