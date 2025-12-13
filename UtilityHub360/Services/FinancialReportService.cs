@@ -1330,8 +1330,14 @@ namespace UtilityHub360.Services
             {
                 // Determine date range
                 DateTime periodStart, periodEnd;
-                
-                if (startDate.HasValue && endDate.HasValue)
+
+                //Start date and End Date (from date picker) and period is CUSTOM (Select Period)
+                if (startDate.HasValue && endDate.HasValue && period?.ToUpper() == "CUSTOM")
+                {
+                    periodStart = startDate.Value;
+                    periodEnd = endDate.Value;
+                }
+                else if (startDate.HasValue && endDate.HasValue)
                 {
                     periodStart = startDate.Value;
                     periodEnd = endDate.Value;
@@ -1339,9 +1345,9 @@ namespace UtilityHub360.Services
                 else
                 {
                     var now = DateTime.UtcNow;
-                    
+
                     // Calculate period based on selected period type
-                    switch (period.ToUpper())
+                    switch (period?.ToUpper() ?? "")
                     {
                         case "YEARLY":
                             // Full calendar year (Jan 1 to Dec 31)
