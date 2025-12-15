@@ -1377,7 +1377,7 @@ namespace UtilityHub360.Services
                 var creditTransactions = await _context.Payments
                     .Where(p => p.UserId == userId &&
                                p.IsBankTransaction &&
-                              // p.TransactionType == "CREDIT" &&
+                               p.TransactionType == "CREDIT" &&
                                p.TransactionDate.HasValue &&
                                p.TransactionDate >= periodStart &&
                                p.TransactionDate <= periodEnd &&
@@ -1403,6 +1403,12 @@ namespace UtilityHub360.Services
 
                 foreach (var transaction in creditTransactions)
                 {
+                    // Skip bill payments - they should never be in revenue (safeguard)
+                    if (transaction.BillId != null)
+                    {
+                        continue;
+                    }
+
                     var amount = transaction.Amount;
                     var category = transaction.Category?.ToUpper() ?? "";
                     var description = transaction.Description?.ToUpper() ?? "";
@@ -1510,9 +1516,19 @@ namespace UtilityHub360.Services
                         continue;
                     }
 
+                    // If transaction is linked to a bill, treat it as BILL_PAYMENT category
+                    if (transaction.BillId != null)
+                    {
+                        category = "BILL_PAYMENT";
+                    }
+
                     // Group by category if it exists in user's categories or create "OTHER" for uncategorized
                     var displayCategory = "OTHER";
-                    if (expenseCategories.ContainsKey(category))
+                    if (transaction.BillId != null)
+                    {
+                        displayCategory = "BILL_PAYMENT"; // Force BILL_PAYMENT for bill transactions
+                    }
+                    else if (expenseCategories.ContainsKey(category))
                     {
                         displayCategory = expenseCategories[category].Name; // Use original case
                     }
@@ -1545,7 +1561,13 @@ namespace UtilityHub360.Services
                     var amount = categoryTotal.Value;
 
                     // Check if this category should map to a standard expense bucket
-                    if (categoryName.Contains("UTILIT") || categoryName == "UTILITIES")
+                    // Map BILL_PAYMENT to Utilities
+                    if (categoryName.Contains("BILL_PAYMENT") || categoryName == "BILL_PAYMENT" || 
+                        (categoryName.Contains("BILL") && categoryName.Contains("PAYMENT")))
+                    {
+                        expenses.UtilitiesExpense += amount;
+                    }
+                    else if (categoryName.Contains("UTILIT") || categoryName == "UTILITIES")
                     {
                         expenses.UtilitiesExpense += amount;
                     }
@@ -1592,12 +1614,92 @@ namespace UtilityHub360.Services
                     }
                 }
 
+                // Include unpaid bills in expenses calculation
+                // Get all unpaid bills (PENDING status) with due dates within the period
+                // Exclude bills that have already been paid (to avoid double counting with DEBIT transactions)
+                var paidBillIds = await _context.Payments
+                    .Where(p => p.UserId == userId &&
+                               p.BillId != null &&
+                               p.TransactionDate.HasValue &&
+                               p.TransactionDate >= periodStart &&
+                               p.TransactionDate <= periodEnd &&
+                               !p.IsDeleted)
+                    .Select(p => p.BillId)
+                    .Distinct()
+                    .ToListAsync();
+
+                var unpaidBills = await _context.Bills
+                    .Where(b => b.UserId == userId &&
+                               b.Status == "PENDING" &&
+                               b.DueDate >= periodStart &&
+                               b.DueDate <= periodEnd &&
+                               !b.IsDeleted &&
+                               !paidBillIds.Contains(b.Id))
+                    .ToListAsync();
+
+                // Process each unpaid bill and add to expenses
+                foreach (var bill in unpaidBills)
+                {
+                    var amount = bill.Amount;
+                    var billType = bill.BillType?.ToUpper() ?? "";
+                    var billName = bill.BillName ?? "Unpaid Bill";
+
+                    // Add to ExpenseItems for display
+                    expenses.ExpenseItems.Add(new DTOs.IncomeStatementItemDto
+                    {
+                        AccountName = bill.Provider ?? billName,
+                        Category = bill.BillType ?? "BILL",
+                        Amount = amount,
+                        Description = $"{billName} (Due: {bill.DueDate:MMM dd, yyyy}) - Unpaid",
+                        ReferenceId = bill.Id,
+                        ReferenceType = "BILL"
+                    });
+
+                    // Map bill type to appropriate expense category
+                    if (billType.Contains("UTILIT") || billType == "UTILITY" || billType == "UTILITIES")
+                    {
+                        expenses.UtilitiesExpense += amount;
+                    }
+                    else if (billType.Contains("RENT") || billType == "RENT")
+                    {
+                        expenses.RentExpense += amount;
+                    }
+                    else if (billType.Contains("INSURANCE") || billType == "INSURANCE")
+                    {
+                        expenses.InsuranceExpense += amount;
+                    }
+                    else if (billType.Contains("SUBSCRIP") || billType == "SUBSCRIPTION" || billType == "SUBSCRIPTIONS")
+                    {
+                        expenses.SubscriptionExpense += amount;
+                    }
+                    else if (billType.Contains("LOAN") || billType == "LOAN")
+                    {
+                        // Loan bills could be interest or principal - add to loan fees for now
+                        expenses.LoanFeesExpense += amount;
+                    }
+                    else if (billType.Contains("HEALTH") || billType == "HEALTHCARE")
+                    {
+                        expenses.HealthcareExpense += amount;
+                    }
+                    else if (billType.Contains("EDUCATION") || billType == "EDUCATION")
+                    {
+                        expenses.EducationExpense += amount;
+                    }
+                    else
+                    {
+                        // For other bill types, add to Other Operating Expenses
+                        expenses.OtherOperatingExpenses += amount;
+                    }
+                }
+
+                // Recalculate totals after including unpaid bills
                 expenses.TotalOperatingExpenses = expenses.UtilitiesExpense + expenses.RentExpense +
                                                  expenses.InsuranceExpense + expenses.SubscriptionExpense +
                                                  expenses.FoodExpense + expenses.TransportationExpense +
                                                  expenses.HealthcareExpense + expenses.EducationExpense +
                                                  expenses.EntertainmentExpense + expenses.OtherOperatingExpenses;
                 expenses.TotalFinancialExpenses = expenses.InterestExpense + expenses.LoanFeesExpense;
+                // Note: TotalExpenses is a computed property that automatically sums TotalOperatingExpenses + TotalFinancialExpenses
 
                 // COMPARISON (if requested)
                 DTOs.IncomeStatementComparisonDto? comparison = null;

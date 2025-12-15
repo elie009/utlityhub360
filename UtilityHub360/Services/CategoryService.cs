@@ -131,11 +131,7 @@ namespace UtilityHub360.Services
                     return ApiResponse<bool>.ErrorResult("Category not found");
                 }
 
-                if (category.IsSystemCategory)
-                {
-                    return ApiResponse<bool>.ErrorResult("System categories cannot be deleted");
-                }
-
+                // Allow deletion of system categories - removed restriction
                 // Check if category is being used by any transactions
                 var transactionCount = await _context.BankTransactions
                     .CountAsync(t => t.Category == category.Name && t.UserId == userId && !t.IsDeleted);

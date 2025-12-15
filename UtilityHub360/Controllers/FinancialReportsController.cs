@@ -330,7 +330,26 @@ namespace UtilityHub360.Controllers
             try
             {
                 var userId = GetUserId();
-                var result = await _reportService.GetIncomeStatementAsync(userId, startDate, endDate, period, includeComparison);
+                
+                // Normalize dates to UTC at start/end of day to avoid timezone issues
+                DateTime? normalizedStartDate = null;
+                DateTime? normalizedEndDate = null;
+                
+                if (startDate.HasValue)
+                {
+                    // Ensure start date is at start of day UTC
+                    var date = startDate.Value;
+                    normalizedStartDate = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0, DateTimeKind.Utc);
+                }
+                
+                if (endDate.HasValue)
+                {
+                    // Ensure end date is at end of day UTC (23:59:59.999)
+                    var date = endDate.Value;
+                    normalizedEndDate = new DateTime(date.Year, date.Month, date.Day, 23, 59, 59, 999, DateTimeKind.Utc);
+                }
+                
+                var result = await _reportService.GetIncomeStatementAsync(userId, normalizedStartDate, normalizedEndDate, period, includeComparison);
 
                 if (!result.Success)
                 {
