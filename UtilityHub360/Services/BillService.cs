@@ -47,6 +47,7 @@ namespace UtilityHub360.Services
                     BillType = createBillDto.BillType.ToLower(),
                     Amount = createBillDto.Amount,
                     DueDate = createBillDto.DueDate,
+                    StatementDate = createBillDto.StatementDate,
                     Frequency = createBillDto.Frequency.ToLower(),
                     Status = "PENDING",
                     CreatedAt = DateTime.UtcNow,
@@ -224,6 +225,23 @@ namespace UtilityHub360.Services
                     }
 
                     bill.DueDate = updateBillDto.DueDate.Value;
+                }
+
+                if (updateBillDto.StatementDate.HasValue)
+                {
+                    // Validation: Only allow statement dates for current year
+                    var currentYear = DateTime.UtcNow.Year;
+                    var newStatementDateYear = updateBillDto.StatementDate.Value.Year;
+
+                    if (newStatementDateYear != currentYear)
+                    {
+                        return ApiResponse<BillDto>.ErrorResult(
+                            $"Bill statement dates can only be set for the current year ({currentYear}). " +
+                            $"You tried to set a statement date for {updateBillDto.StatementDate.Value:MMMM yyyy}. " +
+                            $"Please select a date within {currentYear}.");
+                    }
+
+                    bill.StatementDate = updateBillDto.StatementDate.Value;
                 }
 
                 if (!string.IsNullOrEmpty(updateBillDto.Frequency))
@@ -1194,6 +1212,7 @@ namespace UtilityHub360.Services
                 BillType = bill.BillType,
                 Amount = bill.Amount,
                 DueDate = bill.DueDate,
+                StatementDate = bill.StatementDate,
                 Frequency = bill.Frequency,
                 Status = bill.Status,
                 CreatedAt = bill.CreatedAt,

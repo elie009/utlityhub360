@@ -35,6 +35,7 @@ namespace UtilityHub360.DTOs
         public string BillType { get; set; } = string.Empty;
         public decimal Amount { get; set; }
         public DateTime DueDate { get; set; }
+        public DateTime? StatementDate { get; set; }
         public string Frequency { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
@@ -80,6 +81,9 @@ namespace UtilityHub360.DTOs
         [CurrentYearOnly]
         public DateTime DueDate { get; set; }
 
+        [CurrentYearOnly]
+        public DateTime? StatementDate { get; set; }
+
         [Required]
         [StringLength(20)]
         public string Frequency { get; set; } = string.Empty;
@@ -124,6 +128,9 @@ namespace UtilityHub360.DTOs
 
         [CurrentYearOnly]
         public DateTime? DueDate { get; set; }
+
+        [CurrentYearOnly]
+        public DateTime? StatementDate { get; set; }
 
         [StringLength(20)]
         public string? Frequency { get; set; }

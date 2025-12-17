@@ -32,58 +32,26 @@ namespace UtilityHub360.Services
                     Period = query.Period
                 };
 
-                // Start all report sections in parallel for better performance
-                var summaryTask = GetFinancialSummaryAsync(userId, endDate);
-                var incomeTask = GetIncomeReportAsync(userId, query);
-                var expenseTask = GetExpenseReportAsync(userId, query);
-                var disposableTask = GetDisposableIncomeReportAsync(userId, query);
-                var billsTask = GetBillsReportAsync(userId, query);
-                var loanTask = GetLoanReportAsync(userId, query);
-                var savingsTask = GetSavingsReportAsync(userId, query);
-                var netWorthTask = GetNetWorthReportAsync(userId, query);
-
-                // Conditional tasks - start them in parallel too
-                var insightsTask = query.IncludeInsights ? GetFinancialInsightsAsync(userId, endDate) : null;
-                var predictionsTask = query.IncludePredictions ? GetFinancialPredictionsAsync(userId) : null;
-                var transactionsTask = query.IncludeTransactions ? GetTransactionLogsAsync(userId, 20) : null;
-
-                // Build list of tasks to wait for (only include non-null tasks)
-                var tasksToWait = new List<Task>
-                {
-                    summaryTask,
-                    incomeTask,
-                    expenseTask,
-                    disposableTask,
-                    billsTask,
-                    loanTask,
-                    savingsTask,
-                    netWorthTask
-                };
-
-                if (insightsTask != null) tasksToWait.Add(insightsTask);
-                if (predictionsTask != null) tasksToWait.Add(predictionsTask);
-                if (transactionsTask != null) tasksToWait.Add(transactionsTask);
-
-                // Wait for all tasks to complete in parallel
-                await Task.WhenAll(tasksToWait);
-
-                // Process main report results
-                var summaryResult = await summaryTask;
+                // Run all report sections sequentially to avoid DbContext concurrency issues
+                // This prevents "A second operation started on this context" errors
+                
+                // Main report sections - run sequentially
+                var summaryResult = await GetFinancialSummaryAsync(userId, query);
                 if (summaryResult.Success) report.Summary = summaryResult.Data!;
 
-                var incomeResult = await incomeTask;
+                var incomeResult = await GetIncomeReportAsync(userId, query);
                 if (incomeResult.Success) report.IncomeReport = incomeResult.Data!;
 
-                var expenseResult = await expenseTask;
+                var expenseResult = await GetExpenseReportAsync(userId, query);
                 if (expenseResult.Success) report.ExpenseReport = expenseResult.Data!;
 
-                var disposableResult = await disposableTask;
+                var disposableResult = await GetDisposableIncomeReportAsync(userId, query);
                 if (disposableResult.Success) report.DisposableIncomeReport = disposableResult.Data!;
 
-                var billsResult = await billsTask;
+                var billsResult = await GetBillsReportAsync(userId, query);
                 if (billsResult.Success) report.BillsReport = billsResult.Data!;
 
-                var loanResult = await loanTask;
+                var loanResult = await GetLoanReportAsync(userId, query);
                 if (loanResult.Success)
                 {
                     report.LoanReport = loanResult.Data!;
@@ -95,10 +63,10 @@ namespace UtilityHub360.Services
                     Console.WriteLine($"[FULL REPORT ERROR] Loan report failed: {loanResult.Message}");
                 }
 
-                var savingsResult = await savingsTask;
+                var savingsResult = await GetSavingsReportAsync(userId, query);
                 if (savingsResult.Success) report.SavingsReport = savingsResult.Data!;
 
-                var netWorthResult = await netWorthTask;
+                var netWorthResult = await GetNetWorthReportAsync(userId, query);
                 if (netWorthResult.Success)
                 {
                     report.NetWorthReport = netWorthResult.Data!;
@@ -110,22 +78,22 @@ namespace UtilityHub360.Services
                     Console.WriteLine($"[FULL REPORT ERROR] Net Worth report failed: {netWorthResult.Message}");
                 }
 
-                // Wait for and process conditional tasks
-                if (insightsTask != null)
+                // Conditional tasks - run sequentially
+                if (query.IncludeInsights)
                 {
-                    var insightsResult = await insightsTask;
+                    var insightsResult = await GetFinancialInsightsAsync(userId, endDate);
                     if (insightsResult.Success) report.Insights = insightsResult.Data!;
                 }
 
-                if (predictionsTask != null)
+                if (query.IncludePredictions)
                 {
-                    var predictionsResult = await predictionsTask;
+                    var predictionsResult = await GetFinancialPredictionsAsync(userId);
                     if (predictionsResult.Success) report.Predictions = predictionsResult.Data!;
                 }
 
-                if (transactionsTask != null)
+                if (query.IncludeTransactions)
                 {
-                    var transactionsResult = await transactionsTask;
+                    var transactionsResult = await GetTransactionLogsAsync(userId, 20);
                     if (transactionsResult.Success) report.RecentTransactions = transactionsResult.Data!;
                 }
 
@@ -141,29 +109,26 @@ namespace UtilityHub360.Services
         // FINANCIAL SUMMARY
         // ==========================================
 
-        public async Task<ApiResponse<ReportFinancialSummaryDto>> GetFinancialSummaryAsync(string userId, DateTime? date = null)
+        public async Task<ApiResponse<ReportFinancialSummaryDto>> GetFinancialSummaryAsync(string userId, ReportQueryDto query)
         {
             try
             {
-                var targetDate = date ?? DateTime.UtcNow;
-                var startOfMonth = new DateTime(targetDate.Year, targetDate.Month, 1);
-                var endOfMonth = startOfMonth.AddMonths(1).AddDays(-1);
+                var (startDate, endDate) = GetDateRange(query);
+                
+                // Get previous period for comparison
+                var (prevStartDate, prevEndDate) = GetPreviousPeriod(startDate, endDate);
 
-                // Get previous month for comparison
-                var prevMonthStart = startOfMonth.AddMonths(-1);
-                var prevMonthEnd = startOfMonth.AddDays(-1);
-
-                // Calculate current month values
-                var currentIncome = await CalculateTotalIncomeAsync(userId, startOfMonth, endOfMonth);
-                var currentExpenses = await CalculateTotalExpensesAsync(userId, startOfMonth, endOfMonth);
+                // Calculate current period values using the actual date range
+                var currentIncome = await CalculateTotalIncomeAsync(userId, startDate, endDate);
+                var currentExpenses = await CalculateTotalExpensesAsync(userId, startDate, endDate);
                 var currentSavings = await CalculateTotalSavingsAsync(userId);
                 var savingsGoal = await GetSavingsGoalAsync(userId);
                 var netWorth = await CalculateNetWorthAsync(userId);
 
-                // Calculate previous month values for comparison
-                var prevIncome = await CalculateTotalIncomeAsync(userId, prevMonthStart, prevMonthEnd);
-                var prevExpenses = await CalculateTotalExpensesAsync(userId, prevMonthStart, prevMonthEnd);
-                var prevNetWorth = await CalculateNetWorthAsync(userId, prevMonthEnd);
+                // Calculate previous period values for comparison
+                var prevIncome = await CalculateTotalIncomeAsync(userId, prevStartDate, prevEndDate);
+                var prevExpenses = await CalculateTotalExpensesAsync(userId, prevStartDate, prevEndDate);
+                var prevNetWorth = await CalculateNetWorthAsync(userId, prevEndDate);
 
                 var summary = new ReportFinancialSummaryDto
                 {
@@ -193,6 +158,19 @@ namespace UtilityHub360.Services
             {
                 return ApiResponse<ReportFinancialSummaryDto>.ErrorResult($"Error getting financial summary: {ex.Message}");
             }
+        }
+
+        // Overload for backward compatibility - accepts DateTime? for dashboard/summary endpoint
+        public async Task<ApiResponse<ReportFinancialSummaryDto>> GetFinancialSummaryAsync(string userId, DateTime? date = null)
+        {
+            var targetDate = date ?? DateTime.UtcNow;
+            var query = new ReportQueryDto
+            {
+                Period = "MONTHLY",
+                StartDate = new DateTime(targetDate.Year, targetDate.Month, 1),
+                EndDate = new DateTime(targetDate.Year, targetDate.Month, 1).AddMonths(1).AddDays(-1)
+            };
+            return await GetFinancialSummaryAsync(userId, query);
         }
 
         // ==========================================
@@ -778,11 +756,18 @@ namespace UtilityHub360.Services
         // BALANCE SHEET
         // ==========================================
 
-        public async Task<ApiResponse<DTOs.BalanceSheetDto>> GetBalanceSheetAsync(string userId, DateTime? asOfDate = null)
+        // Note: A Balance Sheet is an "as of" report as of a single point in time (not a range), 
+        // so there is no startDate/endDate concept here; only asOfDate is relevant.
+        // However, if you want to support a range (start/end), you would have to redesign this.
+        // For now, only 'asOfDate' is respected.
+
+        public async Task<ApiResponse<DTOs.BalanceSheetDto>> GetBalanceSheetAsync(string userId, DateTime? aOsfDate = null)
         {
             try
             {
-                var reportDate = asOfDate ?? DateTime.UtcNow;
+                // The balance sheet reflects a snapshot at this moment; 'asOfDate' is the "when".
+                // There is no startDate/endDate for a point-in-time balance sheet.
+                var reportDate = aOsfDate ?? DateTime.UtcNow;
 
                 // ASSETS SECTION
                 var assets = new DTOs.AssetsSectionDto();
@@ -794,12 +779,10 @@ namespace UtilityHub360.Services
 
                 foreach (var account in bankAccounts)
                 {
-                    // Exclude credit cards from assets
                     var accountTypeLower = account.AccountType?.ToLower().Trim() ?? "";
-                    var isCreditCard = accountTypeLower == "credit_card" || 
-                                       accountTypeLower == "credit card" || 
-                                       accountTypeLower == "creditcard";
-                    
+                    var isCreditCard = accountTypeLower == "credit_card"
+                                    || accountTypeLower == "credit card"
+                                    || accountTypeLower == "creditcard";
                     if (!isCreditCard && account.CurrentBalance > 0)
                     {
                         assets.CurrentAssets.Add(new DTOs.BalanceSheetItemDto
@@ -813,20 +796,21 @@ namespace UtilityHub360.Services
                     }
                 }
 
-                // Current Assets: Savings Accounts
+                // Savings Accounts (calculate balance as of asOfDate)
                 var savingsAccounts = await _context.SavingsAccounts
                     .Where(sa => sa.UserId == userId)
                     .ToListAsync();
 
                 foreach (var savingsAccount in savingsAccounts)
                 {
-                    // Calculate savings balance from transactions
+                    // Sum only savings transactions up to asOfDate
                     var savingsTransactions = await _context.SavingsTransactions
-                        .Where(st => st.SavingsAccountId == savingsAccount.Id)
+                        .Where(st => st.SavingsAccountId == savingsAccount.Id && st.TransactionDate <= reportDate)
                         .ToListAsync();
 
-                    var savingsBalance = savingsTransactions.Sum(st => 
-                        st.TransactionType == "DEPOSIT" ? st.Amount : -st.Amount);
+                    var savingsBalance = savingsTransactions.Sum(st =>
+                        st.TransactionType == "DEPOSIT" ? st.Amount : -st.Amount
+                    );
 
                     if (savingsBalance > 0)
                     {
@@ -843,13 +827,13 @@ namespace UtilityHub360.Services
 
                 assets.TotalCurrentAssets = assets.CurrentAssets.Sum(a => a.Amount);
 
-                // Fixed Assets: Include real estate investments
+                // Fixed Assets: Include real estate investments AS OF asOfDate
                 var realEstateInvestments = await _context.Investments
-                    .Where(i => i.UserId == userId && 
-                               !i.IsDeleted && 
-                               i.IsActive &&
-                               i.InvestmentType == "REAL_ESTATE" &&
-                               i.CurrentValue > 0)
+                    .Where(i => i.UserId == userId &&
+                                !i.IsDeleted &&
+                                i.IsActive &&
+                                i.InvestmentType == "REAL_ESTATE" &&
+                                i.CurrentValue > 0)
                     .ToListAsync();
 
                 foreach (var investment in realEstateInvestments)
@@ -866,13 +850,13 @@ namespace UtilityHub360.Services
 
                 assets.TotalFixedAssets = assets.FixedAssets.Sum(a => a.Amount);
 
-                // Other Assets: Include all other investments (stocks, bonds, etc.)
+                // Other Assets: Non-real-estate investments AS OF asOfDate
                 var otherInvestments = await _context.Investments
-                    .Where(i => i.UserId == userId && 
-                               !i.IsDeleted && 
-                               i.IsActive &&
-                               i.InvestmentType != "REAL_ESTATE" &&
-                               i.CurrentValue > 0)
+                    .Where(i => i.UserId == userId &&
+                                !i.IsDeleted &&
+                                i.IsActive &&
+                                i.InvestmentType != "REAL_ESTATE" &&
+                                i.CurrentValue > 0)
                     .ToListAsync();
 
                 foreach (var investment in otherInvestments)
@@ -892,14 +876,13 @@ namespace UtilityHub360.Services
                 // LIABILITIES SECTION
                 var liabilities = new DTOs.LiabilitiesSectionDto();
 
-                // Current Liabilities: Credit Card Balances
+                // Credit Card balances (as liabilities)
                 foreach (var account in bankAccounts)
                 {
                     var accountTypeLower = account.AccountType?.ToLower().Trim() ?? "";
-                    var isCreditCard = accountTypeLower == "credit_card" || 
-                                       accountTypeLower == "credit card" || 
-                                       accountTypeLower == "creditcard";
-                    
+                    var isCreditCard = accountTypeLower == "credit_card"
+                                    || accountTypeLower == "credit card"
+                                    || accountTypeLower == "creditcard";
                     if (isCreditCard && account.CurrentBalance > 0)
                     {
                         liabilities.CurrentLiabilities.Add(new DTOs.BalanceSheetItemDto
@@ -913,24 +896,25 @@ namespace UtilityHub360.Services
                     }
                 }
 
-                // Current Liabilities: Overdue Bills Only
-                // Only include bills that are past their due date as liabilities
-                // Future bills are not yet obligations and should not appear as liabilities
-                var overdueBills = await _context.Bills
-                    .Where(b => b.UserId == userId && 
-                               b.Status != null && 
-                               b.Status.ToUpper() != "PAID" &&
-                               b.DueDate <= reportDate)
+                // Unpaid bills due on/before asOfDate
+                var reportDateEndOfDay = reportDate.Date.AddDays(1).AddTicks(-1);
+                var unpaidBills = await _context.Bills
+                    .Where(b => b.UserId == userId &&
+                                b.Status != null &&
+                                b.Status.ToUpper() != "PAID" &&
+                                !b.IsDeleted &&
+                                b.DueDate <= reportDateEndOfDay)
                     .ToListAsync();
 
-                foreach (var bill in overdueBills)
+                foreach (var bill in unpaidBills)
                 {
+                    var billStatus = bill.DueDate <= reportDate ? "Overdue" : "Pending";
                     liabilities.CurrentLiabilities.Add(new DTOs.BalanceSheetItemDto
                     {
                         AccountName = bill.Provider ?? "Unnamed Bill",
                         AccountType = bill.BillType ?? "Bill",
                         Amount = bill.Amount,
-                        Description = $"{bill.BillType} - {bill.Provider} (Overdue)",
+                        Description = $"{bill.BillType} - {bill.Provider} ({billStatus}, Due: {bill.DueDate:MMM dd, yyyy})",
                         ReferenceId = bill.Id
                     });
                 }
@@ -940,9 +924,9 @@ namespace UtilityHub360.Services
                 // Long-term Liabilities: Active Loans
                 var activeLoans = await _context.Loans
                     .Where(l => l.UserId == userId &&
-                               !string.IsNullOrWhiteSpace(l.Status) &&
-                               l.Status.Trim().ToUpper() != "REJECTED" && 
-                               l.Status.Trim().ToUpper() != "COMPLETED")
+                                !string.IsNullOrWhiteSpace(l.Status) &&
+                                l.Status.Trim().ToUpper() != "REJECTED" &&
+                                l.Status.Trim().ToUpper() != "COMPLETED")
                     .ToListAsync();
 
                 foreach (var loan in activeLoans)
@@ -962,43 +946,33 @@ namespace UtilityHub360.Services
                 // EQUITY SECTION
                 var equity = new DTOs.EquitySectionDto();
 
-                // Calculate total assets and liabilities for equity calculation
                 var totalAssets = assets.TotalAssets;
                 var totalLiabilities = liabilities.TotalLiabilities;
 
-                // Owner's Capital: Initial capital (could be from user profile or first transaction)
-                // For now, we'll calculate it as: Assets - Liabilities - Retained Earnings
-                // Retained Earnings = Net Income (Income - Expenses) over time
-                
-                // Calculate net income (simplified - from income sources and expenses)
+                // Owner's Capital: No official startDate/endDate. 
+                // For equity, use income/expense activity up to asOfDate.
                 var incomeSources = await _context.IncomeSources
                     .Where(i => i.UserId == userId && i.IsActive)
                     .ToListAsync();
 
                 var totalIncome = incomeSources.Sum(i => i.Amount);
 
-                // Calculate expenses from transactions
                 var expenseTransactions = await _context.Payments
-                    .Where(p => p.UserId == userId && 
-                               p.TransactionType == "DEBIT" &&
-                               p.TransactionDate <= reportDate)
+                    .Where(p => p.UserId == userId
+                             && p.TransactionType == "DEBIT"
+                             && p.TransactionDate <= reportDate)
                     .SumAsync(p => p.Amount);
 
                 var netIncome = totalIncome - expenseTransactions;
-
-                // Retained Earnings = Net Income (simplified)
                 equity.RetainedEarnings = netIncome > 0 ? netIncome : 0;
 
-                // Owner's Capital = Total Assets - Total Liabilities - Retained Earnings
                 equity.OwnersCapital = totalAssets - totalLiabilities - equity.RetainedEarnings;
                 if (equity.OwnersCapital < 0)
                 {
-                    // If negative, it means we have negative equity (debt exceeds assets)
                     equity.OwnersCapital = 0;
                     equity.RetainedEarnings = totalAssets - totalLiabilities;
                 }
 
-                // Build Balance Sheet
                 var balanceSheet = new DTOs.BalanceSheetDto
                 {
                     AsOfDate = reportDate,
@@ -2394,7 +2368,7 @@ namespace UtilityHub360.Services
                 };
 
                 // Generate all report sections
-                var summaryResult = await GetFinancialSummaryAsync(userId, endDate);
+                var summaryResult = await GetFinancialSummaryAsync(userId, query);
                 if (summaryResult.Success) report.Summary = summaryResult.Data!;
 
                 var incomeResult = await GetIncomeReportAsync(userId, query);

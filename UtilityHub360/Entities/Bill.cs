@@ -29,6 +29,8 @@ namespace UtilityHub360.Entities
         [Required]
         public DateTime DueDate { get; set; }
 
+        public DateTime? StatementDate { get; set; } // Date when the bill/invoice was issued/generated
+
         [Required]
         [StringLength(20)]
         public string Frequency { get; set; } = string.Empty; // monthly, quarterly, yearly

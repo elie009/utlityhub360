@@ -21,6 +21,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<IncomeStatementDto>> GetIncomeStatementAsync(string userId, DateTime? startDate = null, DateTime? endDate = null, string period = "MONTHLY", bool includeComparison = false);
         
         // Summary & Dashboard
+        Task<ApiResponse<ReportFinancialSummaryDto>> GetFinancialSummaryAsync(string userId, ReportQueryDto query);
         Task<ApiResponse<ReportFinancialSummaryDto>> GetFinancialSummaryAsync(string userId, DateTime? date = null);
         
         // Insights & Predictions

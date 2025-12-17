@@ -307,6 +307,7 @@ namespace UtilityHub360.Data
                 entity.Ignore(e => e.ApprovedBy);
                 entity.Ignore(e => e.ApprovedAt);
                 entity.Ignore(e => e.ApprovalNotes);
+                entity.Ignore(e => e.StatementDate); // Temporary: Ignore until migration is applied
             });
 
             // BankAccount configuration
