@@ -778,15 +778,23 @@ namespace UtilityHub360.Services
 
         private UserSubscriptionDto MapToUserSubscriptionDto(UserSubscription subscription)
         {
+            if (subscription == null)
+            {
+                throw new ArgumentNullException(nameof(subscription), "UserSubscription argument is null.");
+            }
+
+            var user = subscription.User;
+            var plan = subscription.SubscriptionPlan;
+
             return new UserSubscriptionDto
             {
                 Id = subscription.Id,
                 UserId = subscription.UserId,
-                UserName = subscription.User?.Name ?? string.Empty,
-                UserEmail = subscription.User?.Email ?? string.Empty,
+                UserName = user != null ? user.Name ?? string.Empty : string.Empty,
+                UserEmail = user != null ? user.Email ?? string.Empty : string.Empty,
                 SubscriptionPlanId = subscription.SubscriptionPlanId,
-                PlanName = subscription.SubscriptionPlan?.Name ?? string.Empty,
-                PlanDisplayName = subscription.SubscriptionPlan?.DisplayName ?? string.Empty,
+                PlanName = plan != null ? plan.Name ?? string.Empty : string.Empty,
+                PlanDisplayName = plan != null ? plan.DisplayName ?? string.Empty : string.Empty,
                 Status = subscription.Status,
                 BillingCycle = subscription.BillingCycle,
                 CurrentPrice = subscription.CurrentPrice,

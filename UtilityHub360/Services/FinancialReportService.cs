@@ -783,16 +783,45 @@ namespace UtilityHub360.Services
                     var isCreditCard = accountTypeLower == "credit_card"
                                     || accountTypeLower == "credit card"
                                     || accountTypeLower == "creditcard";
-                    if (!isCreditCard && account.CurrentBalance > 0)
+                    if (!isCreditCard)
                     {
-                        assets.CurrentAssets.Add(new DTOs.BalanceSheetItemDto
+                        // Calculate balance as of reportDate
+                        // Get the last bank transaction on or before the report date
+                        var lastTransactionBeforeDate = await _context.Payments
+                            .Where(p => p.BankAccountId == account.Id && 
+                                       p.IsBankTransaction &&
+                                       p.TransactionDate.HasValue &&
+                                       p.TransactionDate <= reportDate &&
+                                       !p.IsDeleted)
+                            .OrderByDescending(p => p.TransactionDate)
+                            .ThenByDescending(p => p.CreatedAt)
+                            .FirstOrDefaultAsync();
+
+                        decimal accountBalanceAsOfDate;
+                        
+                        if (lastTransactionBeforeDate != null && lastTransactionBeforeDate.BalanceAfterTransaction.HasValue)
                         {
-                            AccountName = account.AccountName ?? "Unnamed Account",
-                            AccountType = account.AccountType ?? "Bank Account",
-                            Amount = account.CurrentBalance,
-                            Description = $"{account.AccountType} - {account.AccountName}",
-                            ReferenceId = account.Id
-                        });
+                            // Use the balance after the last transaction on or before the report date
+                            accountBalanceAsOfDate = lastTransactionBeforeDate.BalanceAfterTransaction.Value;
+                        }
+                        else
+                        {
+                            // No transactions before report date, use current balance
+                            // (This handles accounts with no transactions or accounts created after report date)
+                            accountBalanceAsOfDate = account.CurrentBalance;
+                        }
+
+                        if (accountBalanceAsOfDate > 0)
+                        {
+                            assets.CurrentAssets.Add(new DTOs.BalanceSheetItemDto
+                            {
+                                AccountName = account.AccountName ?? "Unnamed Account",
+                                AccountType = account.AccountType ?? "Bank Account",
+                                Amount = accountBalanceAsOfDate,
+                                Description = $"{account.AccountType} - {account.AccountName}",
+                                ReferenceId = account.Id
+                            });
+                        }
                     }
                 }
 
@@ -883,16 +912,41 @@ namespace UtilityHub360.Services
                     var isCreditCard = accountTypeLower == "credit_card"
                                     || accountTypeLower == "credit card"
                                     || accountTypeLower == "creditcard";
-                    if (isCreditCard && account.CurrentBalance > 0)
+                    if (isCreditCard)
                     {
-                        liabilities.CurrentLiabilities.Add(new DTOs.BalanceSheetItemDto
+                        // Calculate balance as of reportDate
+                        var lastTransactionBeforeDate = await _context.Payments
+                            .Where(p => p.BankAccountId == account.Id && 
+                                       p.IsBankTransaction &&
+                                       p.TransactionDate.HasValue &&
+                                       p.TransactionDate <= reportDate &&
+                                       !p.IsDeleted)
+                            .OrderByDescending(p => p.TransactionDate)
+                            .ThenByDescending(p => p.CreatedAt)
+                            .FirstOrDefaultAsync();
+
+                        decimal creditCardBalanceAsOfDate;
+                        
+                        if (lastTransactionBeforeDate != null && lastTransactionBeforeDate.BalanceAfterTransaction.HasValue)
                         {
-                            AccountName = account.AccountName ?? "Unnamed Credit Card",
-                            AccountType = "Credit Card",
-                            Amount = account.CurrentBalance,
-                            Description = $"Credit Card - {account.AccountName} (Outstanding Balance)",
-                            ReferenceId = account.Id
-                        });
+                            creditCardBalanceAsOfDate = lastTransactionBeforeDate.BalanceAfterTransaction.Value;
+                        }
+                        else
+                        {
+                            creditCardBalanceAsOfDate = account.CurrentBalance;
+                        }
+
+                        if (creditCardBalanceAsOfDate > 0)
+                        {
+                            liabilities.CurrentLiabilities.Add(new DTOs.BalanceSheetItemDto
+                            {
+                                AccountName = account.AccountName ?? "Unnamed Credit Card",
+                                AccountType = "Credit Card",
+                                Amount = creditCardBalanceAsOfDate,
+                                Description = $"Credit Card - {account.AccountName} (Outstanding Balance)",
+                                ReferenceId = account.Id
+                            });
+                        }
                     }
                 }
 

@@ -72,6 +72,7 @@ namespace UtilityHub360.Controllers
                     UnrealizedGainLoss = i.UnrealizedGainLoss,
                     RealizedGainLoss = i.RealizedGainLoss,
                     TotalReturnPercentage = i.TotalReturnPercentage,
+                    DateOfInvestment = i.DateOfInvestment,
                     Currency = i.Currency,
                     Description = i.Description,
                     IsActive = i.IsActive,
@@ -133,6 +134,7 @@ namespace UtilityHub360.Controllers
                     UnrealizedGainLoss = investment.UnrealizedGainLoss,
                     RealizedGainLoss = investment.RealizedGainLoss,
                     TotalReturnPercentage = investment.TotalReturnPercentage,
+                    DateOfInvestment = investment.DateOfInvestment,
                     Currency = investment.Currency,
                     Description = investment.Description,
                     IsActive = investment.IsActive,
@@ -180,6 +182,7 @@ namespace UtilityHub360.Controllers
                     AccountType = createDto.AccountType,
                     BrokerName = createDto.BrokerName,
                     AccountNumber = createDto.AccountNumber,
+                    DateOfInvestment = createDto.DateOfInvestment,
                     InitialInvestment = createDto.InitialInvestment,
                     CurrentValue = createDto.CurrentValue ?? createDto.InitialInvestment,
                     TotalCostBasis = createDto.InitialInvestment,
@@ -205,6 +208,7 @@ namespace UtilityHub360.Controllers
                     InitialInvestment = investment.InitialInvestment,
                     CurrentValue = investment.CurrentValue,
                     TotalCostBasis = investment.TotalCostBasis,
+                    DateOfInvestment = investment.DateOfInvestment,
                     Currency = investment.Currency,
                     Description = investment.Description,
                     IsActive = investment.IsActive,
@@ -261,6 +265,8 @@ namespace UtilityHub360.Controllers
                     investment.BrokerName = updateDto.BrokerName;
                 if (updateDto.CurrentValue.HasValue)
                     investment.CurrentValue = updateDto.CurrentValue.Value;
+                if (updateDto.DateOfInvestment.HasValue)
+                    investment.DateOfInvestment = updateDto.DateOfInvestment.Value;
                 if (updateDto.Description != null)
                     investment.Description = updateDto.Description;
                 if (updateDto.IsActive.HasValue)
@@ -285,6 +291,7 @@ namespace UtilityHub360.Controllers
                     UnrealizedGainLoss = investment.UnrealizedGainLoss,
                     RealizedGainLoss = investment.RealizedGainLoss,
                     TotalReturnPercentage = investment.TotalReturnPercentage,
+                    DateOfInvestment = investment.DateOfInvestment,
                     Currency = investment.Currency,
                     Description = investment.Description,
                     IsActive = investment.IsActive,

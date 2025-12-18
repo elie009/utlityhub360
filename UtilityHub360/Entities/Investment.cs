@@ -32,6 +32,8 @@ namespace UtilityHub360.Entities
         [StringLength(100)]
         public string? AccountNumber { get; set; } // Masked account number
 
+        public DateTime? DateOfInvestment { get; set; } // Date when the investment was made
+
         [Required]
         [Column(TypeName = "decimal(18,2)")]
         public decimal InitialInvestment { get; set; } = 0;
