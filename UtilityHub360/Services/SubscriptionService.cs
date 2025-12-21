@@ -780,7 +780,8 @@ namespace UtilityHub360.Services
         {
             if (subscription == null)
             {
-                throw new ArgumentNullException(nameof(subscription), "UserSubscription argument is null.");
+                // Return an empty DTO rather than throw, as per follow-up instructions
+                return new UserSubscriptionDto();
             }
 
             var user = subscription.User;

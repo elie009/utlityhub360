@@ -10,6 +10,10 @@ This directory contains database migration scripts and setup documentation.
 
 ## Important Migration Scripts
 
+### Investment Tracking Feature
+- `Scripts/create_investment_tables.sql` - Creates the Investments, InvestmentPositions, and InvestmentTransactions tables for comprehensive investment tracking
+- See `APPLY_INVESTMENT_MIGRATION.md` for detailed migration instructions
+
 ### Month Closing Feature
 - `create_closed_months_table_final.sql` - Creates the ClosedMonths table for month closing functionality
 

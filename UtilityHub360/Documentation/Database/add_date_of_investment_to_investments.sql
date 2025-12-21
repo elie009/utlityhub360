@@ -17,3 +17,4 @@ BEGIN
     PRINT 'DateOfInvestment column already exists in Investments table.';
 END
 
+

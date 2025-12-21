@@ -182,23 +182,13 @@ builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<IReconciliationService>(sp =>
 {
     var context = sp.GetRequiredService<ApplicationDbContext>();
-    var extractionService = sp.GetRequiredService<IBankStatementExtractionService>();
     var aiAgentService = sp.GetRequiredService<IAIAgentService>();
     var ocrService = sp.GetRequiredService<IOcrService>();
     var bankAccountService = sp.GetRequiredService<IBankAccountService>();
     var logger = sp.GetRequiredService<ILogger<ReconciliationService>>();
     var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
     var openAISettings = sp.GetRequiredService<OpenAISettings>();
-    return new ReconciliationService(context, extractionService, aiAgentService, ocrService, bankAccountService, logger, loggerFactory, openAISettings);
-});
-builder.Services.AddScoped<IBankStatementExtractionService>(sp =>
-{
-    var context = sp.GetRequiredService<ApplicationDbContext>();
-    var aiAgentService = sp.GetRequiredService<IAIAgentService>();
-    var ocrService = sp.GetRequiredService<IOcrService>();
-    var logger = sp.GetRequiredService<ILogger<BankStatementExtractionService>>();
-    var openAISettings = sp.GetRequiredService<OpenAISettings>();
-    return new BankStatementExtractionService(context, aiAgentService, ocrService, logger, openAISettings);
+    return new ReconciliationService(context, aiAgentService, ocrService, bankAccountService, logger, loggerFactory, openAISettings);
 });
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IBankFeedService, BankFeedService>();

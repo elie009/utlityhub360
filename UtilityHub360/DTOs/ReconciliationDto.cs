@@ -234,5 +234,44 @@ namespace UtilityHub360.DTOs
         public decimal MatchScore { get; set; } // 0-100, higher is better match
         public string MatchReason { get; set; } = string.Empty; // Why this is a good match
     }
-}
 
+    public class ProcessExtractedTextDto
+    {
+        [Required]
+        public string UploadId { get; set; } = string.Empty;
+
+        [Required]
+        public string ExtractedText { get; set; } = string.Empty;
+    }
+
+    public class StagingTransactionDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string UploadId { get; set; } = string.Empty;
+        public DateTime TransactionDate { get; set; }
+        public decimal Amount { get; set; }
+        public string TransactionType { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string? ReferenceNumber { get; set; }
+        public string? Merchant { get; set; }
+        public string? Category { get; set; }
+        public decimal BalanceAfterTransaction { get; set; }
+    }
+
+    public class ConfirmBankStatementUploadDto
+    {
+        [Required]
+        public string StatementName { get; set; } = string.Empty;
+
+        [Required]
+        public DateTime StatementStartDate { get; set; }
+
+        [Required]
+        public DateTime StatementEndDate { get; set; }
+
+        public decimal OpeningBalance { get; set; }
+        public decimal ClosingBalance { get; set; }
+        
+        public List<StagingTransactionDto>? Transactions { get; set; }
+    }
+}

@@ -54,6 +54,8 @@ namespace UtilityHub360.Data
         // Reconciliation Tables
         public DbSet<BankStatement> BankStatements { get; set; }
         public DbSet<BankStatementItem> BankStatementItems { get; set; }
+        public DbSet<BankStatementUpload> BankStatementUploads { get; set; }
+        public DbSet<StagingTransaction> StagingTransactions { get; set; }
         public DbSet<Reconciliation> Reconciliations { get; set; }
         public DbSet<ReconciliationMatch> ReconciliationMatches { get; set; }
         
@@ -678,6 +680,43 @@ namespace UtilityHub360.Data
                 entity.HasIndex(e => e.TransactionDate);
                 entity.HasIndex(e => e.IsMatched);
                 entity.HasIndex(e => e.MatchedTransactionId);
+            });
+
+            // BankStatementUpload configuration
+            modelBuilder.Entity<BankStatementUpload>(entity =>
+            {
+                entity.HasOne(d => d.User)
+                    .WithMany()
+                    .HasForeignKey(d => d.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.BankAccount)
+                    .WithMany()
+                    .HasForeignKey(d => d.BankAccountId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(d => d.ProcessedBankStatement)
+                    .WithMany()
+                    .HasForeignKey(d => d.ProcessedBankStatementId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.BankAccountId);
+                entity.HasIndex(e => new { e.BankAccountId, e.UserId });
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => e.CreatedAt);
+            });
+
+            // StagingTransaction configuration
+            modelBuilder.Entity<StagingTransaction>(entity =>
+            {
+                entity.HasOne(d => d.Upload)
+                    .WithMany()
+                    .HasForeignKey(d => d.UploadId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.UploadId);
+                entity.HasIndex(e => e.TransactionDate);
             });
 
             // Reconciliation configuration

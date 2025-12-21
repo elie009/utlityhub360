@@ -7,6 +7,11 @@ Users (1) ←→ (N) Loans (1) ←→ (N) Transactions
     ↓              ↓              ↓
     ↓              ↓              ↓
 Notifications  RepaymentSchedules  Payments
+
+Users (1) ←→ (N) Investments (1) ←→ (N) InvestmentPositions
+    ↓                                  ↓
+    ↓                                  ↓
+    └────────→ (N) InvestmentTransactions
 ```
 
 ## 🗄️ Tables Overview
@@ -114,6 +119,83 @@ User notification system.
 | IsRead | boolean | Read status |
 | CreatedAt | datetime | Creation date |
 
+### Investments Table
+Investment account tracking (brokerage, 401(k), IRA, etc.).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| Id | string (PK) | Unique investment account identifier |
+| UserId | string (FK) | Reference to Users table |
+| AccountName | string | Name of the investment account |
+| InvestmentType | string | Type: STOCK, BOND, MUTUAL_FUND, ETF, CRYPTO, REAL_ESTATE, OTHER |
+| AccountType | string | Account type: BROKERAGE, RETIREMENT_401K, RETIREMENT_IRA, TAXABLE, etc. |
+| BrokerName | string | Broker name (Fidelity, Vanguard, etc.) |
+| AccountNumber | string | Masked account number |
+| InitialInvestment | decimal | Initial investment amount |
+| CurrentValue | decimal | Current account value |
+| TotalCostBasis | decimal | Total amount invested |
+| UnrealizedGainLoss | decimal | Current value - Cost basis |
+| RealizedGainLoss | decimal | Gains/losses from sold positions |
+| TotalReturnPercentage | decimal | ((Current Value - Cost Basis) / Cost Basis) * 100 |
+| Currency | string | Currency code (default: USD) |
+| Description | string | Account description |
+| IsActive | boolean | Account active status |
+| CreatedAt | datetime | Account creation date |
+| UpdatedAt | datetime | Last update timestamp |
+| IsDeleted | boolean | Soft delete flag |
+| DeletedAt | datetime | Deletion timestamp (nullable) |
+| DeletedBy | string | User who deleted (nullable) |
+| DeleteReason | string | Reason for deletion (nullable) |
+
+### InvestmentPositions Table
+Individual positions/holdings within investment accounts.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| Id | string (PK) | Unique position identifier |
+| InvestmentId | string (FK) | Reference to Investments table |
+| Symbol | string | Stock ticker, fund symbol, etc. |
+| Name | string | Company name, fund name, etc. |
+| AssetType | string | Type: STOCK, BOND, MUTUAL_FUND, ETF, CRYPTO, REAL_ESTATE, OTHER |
+| Quantity | decimal | Number of shares/units |
+| AverageCostBasis | decimal | Average price per share/unit |
+| TotalCostBasis | decimal | Quantity * AverageCostBasis |
+| CurrentPrice | decimal | Current market price per share/unit |
+| CurrentValue | decimal | Quantity * CurrentPrice |
+| UnrealizedGainLoss | decimal | CurrentValue - TotalCostBasis |
+| GainLossPercentage | decimal | (UnrealizedGainLoss / TotalCostBasis) * 100 |
+| DividendsReceived | decimal | Total dividends received for this position |
+| InterestReceived | decimal | Total interest received (for bonds) |
+| LastPriceUpdate | datetime | Last price update timestamp (nullable) |
+| CreatedAt | datetime | Position creation date |
+| UpdatedAt | datetime | Last update timestamp |
+
+### InvestmentTransactions Table
+Investment transactions (buy, sell, dividend, etc.).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| Id | string (PK) | Unique transaction identifier |
+| InvestmentId | string (FK) | Reference to Investments table |
+| PositionId | string (FK) | Reference to InvestmentPositions table (nullable) |
+| TransactionType | string | Type: BUY, SELL, DIVIDEND, INTEREST, DEPOSIT, WITHDRAWAL, FEE, SPLIT, MERGER |
+| Symbol | string | Stock ticker, fund symbol, etc. |
+| Name | string | Company name, fund name, etc. (nullable) |
+| Quantity | decimal | Number of shares/units (nullable) |
+| PricePerShare | decimal | Price per share/unit (nullable) |
+| Amount | decimal | Total transaction amount |
+| Fees | decimal | Transaction fees (nullable) |
+| Taxes | decimal | Taxes on transaction (nullable) |
+| Currency | string | Currency code (default: USD) |
+| Description | string | Transaction description (nullable) |
+| Reference | string | External transaction reference (nullable) |
+| TransactionDate | datetime | Transaction date |
+| CreatedAt | datetime | Record creation date |
+| IsDeleted | boolean | Soft delete flag |
+| DeletedAt | datetime | Deletion timestamp (nullable) |
+| DeletedBy | string | User who deleted (nullable) |
+| DeleteReason | string | Reason for deletion (nullable) |
+
 ## 🔗 Relationships
 
 ### Primary Relationships
@@ -122,6 +204,10 @@ User notification system.
 - **Loans → Payments**: One-to-Many (One loan can have multiple payments)
 - **Loans → RepaymentSchedules**: One-to-Many (One loan has multiple payment schedules)
 - **Users → Notifications**: One-to-Many (One user can have multiple notifications)
+- **Users → Investments**: One-to-Many (One user can have multiple investment accounts)
+- **Investments → InvestmentPositions**: One-to-Many (One investment account can have multiple positions)
+- **Investments → InvestmentTransactions**: One-to-Many (One investment account can have multiple transactions)
+- **InvestmentPositions → InvestmentTransactions**: One-to-Many (One position can have multiple transactions, optional)
 
 ### Foreign Key Constraints
 - All foreign keys have proper referential integrity
@@ -137,6 +223,13 @@ User notification system.
 - `IX_Transactions_LoanId`: Index on LoanId for transaction queries
 - `IX_Payments_LoanId`: Index on LoanId for payment queries
 - `IX_Notifications_UserId`: Index on UserId for notification queries
+- `IX_Investments_UserId`: Index on UserId for user investment queries
+- `IX_Investments_IsActive`: Index on IsActive for filtering active accounts
+- `IX_InvestmentPositions_InvestmentId`: Index on InvestmentId for position queries
+- `IX_InvestmentPositions_Symbol`: Index on Symbol for symbol-based queries
+- `IX_InvestmentTransactions_InvestmentId`: Index on InvestmentId for transaction queries
+- `IX_InvestmentTransactions_TransactionDate`: Index on TransactionDate for date-based queries
+- `IX_InvestmentTransactions_TransactionType`: Index on TransactionType for type filtering
 
 ## 🔒 Data Types
 
@@ -220,4 +313,53 @@ JOIN Loans l ON rs.LoanId = l.Id
 JOIN Users u ON l.UserId = u.Id
 WHERE rs.DueDate < GETDATE() 
 AND rs.Status = 'PENDING'
+```
+
+### Get User Investment Accounts
+```sql
+SELECT i.*, u.Name as UserName 
+FROM Investments i 
+JOIN Users u ON i.UserId = u.Id 
+WHERE i.UserId = @userId 
+AND i.IsDeleted = 0
+ORDER BY i.CreatedAt DESC
+```
+
+### Get Investment Positions
+```sql
+SELECT ip.*, i.AccountName 
+FROM InvestmentPositions ip 
+JOIN Investments i ON ip.InvestmentId = i.Id 
+WHERE ip.InvestmentId = @investmentId
+ORDER BY ip.CurrentValue DESC
+```
+
+### Get Investment Transactions
+```sql
+SELECT it.*, i.AccountName 
+FROM InvestmentTransactions it 
+JOIN Investments i ON it.InvestmentId = i.Id 
+WHERE it.InvestmentId = @investmentId 
+AND it.IsDeleted = 0
+ORDER BY it.TransactionDate DESC
+```
+
+### Get Investment Performance Summary
+```sql
+SELECT 
+    i.AccountName,
+    i.CurrentValue,
+    i.TotalCostBasis,
+    i.UnrealizedGainLoss,
+    i.RealizedGainLoss,
+    i.TotalReturnPercentage,
+    COUNT(DISTINCT ip.Id) as PositionCount,
+    COUNT(DISTINCT it.Id) as TransactionCount
+FROM Investments i
+LEFT JOIN InvestmentPositions ip ON i.Id = ip.InvestmentId
+LEFT JOIN InvestmentTransactions it ON i.Id = it.InvestmentId AND it.IsDeleted = 0
+WHERE i.UserId = @userId 
+AND i.IsDeleted = 0
+GROUP BY i.Id, i.AccountName, i.CurrentValue, i.TotalCostBasis, 
+         i.UnrealizedGainLoss, i.RealizedGainLoss, i.TotalReturnPercentage
 ```

@@ -86,3 +86,4 @@ Remove-Item $tempSqlFile -ErrorAction SilentlyContinue
 
 Write-Host "`nScript completed." -ForegroundColor Yellow
 
+

@@ -83,41 +83,109 @@ namespace UtilityHub360.Services
 
         public async Task<ApiResponse<AuthResponseDto>> LoginAsync(LoginCredentialsDto loginCredentials)
         {
-            var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Email == loginCredentials.Email && u.IsActive);
-
-            if (user == null)
+            try
             {
-                throw new UnauthorizedAccessException("Invalid email or password");
-            }
-
-            // Verify the password
-            if (!BCrypt.Net.BCrypt.Verify(loginCredentials.Password, user.PasswordHash))
-            {
-                throw new UnauthorizedAccessException("Invalid email or password");
-            }
-
-            var token = GenerateJwtToken(user);
-            var refreshToken = GenerateRefreshToken();
-
-            return ApiResponse<AuthResponseDto>.SuccessResult(new AuthResponseDto
-            {
-                Token = token,
-                RefreshToken = refreshToken,
-                ExpiresAt = DateTime.UtcNow.AddMinutes(_jwtSettings.ExpirationMinutes),
-                User = new UserDto
+                // Check if email is provided
+                if (string.IsNullOrWhiteSpace(loginCredentials?.Email))
                 {
-                    Id = user.Id,
-                    Name = user.Name,
-                    Email = user.Email,
-                    Phone = user.Phone,
-                    Country = user.Country,
-                    Role = user.Role,
-                    IsActive = user.IsActive,
-                    CreatedAt = user.CreatedAt,
-                    UpdatedAt = user.UpdatedAt
+                    throw new UnauthorizedAccessException("Email is required");
                 }
-            });
+
+                // Check if password is provided
+                if (string.IsNullOrWhiteSpace(loginCredentials?.Password))
+                {
+                    throw new UnauthorizedAccessException("Password is required");
+                }
+
+                // Find user by email (case-insensitive)
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email.ToLower() == loginCredentials.Email.ToLower());
+
+                // Check if user exists
+                if (user == null)
+                {
+                    Console.WriteLine($"[AuthService] User not found for email: {loginCredentials.Email}");
+                    throw new UnauthorizedAccessException("Invalid email or password");
+                }
+
+                // Check if user is active
+                if (!user.IsActive)
+                {
+                    Console.WriteLine($"[AuthService] User account is inactive for email: {loginCredentials.Email}");
+                    throw new UnauthorizedAccessException("Account is inactive. Please contact support.");
+                }
+
+                // Check if password hash exists
+                if (string.IsNullOrEmpty(user.PasswordHash))
+                {
+                    Console.WriteLine($"[AuthService] User has no password hash for email: {loginCredentials.Email}");
+                    throw new UnauthorizedAccessException("Invalid email or password");
+                }
+
+                // Verify the password
+                bool passwordValid = false;
+                try
+                {
+                    passwordValid = BCrypt.Net.BCrypt.Verify(loginCredentials.Password, user.PasswordHash);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AuthService] Password verification error: {ex.Message}");
+                    throw new UnauthorizedAccessException("Invalid email or password");
+                }
+
+                if (!passwordValid)
+                {
+                    Console.WriteLine($"[AuthService] Password verification failed for email: {loginCredentials.Email}");
+                    throw new UnauthorizedAccessException("Invalid email or password");
+                }
+
+                // Generate JWT token
+                string token;
+                try
+                {
+                    token = GenerateJwtToken(user);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AuthService] Token generation error: {ex.Message}");
+                    throw new InvalidOperationException($"Failed to generate authentication token: {ex.Message}");
+                }
+
+                var refreshToken = GenerateRefreshToken();
+
+                Console.WriteLine($"[AuthService] Login successful for user: {user.Email} (ID: {user.Id})");
+
+                return ApiResponse<AuthResponseDto>.SuccessResult(new AuthResponseDto
+                {
+                    Token = token,
+                    RefreshToken = refreshToken,
+                    ExpiresAt = DateTime.UtcNow.AddMinutes(_jwtSettings.ExpirationMinutes),
+                    User = new UserDto
+                    {
+                        Id = user.Id,
+                        Name = user.Name,
+                        Email = user.Email,
+                        Phone = user.Phone,
+                        Country = user.Country,
+                        Role = user.Role,
+                        IsActive = user.IsActive,
+                        CreatedAt = user.CreatedAt,
+                        UpdatedAt = user.UpdatedAt
+                    }
+                });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Re-throw authentication errors
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AuthService] Unexpected error during login: {ex.GetType().Name} - {ex.Message}");
+                Console.WriteLine($"[AuthService] Stack trace: {ex.StackTrace}");
+                throw;
+            }
         }
 
         public async Task<ApiResponse<AuthResponseDto>> RefreshTokenAsync(string refreshToken)

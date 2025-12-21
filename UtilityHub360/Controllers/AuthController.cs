@@ -74,14 +74,16 @@ namespace UtilityHub360.Controllers
             {
                 // This is expected for invalid credentials
                 Console.WriteLine($"[Login] Unauthorized: {ex.Message}");
-                return Unauthorized(ApiResponse<AuthResponseDto>.ErrorResult(ex.Message));
+                // Use StatusCode(401, ...) instead of Unauthorized() to ensure response body is included
+                return StatusCode(401, ApiResponse<AuthResponseDto>.ErrorResult(ex.Message));
             }
             catch (Exception ex)
             {
                 // Log unexpected errors for debugging
                 Console.WriteLine($"[Login] Unexpected error: {ex.GetType().Name} - {ex.Message}");
                 Console.WriteLine($"[Login] Stack trace: {ex.StackTrace}");
-                return Unauthorized(ApiResponse<AuthResponseDto>.ErrorResult($"Login failed: {ex.Message}"));
+                // Use StatusCode(401, ...) instead of Unauthorized() to ensure response body is included
+                return StatusCode(401, ApiResponse<AuthResponseDto>.ErrorResult($"Login failed: {ex.Message}"));
             }
         }
 

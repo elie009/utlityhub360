@@ -58,8 +58,18 @@ namespace UtilityHub360.Controllers
                 var featureCheck = await _subscriptionService.CheckFeatureAccessAsync(userId, "WHITE_LABEL");
                 if (!featureCheck.Success || !featureCheck.Data)
                 {
-                    return BadRequest(ApiResponse<WhiteLabelSettingsDto>.ErrorResult(
-                        "White-Label is an Enterprise feature. Please upgrade to Premium Plus (Enterprise) to access this feature."));
+                    // Return default settings instead of error - this is expected for non-Enterprise users
+                    // This prevents unnecessary error logs and provides a better UX
+                    var defaultSettings = new WhiteLabelSettingsDto
+                    {
+                        CompanyName = "Your Company",
+                        LogoUrl = null,
+                        PrimaryColor = "#1976d2",
+                        SecondaryColor = "#424242",
+                        CustomDomain = null,
+                        IsActive = false
+                    };
+                    return Ok(ApiResponse<WhiteLabelSettingsDto>.SuccessResult(defaultSettings));
                 }
 
                 // Retrieve white-label settings from database
