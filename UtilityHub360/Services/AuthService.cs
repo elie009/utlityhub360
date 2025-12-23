@@ -16,13 +16,15 @@ namespace UtilityHub360.Services
         private readonly IConfiguration _configuration;
         private readonly JwtSettings _jwtSettings;
         private readonly IEmailService _emailService;
+        private readonly ICategoryService _categoryService;
 
-        public AuthService(ApplicationDbContext context, IConfiguration configuration, IEmailService emailService, JwtSettings jwtSettings)
+        public AuthService(ApplicationDbContext context, IConfiguration configuration, IEmailService emailService, JwtSettings jwtSettings, ICategoryService categoryService)
         {
             _context = context;
             _configuration = configuration;
             _emailService = emailService;
             _jwtSettings = jwtSettings;
+            _categoryService = categoryService;
         }
 
         public async Task<ApiResponse<AuthResponseDto>> RegisterAsync(RegisterDataDto registerData)
@@ -56,6 +58,17 @@ namespace UtilityHub360.Services
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
+
+            // Create default categories for new user
+            try
+            {
+                await _categoryService.CreateDefaultCategoriesAsync(user.Id);
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't fail registration if category creation fails
+                Console.WriteLine($"[AuthService] Failed to create default categories for user {user.Id}: {ex.Message}");
+            }
 
             // Generate tokens
             var token = GenerateJwtToken(user);
@@ -997,5 +1010,6 @@ namespace UtilityHub360.Services
                     // Table doesn't exist, skip
                 }
         }
+
     }
 }

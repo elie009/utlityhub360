@@ -201,6 +201,33 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to seed system categories: {ex.Message}"));
             }
         }
+
+        [HttpPost("create-default")]
+        public async Task<ActionResult<ApiResponse<bool>>> CreateDefaultCategories()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _categoryService.CreateDefaultCategoriesAsync(userId);
+                
+                if (result.Success)
+                {
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to create default categories: {ex.Message}"));
+            }
+        }
     }
 }
 

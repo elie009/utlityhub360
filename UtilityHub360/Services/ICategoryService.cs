@@ -12,6 +12,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<List<TransactionCategoryDto>>> GetAllCategoriesAsync(string userId, string? type = null);
         Task<ApiResponse<List<TransactionCategoryDto>>> GetActiveCategoriesAsync(string userId, string? type = null);
         Task<ApiResponse<bool>> SeedSystemCategoriesAsync(string userId);
+        Task<ApiResponse<bool>> CreateDefaultCategoriesAsync(string userId);
     }
 }
 

@@ -445,6 +445,11 @@ namespace UtilityHub360.Services
                 upload.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
+
+                // Auto-match with existing transactions and create new ones for unmatched items
+                await AutoMatchStatementItemsAsync(statement.Id, userId);
+                await CreateTransactionsFromUnmatchedItemsAsync(statement.Id, userId);
+
                 return await GetBankStatementAsync(statement.Id, userId);
             }
             catch (Exception ex)
