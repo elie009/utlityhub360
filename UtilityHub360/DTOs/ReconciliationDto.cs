@@ -244,6 +244,15 @@ namespace UtilityHub360.DTOs
         public string ExtractedText { get; set; } = string.Empty;
     }
 
+    public class TransactionSplitDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public string? BillId { get; set; }
+        public string? Category { get; set; }
+        public string? Description { get; set; }
+    }
+
     public class StagingTransactionDto
     {
         public string Id { get; set; } = string.Empty;
@@ -256,6 +265,8 @@ namespace UtilityHub360.DTOs
         public string? Merchant { get; set; }
         public string? Category { get; set; }
         public decimal BalanceAfterTransaction { get; set; }
+        public List<TransactionSplitDto>? Splits { get; set; }
+        public bool IsSplit { get; set; } = false;
     }
 
     public class ConfirmBankStatementUploadDto

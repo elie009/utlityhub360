@@ -1283,9 +1283,13 @@ namespace UtilityHub360.Services
 
                 // ==================== CATEGORY VALIDATION ====================
                 // Validate category if provided (skip validation for special categories like [SAVINGS-...] or [LOAN-...])
+                // Also skip validation if billId, loanId, or savingsAccountId is provided (these are valid categorizations)
                 if (!string.IsNullOrEmpty(createTransactionDto.Category) && 
                     !createTransactionDto.Category.StartsWith("[") && 
-                    createTransactionDto.TransactionType?.ToUpper() != "CREDIT")
+                    createTransactionDto.TransactionType?.ToUpper() != "CREDIT" &&
+                    string.IsNullOrEmpty(createTransactionDto.BillId) &&  // Skip if bill is linked
+                    string.IsNullOrEmpty(createTransactionDto.LoanId) &&  // Skip if loan is linked
+                    string.IsNullOrEmpty(createTransactionDto.SavingsAccountId))  // Skip if savings is linked
                 {
                     // Check if category exists in TransactionCategories table
                     var categoryExists = await _context.TransactionCategories
@@ -1608,70 +1612,245 @@ namespace UtilityHub360.Services
                     }
                 }
 
-                // Create transaction as Payment with IsBankTransaction = true
-                var payment = new Entities.Payment
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    BankAccountId = createTransactionDto.BankAccountId,
-                    BillId = billId,
-                    SavingsAccountId = savingsAccountId,
-                    LoanId = loanId,
-                    UserId = userId,
-                    Amount = createTransactionDto.Amount,
-                    Method = "BANK_TRANSFER",
-                    Reference = createTransactionDto.ReferenceNumber ?? $"BANK_TXN_{Guid.NewGuid()}",
-                    Status = "COMPLETED",
-                    IsBankTransaction = true,
-                    TransactionType = createTransactionDto.TransactionType.ToUpper(),
-                    Description = enhancedDescription,
-                    Category = createTransactionDto.Category,
-                    ExternalTransactionId = createTransactionDto.ExternalTransactionId,
-                    Notes = createTransactionDto.Notes,
-                    Merchant = createTransactionDto.Merchant,
-                    Location = createTransactionDto.Location,
-                    IsRecurring = createTransactionDto.IsRecurring,
-                    RecurringFrequency = createTransactionDto.RecurringFrequency,
-                    Currency = createTransactionDto.Currency.ToUpper(),
-                    ProcessedAt = createTransactionDto.TransactionDate,
-                    TransactionDate = createTransactionDto.TransactionDate,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                };
-
-                // Update account balance
-                // For credit cards:
-                // - CREDIT (refund/credit) increases balance
-                // - DEBIT (purchase) decreases balance
-                // For regular accounts:
-                // - CREDIT adds money, so balance increases
-                // - DEBIT removes money, so balance decreases
-                bool isCreditCard = bankAccount.AccountType?.ToLower() == "credit_card";
+                // Handle split transactions
+                var splitPayments = new List<Entities.Payment>();
+                var parentReference = createTransactionDto.ReferenceNumber ?? $"BANK_TXN_{Guid.NewGuid()}";
+                // Generate a shorter parent reference for splits to avoid exceeding 50 char limit
+                var shortParentRef = parentReference.Length > 20 
+                    ? parentReference.Substring(0, 20) 
+                    : parentReference;
+                var splitIndex = 0;
                 
-                if (payment.TransactionType == "CREDIT")
+                if (createTransactionDto.IsSplit && createTransactionDto.Splits != null && createTransactionDto.Splits.Count > 0)
                 {
-                    // Both credit cards and regular accounts: CREDIT increases balance
-                    bankAccount.CurrentBalance += payment.Amount;
+                    // Validate split amounts sum to transaction amount
+                    var totalSplitAmount = createTransactionDto.Splits.Sum(s => s.Amount);
+                    if (Math.Abs(totalSplitAmount - createTransactionDto.Amount) > 0.01m)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            $"Split amounts ({totalSplitAmount}) must equal transaction amount ({createTransactionDto.Amount})");
+                    }
+
+                    // Validate that all BillIds and Categories in splits exist
+                    foreach (var split in createTransactionDto.Splits)
+                    {
+                        // Validate BillId if provided
+                        if (!string.IsNullOrEmpty(split.BillId))
+                        {
+                            var billExists = await _context.Bills
+                                .AnyAsync(b => b.Id == split.BillId && b.UserId == userId && !b.IsDeleted);
+                            if (!billExists)
+                            {
+                                return ApiResponse<BankTransactionDto>.ErrorResult(
+                                    $"Bill with ID '{split.BillId}' does not exist or has been deleted. Please verify the bill selection.");
+                            }
+                        }
+
+                        // Validate Category if provided (skip validation for special categories like [SAVINGS-...] or [LOAN-...])
+                        if (!string.IsNullOrEmpty(split.Category) && 
+                            !split.Category.StartsWith("[") && 
+                            createTransactionDto.TransactionType?.ToUpper() != "CREDIT")
+                        {
+                            var categoryExists = await _context.TransactionCategories
+                                .AnyAsync(c => c.UserId == userId && 
+                                             c.Name.ToUpper() == split.Category.ToUpper() && 
+                                             c.IsActive && 
+                                             !c.IsDeleted);
+                            
+                            if (!categoryExists)
+                            {
+                                // Auto-create default categories if they don't exist (similar to main transaction)
+                                if (split.Category.Equals("Expenses", StringComparison.OrdinalIgnoreCase) ||
+                                    split.Category.Equals("Expense", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    var defaultExpensesCategory = new TransactionCategory
+                                    {
+                                        UserId = userId,
+                                        Name = "Expense",
+                                        Description = "Default expense category for general transactions",
+                                        Type = "EXPENSE",
+                                        IsActive = true,
+                                        IsSystemCategory = false,
+                                        DisplayOrder = 0,
+                                        CreatedAt = DateTime.UtcNow,
+                                        UpdatedAt = DateTime.UtcNow
+                                    };
+
+                                    _context.TransactionCategories.Add(defaultExpensesCategory);
+                                    await _context.SaveChangesAsync();
+
+                                    // Update the split category name to match what was created
+                                    split.Category = "Expense";
+                                    // Category is now created, continue
+                                }
+                                else if (split.Category.Equals("Bank Transfer", StringComparison.OrdinalIgnoreCase) ||
+                                         split.Category.Equals("Transfer", StringComparison.OrdinalIgnoreCase) ||
+                                         split.Category.Equals("TRANSFER", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    var defaultTransferCategory = new TransactionCategory
+                                    {
+                                        Id = Guid.NewGuid().ToString(),
+                                        UserId = userId,
+                                        Name = "TRANSFER",
+                                        Description = "Bank transfer between accounts",
+                                        Type = "TRANSFER",
+                                        Icon = "swap_horiz",
+                                        Color = "#95E1D3",
+                                        IsActive = true,
+                                        IsSystemCategory = false,
+                                        DisplayOrder = 18,
+                                        CreatedAt = DateTime.UtcNow,
+                                        UpdatedAt = DateTime.UtcNow
+                                    };
+
+                                    _context.TransactionCategories.Add(defaultTransferCategory);
+                                    await _context.SaveChangesAsync();
+
+                                    // Update the split category name to match what was created
+                                    split.Category = "TRANSFER";
+                                    // Category is now created, continue
+                                }
+                                else
+                                {
+                                    return ApiResponse<BankTransactionDto>.ErrorResult(
+                                        $"Category '{split.Category}' does not exist. Please create the category first or select an existing category.");
+                                }
+                            }
+                        }
+                    }
+
+                    // Create a payment record for each split
+                    foreach (var split in createTransactionDto.Splits)
+                    {
+                        splitIndex++;
+                        // Generate a shorter reference to fit within 50 character limit
+                        // Format: SPLIT_{index}_{shortGuid} where shortGuid is first 8 chars of parent ref
+                        var shortGuid = parentReference.Length > 8 
+                            ? parentReference.Substring(Math.Max(0, parentReference.Length - 8)) 
+                            : parentReference;
+                        var splitReference = $"SPLIT_{splitIndex}_{shortGuid}";
+                        // Ensure it doesn't exceed 50 characters
+                        if (splitReference.Length > 50)
+                        {
+                            splitReference = splitReference.Substring(0, 50);
+                        }
+                        
+                        var splitPayment = new Entities.Payment
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            BankAccountId = createTransactionDto.BankAccountId,
+                            BillId = !string.IsNullOrEmpty(split.BillId) ? split.BillId : null,
+                            UserId = userId,
+                            Amount = split.Amount,
+                            Method = "BANK_TRANSFER",
+                            Reference = splitReference,
+                            Status = "COMPLETED",
+                            IsBankTransaction = true,
+                            TransactionType = createTransactionDto.TransactionType.ToUpper(),
+                            Description = split.Description ?? enhancedDescription ?? $"Split payment - {split.Amount}",
+                            Category = split.Category ?? createTransactionDto.Category,
+                            ExternalTransactionId = parentReference, // Link all splits to parent transaction
+                            Notes = createTransactionDto.Notes ?? $"Split from transaction. Original amount: {createTransactionDto.Amount}",
+                            Merchant = createTransactionDto.Merchant,
+                            Location = createTransactionDto.Location,
+                            IsRecurring = false, // Splits cannot be recurring
+                            RecurringFrequency = null,
+                            Currency = createTransactionDto.Currency.ToUpper(),
+                            ProcessedAt = createTransactionDto.TransactionDate,
+                            TransactionDate = createTransactionDto.TransactionDate,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                        splitPayments.Add(splitPayment);
+                    }
                 }
-                else if (payment.TransactionType == "DEBIT")
+                else
                 {
-                    if (isCreditCard)
+                    // Create single transaction as Payment with IsBankTransaction = true
+                    var payment = new Entities.Payment
                     {
-                        // Credit card: DEBIT (purchase) decreases balance
-                        bankAccount.CurrentBalance -= payment.Amount;
-                    }
-                    else
-                    {
-                        // Regular account: DEBIT removes money
-                        bankAccount.CurrentBalance -= payment.Amount;
-                    }
+                        Id = Guid.NewGuid().ToString(),
+                        BankAccountId = createTransactionDto.BankAccountId,
+                        BillId = billId,
+                        SavingsAccountId = savingsAccountId,
+                        LoanId = loanId,
+                        UserId = userId,
+                        Amount = createTransactionDto.Amount,
+                        Method = "BANK_TRANSFER",
+                        Reference = parentReference,
+                        Status = "COMPLETED",
+                        IsBankTransaction = true,
+                        TransactionType = createTransactionDto.TransactionType.ToUpper(),
+                        Description = enhancedDescription,
+                        Category = createTransactionDto.Category,
+                        ExternalTransactionId = createTransactionDto.ExternalTransactionId,
+                        Notes = createTransactionDto.Notes,
+                        Merchant = createTransactionDto.Merchant,
+                        Location = createTransactionDto.Location,
+                        IsRecurring = createTransactionDto.IsRecurring,
+                        RecurringFrequency = createTransactionDto.RecurringFrequency,
+                        Currency = createTransactionDto.Currency.ToUpper(),
+                        ProcessedAt = createTransactionDto.TransactionDate,
+                        TransactionDate = createTransactionDto.TransactionDate,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    splitPayments.Add(payment);
                 }
 
-                payment.BalanceAfterTransaction = bankAccount.CurrentBalance;
+                // Update account balance for all payments (splits or single)
+                bool isCreditCard = bankAccount.AccountType?.ToLower() == "credit_card";
+                decimal totalAmount = splitPayments.Sum(p => p.Amount);
+                
+                foreach (var payment in splitPayments)
+                {
+                    if (payment.TransactionType == "CREDIT")
+                    {
+                        bankAccount.CurrentBalance += payment.Amount;
+                    }
+                    else if (payment.TransactionType == "DEBIT")
+                    {
+                        if (isCreditCard)
+                        {
+                            bankAccount.CurrentBalance -= payment.Amount;
+                        }
+                        else
+                        {
+                            bankAccount.CurrentBalance -= payment.Amount;
+                        }
+                    }
+                    payment.BalanceAfterTransaction = bankAccount.CurrentBalance;
+                }
+
                 bankAccount.UpdatedAt = DateTime.UtcNow;
+                _context.Payments.AddRange(splitPayments);
 
-                _context.Payments.Add(payment);
+                // Update bill status for splits linked to bills
+                foreach (var splitPayment in splitPayments.Where(sp => !string.IsNullOrEmpty(sp.BillId)))
+                {
+                    var bill = await _context.Bills
+                        .FirstOrDefaultAsync(b => b.Id == splitPayment.BillId && b.UserId == userId);
+                    
+                    if (bill != null && bill.Status == "PENDING" && splitPayment.TransactionType == "DEBIT")
+                    {
+                        bill.Status = "PAID";
+                        bill.PaidAt = DateTime.UtcNow;
+                        bill.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
 
                 // Also create BankTransaction record
+                // For split transactions, use a default description if none provided
+                var transactionDescription = createTransactionDto.Description;
+                if (createTransactionDto.IsSplit && string.IsNullOrWhiteSpace(transactionDescription))
+                {
+                    transactionDescription = $"Split transaction - {splitPayments.Count} allocations";
+                }
+                else if (string.IsNullOrWhiteSpace(transactionDescription))
+                {
+                    transactionDescription = enhancedDescription ?? "Bank transaction";
+                }
+
                 var bankTransaction = new Entities.BankTransaction
                 {
                     Id = Guid.NewGuid().ToString(),
@@ -1679,7 +1858,7 @@ namespace UtilityHub360.Services
                     UserId = userId,
                     Amount = createTransactionDto.Amount,
                     TransactionType = createTransactionDto.TransactionType.ToUpper(),
-                    Description = createTransactionDto.Description,
+                    Description = transactionDescription,
                     Category = createTransactionDto.Category,
                     ReferenceNumber = createTransactionDto.ReferenceNumber ?? $"BANK_TXN_{Guid.NewGuid()}",
                     ExternalTransactionId = createTransactionDto.ExternalTransactionId,
@@ -1705,8 +1884,8 @@ namespace UtilityHub360.Services
                     bankTransaction.TransactionPurpose = createTransactionDto.TransactionPurpose;
                 }
 
-                // Validate and handle linked entities
-                if (!string.IsNullOrEmpty(createTransactionDto.BillId))
+                // Validate and handle linked entities (only for non-split transactions)
+                if (!createTransactionDto.IsSplit && !string.IsNullOrEmpty(createTransactionDto.BillId))
                 {
                     var bill = await _context.Bills
                         .FirstOrDefaultAsync(b => b.Id == createTransactionDto.BillId && b.UserId == userId);
@@ -1724,11 +1903,16 @@ namespace UtilityHub360.Services
                     }
                     
                     // Update bill status if payment is for a bill (DEBIT transaction)
-                    if (payment.TransactionType == "DEBIT" && bill.Status == "PENDING")
+                    // Note: firstPayment is declared in outer scope, but we need to check here for non-split transactions
+                    if (!createTransactionDto.IsSplit)
                     {
-                        bill.Status = "PAID";
-                        bill.PaidAt = DateTime.UtcNow;
-                        bill.UpdatedAt = DateTime.UtcNow;
+                        var payment = splitPayments.FirstOrDefault();
+                        if (payment != null && payment.TransactionType == "DEBIT" && bill.Status == "PENDING")
+                        {
+                            bill.Status = "PAID";
+                            bill.PaidAt = DateTime.UtcNow;
+                            bill.UpdatedAt = DateTime.UtcNow;
+                        }
                     }
                 }
 
@@ -1761,8 +1945,8 @@ namespace UtilityHub360.Services
 
                 _context.BankTransactions.Add(bankTransaction);
 
-                // Handle savings account transaction if linked
-                if (!string.IsNullOrEmpty(savingsAccountId))
+                // Handle savings account transaction if linked (only for non-split transactions)
+                if (!createTransactionDto.IsSplit && !string.IsNullOrEmpty(savingsAccountId))
                 {
                     var savingsAccount = await _context.SavingsAccounts
                         .FirstOrDefaultAsync(sa => sa.Id == savingsAccountId && sa.UserId == userId);
@@ -1779,68 +1963,81 @@ namespace UtilityHub360.Services
                     // Note: This means linking a transaction to savings always adds to savings balance
                     string savingsTransactionType = "DEPOSIT";
 
-                    // Create savings transaction
-                    var savingsTransaction = new SavingsTransaction
+                    // Note: firstPayment is declared in outer scope, use it here
+                    var paymentForSavings = splitPayments.FirstOrDefault();
+                    if (paymentForSavings != null)
                     {
-                        Id = Guid.NewGuid().ToString(),
-                        SavingsAccountId = savingsAccountId,
-                        SourceBankAccountId = createTransactionDto.BankAccountId,
-                        Amount = payment.Amount,
-                        TransactionType = savingsTransactionType,
-                        Description = payment.Description,
-                        Category = payment.Category ?? "SAVINGS",
-                        Notes = payment.Notes,
-                        TransactionDate = payment.TransactionDate ?? DateTime.UtcNow,
-                        Currency = payment.Currency,
-                        IsRecurring = payment.IsRecurring,
-                        RecurringFrequency = payment.RecurringFrequency,
-                        CreatedAt = DateTime.UtcNow
-                    };
-
-                    _context.SavingsTransactions.Add(savingsTransaction);
-
-                    // Update savings account balance
-                    if (savingsTransactionType == "DEPOSIT")
-                    {
-                        savingsAccount.CurrentBalance += payment.Amount;
-                    }
-                    else if (savingsTransactionType == "WITHDRAWAL")
-                    {
-                        // Check if savings account has sufficient balance
-                        if (savingsAccount.CurrentBalance < payment.Amount)
+                        // Create savings transaction
+                        var savingsTransaction = new SavingsTransaction
                         {
-                            return ApiResponse<BankTransactionDto>.ErrorResult(
-                                $"Insufficient balance in savings account. Current balance: {savingsAccount.CurrentBalance}, Required: {payment.Amount}");
-                        }
-                        savingsAccount.CurrentBalance -= payment.Amount;
-                    }
+                            Id = Guid.NewGuid().ToString(),
+                            SavingsAccountId = savingsAccountId,
+                            SourceBankAccountId = createTransactionDto.BankAccountId,
+                            Amount = paymentForSavings.Amount,
+                            TransactionType = savingsTransactionType,
+                            Description = paymentForSavings.Description,
+                            Category = paymentForSavings.Category ?? "SAVINGS",
+                            Notes = paymentForSavings.Notes,
+                            TransactionDate = paymentForSavings.TransactionDate ?? DateTime.UtcNow,
+                            Currency = paymentForSavings.Currency,
+                            IsRecurring = paymentForSavings.IsRecurring,
+                            RecurringFrequency = paymentForSavings.RecurringFrequency,
+                            CreatedAt = DateTime.UtcNow
+                        };
 
-                    savingsAccount.UpdatedAt = DateTime.UtcNow;
+                        _context.SavingsTransactions.Add(savingsTransaction);
+
+                        // Update savings account balance
+                        if (savingsTransactionType == "DEPOSIT")
+                        {
+                            savingsAccount.CurrentBalance += paymentForSavings.Amount;
+                        }
+                        else if (savingsTransactionType == "WITHDRAWAL")
+                        {
+                            // Check if savings account has sufficient balance
+                            if (savingsAccount.CurrentBalance < paymentForSavings.Amount)
+                            {
+                                return ApiResponse<BankTransactionDto>.ErrorResult(
+                                    $"Insufficient balance in savings account. Current balance: {savingsAccount.CurrentBalance}, Required: {paymentForSavings.Amount}");
+                            }
+                            savingsAccount.CurrentBalance -= paymentForSavings.Amount;
+                        }
+
+                        savingsAccount.UpdatedAt = DateTime.UtcNow;
+                    }
                 }
 
-                // Create double-entry journal entry based on transaction type
-                using var transaction = await _context.Database.BeginTransactionAsync();
-                try
+                // Create double-entry journal entry based on transaction type (skip for splits - handled per split)
+                var firstPayment = splitPayments.FirstOrDefault();
+                if (firstPayment == null)
                 {
-                    JournalEntry? journalEntry = null;
-                    var reference = payment.Reference ?? $"BANK_TXN_{Guid.NewGuid()}";
+                    return ApiResponse<BankTransactionDto>.ErrorResult("No payment created");
+                }
 
-                    if (payment.TransactionType == "CREDIT")
+                if (!createTransactionDto.IsSplit)
+                {
+                    using var transaction = await _context.Database.BeginTransactionAsync();
+                    try
                     {
-                        // Income transaction: Debit Bank Account, Credit Income Account
-                        var category = payment.Category ?? "Other Income";
-                        journalEntry = await _accountingService.CreateIncomeEntryAsync(
-                            userId: userId,
-                            amount: payment.Amount,
-                            category: category,
-                            bankAccountName: bankAccount.AccountName,
-                            reference: reference,
-                            description: payment.Description,
-                            entryDate: payment.TransactionDate ?? DateTime.UtcNow
-                        );
-                    }
-                    else if (payment.TransactionType == "DEBIT")
-                    {
+                        JournalEntry? journalEntry = null;
+                        var reference = firstPayment.Reference ?? parentReference;
+
+                        if (firstPayment.TransactionType == "CREDIT")
+                        {
+                            // Income transaction: Debit Bank Account, Credit Income Account
+                            var category = firstPayment.Category ?? "Other Income";
+                            journalEntry = await _accountingService.CreateIncomeEntryAsync(
+                                userId: userId,
+                                amount: firstPayment.Amount,
+                                category: category,
+                                bankAccountName: bankAccount.AccountName,
+                                reference: reference,
+                                description: firstPayment.Description,
+                                entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
+                            );
+                        }
+                        else if (firstPayment.TransactionType == "DEBIT")
+                        {
                         // Check if this is a bank transfer (has toBankAccountId or category is TRANSFER)
                         // Reuse the isBankTransfer variable from outer scope (already validated above)
                         if (isBankTransfer && !string.IsNullOrEmpty(createTransactionDto.ToBankAccountId))
@@ -1856,7 +2053,7 @@ namespace UtilityHub360.Services
                             }
 
                             // Update destination account balance
-                            destinationAccount.CurrentBalance += payment.Amount;
+                            destinationAccount.CurrentBalance += firstPayment.Amount;
                             destinationAccount.UpdatedAt = DateTime.UtcNow;
 
                             // Create a corresponding CREDIT transaction for the destination bank account
@@ -1865,12 +2062,12 @@ namespace UtilityHub360.Services
                                 Id = Guid.NewGuid().ToString(),
                                 UserId = userId,
                                 BankAccountId = destinationAccount.Id,
-                                Amount = payment.Amount,
+                                Amount = firstPayment.Amount,
                                 TransactionType = "CREDIT",
                                 Description = $"Received from {bankAccount.AccountName}",
                                 Category = "TRANSFER",
-                                TransactionDate = payment.TransactionDate ?? DateTime.UtcNow,
-                                Currency = payment.Currency,
+                                TransactionDate = firstPayment.TransactionDate ?? DateTime.UtcNow,
+                                Currency = firstPayment.Currency,
                                 IsBankTransaction = true,
                                 Status = "COMPLETED",
                                 Method = "BANK_TRANSFER",
@@ -1884,19 +2081,19 @@ namespace UtilityHub360.Services
                             _context.Payments.Add(destinationPayment);
 
                             // Update source transaction description to indicate transfer
-                            if (string.IsNullOrEmpty(payment.Description) || payment.Description == "Transfer to Bank Account")
+                            if (string.IsNullOrEmpty(firstPayment.Description) || firstPayment.Description == "Transfer to Bank Account")
                             {
-                                payment.Description = $"Transfer to {destinationAccount.AccountName}";
+                                firstPayment.Description = $"Transfer to {destinationAccount.AccountName}";
                             }
 
                             journalEntry = await _accountingService.CreateBankTransferEntryAsync(
                                 userId: userId,
-                                amount: payment.Amount,
+                                amount: firstPayment.Amount,
                                 sourceAccountName: bankAccount.AccountName,
                                 destinationAccountName: destinationAccount.AccountName,
                                 reference: reference,
-                                description: payment.Description,
-                                entryDate: payment.TransactionDate ?? DateTime.UtcNow
+                                description: firstPayment.Description,
+                                entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
                             );
                         }
                         else if (!string.IsNullOrEmpty(billId))
@@ -1908,13 +2105,13 @@ namespace UtilityHub360.Services
                             journalEntry = await _accountingService.CreateBillPaymentEntryAsync(
                                 billId: billId,
                                 userId: userId,
-                                amount: payment.Amount,
+                                amount: firstPayment.Amount,
                                 billName: billName,
                                 billType: billType,
                                 bankAccountName: bankAccount.AccountName,
                                 reference: reference,
-                                description: payment.Description,
-                                entryDate: payment.TransactionDate ?? DateTime.UtcNow
+                                description: firstPayment.Description,
+                                entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
                             );
                         }
                         else if (!string.IsNullOrEmpty(savingsAccountId))
@@ -1927,12 +2124,12 @@ namespace UtilityHub360.Services
                                 journalEntry = await _accountingService.CreateSavingsDepositEntryAsync(
                                     savingsAccountId: savingsAccountId,
                                     userId: userId,
-                                    amount: payment.Amount,
+                                    amount: firstPayment.Amount,
                                     savingsAccountName: savingsAccount.AccountName,
                                     bankAccountName: bankAccount.AccountName,
                                     reference: reference,
-                                    description: payment.Description,
-                                    entryDate: payment.TransactionDate ?? DateTime.UtcNow
+                                    description: firstPayment.Description,
+                                    entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
                                 );
                             }
                         }
@@ -1941,56 +2138,123 @@ namespace UtilityHub360.Services
                             // Loan payment: This should be handled by LoanService, but we can create expense entry
                             // Note: Loan payments typically have principal and interest split, which is handled in LoanService
                             // For now, create a general expense entry
-                            var category = payment.Category ?? "Loan Payment";
+                            var category = firstPayment.Category ?? "Loan Payment";
                             journalEntry = await _accountingService.CreateExpenseEntryAsync(
                                 userId: userId,
-                                amount: payment.Amount,
+                                amount: firstPayment.Amount,
                                 category: category,
                                 bankAccountName: bankAccount.AccountName,
                                 reference: reference,
-                                description: payment.Description,
-                                entryDate: payment.TransactionDate ?? DateTime.UtcNow
+                                description: firstPayment.Description,
+                                entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
                             );
                         }
                         else
                         {
                             // Regular expense: Debit Expense, Credit Bank Account
-                            var category = payment.Category ?? "General Expense";
+                            var category = firstPayment.Category ?? "General Expense";
                             journalEntry = await _accountingService.CreateExpenseEntryAsync(
                                 userId: userId,
-                                amount: payment.Amount,
+                                amount: firstPayment.Amount,
                                 category: category,
                                 bankAccountName: bankAccount.AccountName,
                                 reference: reference,
-                                description: payment.Description,
-                                entryDate: payment.TransactionDate ?? DateTime.UtcNow
+                                description: firstPayment.Description,
+                                entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
                             );
                         }
+                        }
+
+                        // Save all changes including journal entry
+                        await _context.SaveChangesAsync();
+                        await transaction.CommitAsync();
                     }
-
-                    // Save all changes including journal entry
-                    await _context.SaveChangesAsync();
-                    await transaction.CommitAsync();
-
-                    var transactionDto = MapPaymentToBankTransactionDto(payment);
-                    return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Transaction created successfully with double-entry validation");
-                }
-                catch (Exception journalEx)
-                {
-                    await transaction.RollbackAsync();
-                    // Include inner exception details if available (usually contains the actual database error)
-                    var errorMessage = journalEx.Message;
-                    if (journalEx.InnerException != null)
+                    catch (Exception journalEx)
                     {
-                        errorMessage += $" Inner exception: {journalEx.InnerException.Message}";
+                        await transaction.RollbackAsync();
+                        // Include inner exception details if available (usually contains the actual database error)
+                        var errorMessage = journalEx.Message;
+                        if (journalEx.InnerException != null)
+                        {
+                            errorMessage += $" Inner exception: {journalEx.InnerException.Message}";
+                        }
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            $"Failed to create transaction with double-entry validation: {errorMessage}");
                     }
-                    return ApiResponse<BankTransactionDto>.ErrorResult(
-                        $"Failed to create transaction with double-entry validation: {errorMessage}");
                 }
+                else
+                {
+                    // For split transactions, save without journal entries (splits are handled individually)
+                    try
+                    {
+                        await _context.SaveChangesAsync();
+                    }
+                    catch (DbUpdateException dbEx)
+                    {
+                        // Handle database constraint violations for split transactions
+                        var innerException = dbEx.InnerException?.Message ?? dbEx.Message;
+                        var errorMessage = $"Failed to create split transaction: {innerException}";
+                        
+                        // Check for common constraint violations
+                        if (innerException.Contains("FOREIGN KEY") || innerException.Contains("constraint"))
+                        {
+                            // Check if it's a BillId issue
+                            if (innerException.Contains("BillId") || innerException.Contains("Bills"))
+                            {
+                                errorMessage = "One or more bills referenced in the split transaction do not exist or have been deleted. Please verify all bill selections.";
+                            }
+                            // Check if it's a Category issue
+                            else if (innerException.Contains("Category") || innerException.Contains("TransactionCategories"))
+                            {
+                                errorMessage = "One or more categories referenced in the split transaction do not exist. Please verify all category selections.";
+                            }
+                            else
+                            {
+                                errorMessage = $"Database constraint violation: {innerException}";
+                            }
+                        }
+                        
+                        return ApiResponse<BankTransactionDto>.ErrorResult(errorMessage);
+                    }
+                }
+
+                // Return the first payment as the transaction DTO
+                var transactionDto = MapPaymentToBankTransactionDto(firstPayment);
+                return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, 
+                    createTransactionDto.IsSplit 
+                        ? $"Transaction split into {splitPayments.Count} payments created successfully" 
+                        : "Transaction created successfully with double-entry validation");
+            }
+            catch (DbUpdateException dbEx)
+            {
+                // Handle database constraint violations
+                var innerException = dbEx.InnerException?.Message ?? dbEx.Message;
+                var errorMessage = $"Failed to create transaction: {innerException}";
+                
+                // Check for common constraint violations
+                if (innerException.Contains("FOREIGN KEY") || innerException.Contains("constraint"))
+                {
+                    if (innerException.Contains("BillId") || innerException.Contains("Bills"))
+                    {
+                        errorMessage = "The bill referenced in this transaction does not exist or has been deleted. Please verify the bill selection.";
+                    }
+                    else if (innerException.Contains("Category") || innerException.Contains("TransactionCategories"))
+                    {
+                        errorMessage = "The category referenced in this transaction does not exist. Please verify the category selection.";
+                    }
+                }
+                
+                return ApiResponse<BankTransactionDto>.ErrorResult(errorMessage);
             }
             catch (Exception ex)
             {
-                return ApiResponse<BankTransactionDto>.ErrorResult($"Failed to create transaction: {ex.Message}");
+                // Include inner exception details if available
+                var errorMessage = ex.Message;
+                if (ex.InnerException != null)
+                {
+                    errorMessage += $" Inner exception: {ex.InnerException.Message}";
+                }
+                return ApiResponse<BankTransactionDto>.ErrorResult($"Failed to create transaction: {errorMessage}");
             }
         }
 

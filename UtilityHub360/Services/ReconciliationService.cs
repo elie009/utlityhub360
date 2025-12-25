@@ -418,22 +418,112 @@ namespace UtilityHub360.Services
 
                 if (confirmDto.Transactions != null)
                 {
-                    var items = confirmDto.Transactions.Select(t => new BankStatementItem
+                    var items = new List<BankStatementItem>();
+                    var splitPayments = new List<Entities.Payment>();
+                    var parentTransactionId = Guid.NewGuid().ToString();
+
+                    foreach (var t in confirmDto.Transactions)
                     {
-                        BankStatementId = statement.Id,
-                        TransactionDate = t.TransactionDate,
-                        Amount = t.Amount,
-                        TransactionType = t.TransactionType,
-                        Description = t.Description,
-                        ReferenceNumber = t.ReferenceNumber,
-                        Merchant = t.Merchant,
-                        Category = t.Category,
-                        BalanceAfterTransaction = t.BalanceAfterTransaction,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    }).ToList();
+                        // Create BankStatementItem for the original transaction
+                        var item = new BankStatementItem
+                        {
+                            BankStatementId = statement.Id,
+                            TransactionDate = t.TransactionDate,
+                            Amount = t.Amount,
+                            TransactionType = t.TransactionType,
+                            Description = t.Description,
+                            ReferenceNumber = t.ReferenceNumber,
+                            Merchant = t.Merchant,
+                            Category = t.Category,
+                            BalanceAfterTransaction = t.BalanceAfterTransaction,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                        items.Add(item);
+
+                        // If transaction has splits, create multiple Payment records
+                        if (t.IsSplit && t.Splits != null && t.Splits.Count > 0)
+                        {
+                            var parentRef = t.ReferenceNumber ?? $"SPLIT_{parentTransactionId}_{DateTime.UtcNow:yyyyMMddHHmmss}";
+                            
+                            foreach (var split in t.Splits)
+                            {
+                                var splitPayment = new Entities.Payment
+                                {
+                                    Id = Guid.NewGuid().ToString(),
+                                    BankAccountId = statement.BankAccountId,
+                                    BillId = !string.IsNullOrEmpty(split.BillId) ? split.BillId : null,
+                                    UserId = userId,
+                                    Amount = split.Amount,
+                                    Method = "BANK_TRANSFER",
+                                    Reference = $"{parentRef}_SPLIT_{split.Id}",
+                                    Status = "COMPLETED",
+                                    IsBankTransaction = true,
+                                    TransactionType = t.TransactionType,
+                                    Description = split.Description ?? t.Description ?? $"Split payment - {split.Amount}",
+                                    Category = split.Category ?? t.Category,
+                                    ExternalTransactionId = parentRef, // Link all splits to parent transaction
+                                    Notes = $"Split from transaction {t.Id}. Original amount: {t.Amount}",
+                                    Merchant = t.Merchant,
+                                    Currency = "USD",
+                                    ProcessedAt = t.TransactionDate,
+                                    TransactionDate = t.TransactionDate,
+                                    CreatedAt = DateTime.UtcNow,
+                                    UpdatedAt = DateTime.UtcNow
+                                };
+
+                                splitPayments.Add(splitPayment);
+                            }
+
+                            // Mark the BankStatementItem as matched since we're creating split payments
+                            item.IsMatched = true;
+                            item.MatchedTransactionId = splitPayments.First().Id;
+                            item.MatchedTransactionType = "Payment";
+                            item.MatchedAt = DateTime.UtcNow;
+                            item.MatchedBy = userId;
+                        }
+                    }
 
                     _context.BankStatementItems.AddRange(items);
+                    
+                    // Add split payments if any
+                    if (splitPayments.Any())
+                    {
+                        _context.Payments.AddRange(splitPayments);
+                        
+                        // Update bank account balance for split transactions
+                        var bankAccount = await _context.BankAccounts
+                            .FirstOrDefaultAsync(ba => ba.Id == statement.BankAccountId);
+                        
+                        if (bankAccount != null)
+                        {
+                            foreach (var splitPayment in splitPayments)
+                            {
+                                if (splitPayment.TransactionType == "DEBIT")
+                                {
+                                    bankAccount.CurrentBalance -= splitPayment.Amount;
+                                }
+                                else if (splitPayment.TransactionType == "CREDIT")
+                                {
+                                    bankAccount.CurrentBalance += splitPayment.Amount;
+                                }
+                            }
+                        }
+
+                        // Update bill status for splits linked to bills
+                        foreach (var splitPayment in splitPayments.Where(sp => !string.IsNullOrEmpty(sp.BillId)))
+                        {
+                            var bill = await _context.Bills
+                                .FirstOrDefaultAsync(b => b.Id == splitPayment.BillId && b.UserId == userId);
+                            
+                            if (bill != null && bill.Status == "PENDING" && splitPayment.TransactionType == "DEBIT")
+                            {
+                                bill.Status = "PAID";
+                                bill.PaidAt = DateTime.UtcNow;
+                                bill.UpdatedAt = DateTime.UtcNow;
+                            }
+                        }
+                    }
                 }
 
                 var staging = await _context.StagingTransactions.Where(t => t.UploadId == uploadId).ToListAsync();

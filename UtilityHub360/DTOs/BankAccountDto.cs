@@ -204,6 +204,10 @@ namespace UtilityHub360.DTOs
 
         [StringLength(450)]
         public string? ToBankAccountId { get; set; } // Destination account for bank transfer transactions
+
+        // Split transaction support
+        public List<TransactionSplitDto>? Splits { get; set; }
+        public bool IsSplit { get; set; } = false;
     }
 
     public class UpdateBankTransactionDto

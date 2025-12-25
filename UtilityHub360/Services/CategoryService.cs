@@ -197,10 +197,25 @@ namespace UtilityHub360.Services
                     .ThenBy(c => c.Name)
                     .ToListAsync();
 
+                // Batch get all transaction counts in a single query to avoid N+1 problem
                 var categoryDtos = new List<TransactionCategoryDto>();
-                foreach (var category in categories)
+                
+                if (categories.Any())
                 {
-                    categoryDtos.Add(await MapToCategoryDtoAsync(category));
+                    var categoryNames = categories.Select(c => c.Name).ToList();
+                    var transactionCounts = await _context.BankTransactions
+                        .Where(t => t.UserId == userId && 
+                                    categoryNames.Contains(t.Category) && 
+                                    !t.IsDeleted)
+                        .GroupBy(t => t.Category)
+                        .Select(g => new { CategoryName = g.Key, Count = g.Count() })
+                        .ToDictionaryAsync(x => x.CategoryName, x => x.Count);
+
+                    foreach (var category in categories)
+                    {
+                        var transactionCount = transactionCounts.GetValueOrDefault(category.Name, 0);
+                        categoryDtos.Add(MapToCategoryDto(category, transactionCount));
+                    }
                 }
 
                 return ApiResponse<List<TransactionCategoryDto>>.SuccessResult(categoryDtos);
@@ -228,10 +243,25 @@ namespace UtilityHub360.Services
                     .ThenBy(c => c.Name)
                     .ToListAsync();
 
+                // Batch get all transaction counts in a single query to avoid N+1 problem
                 var categoryDtos = new List<TransactionCategoryDto>();
-                foreach (var category in categories)
+                
+                if (categories.Any())
                 {
-                    categoryDtos.Add(await MapToCategoryDtoAsync(category));
+                    var categoryNames = categories.Select(c => c.Name).ToList();
+                    var transactionCounts = await _context.BankTransactions
+                        .Where(t => t.UserId == userId && 
+                                    categoryNames.Contains(t.Category) && 
+                                    !t.IsDeleted)
+                        .GroupBy(t => t.Category)
+                        .Select(g => new { CategoryName = g.Key, Count = g.Count() })
+                        .ToDictionaryAsync(x => x.CategoryName, x => x.Count);
+
+                    foreach (var category in categories)
+                    {
+                        var transactionCount = transactionCounts.GetValueOrDefault(category.Name, 0);
+                        categoryDtos.Add(MapToCategoryDto(category, transactionCount));
+                    }
                 }
 
                 return ApiResponse<List<TransactionCategoryDto>>.SuccessResult(categoryDtos);
@@ -312,7 +342,7 @@ namespace UtilityHub360.Services
                     .ToListAsync();
 
                 // Define default category names to check
-                var defaultCategoryNames = new[] { "Food", "Transport", "Medicine", "Grocery", "Rent", "Gift", "Savings", "Entertainment" };
+                var defaultCategoryNames = new[] { "Food", "Transport", "Medicine", "Grocery", "Rent", "Gift", "Savings", "Entertainment", "Cash on Hand" };
                 
                 // Check if any default categories already exist
                 var existingDefaultCategories = existingCategories
@@ -337,7 +367,8 @@ namespace UtilityHub360.Services
                     new { Name = "Rent", Type = "EXPENSE", Icon = "home", Color = "#95E1D3", DisplayOrder = 5 },
                     new { Name = "Gift", Type = "EXPENSE", Icon = "card_giftcard", Color = "#FCBAD3", DisplayOrder = 6 },
                     new { Name = "Savings", Type = "SAVINGS", Icon = "savings", Color = "#4ECDC4", DisplayOrder = 7 },
-                    new { Name = "Entertainment", Type = "EXPENSE", Icon = "movie", Color = "#AA96DA", DisplayOrder = 8 }
+                    new { Name = "Entertainment", Type = "EXPENSE", Icon = "movie", Color = "#AA96DA", DisplayOrder = 8 },
+                    new { Name = "Cash on Hand", Type = "EXPENSE", Icon = "account_balance_wallet", Color = "#FFD93D", DisplayOrder = 9 }
                 };
 
                 foreach (var category in defaultCategories)
@@ -381,6 +412,11 @@ namespace UtilityHub360.Services
             var transactionCount = await _context.BankTransactions
                 .CountAsync(t => t.Category == category.Name && t.UserId == category.UserId && !t.IsDeleted);
 
+            return MapToCategoryDto(category, transactionCount);
+        }
+
+        private TransactionCategoryDto MapToCategoryDto(TransactionCategory category, int transactionCount)
+        {
             return new TransactionCategoryDto
             {
                 Id = category.Id,
