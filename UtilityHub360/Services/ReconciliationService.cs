@@ -521,6 +521,9 @@ namespace UtilityHub360.Services
                                 bill.Status = "PAID";
                                 bill.PaidAt = DateTime.UtcNow;
                                 bill.UpdatedAt = DateTime.UtcNow;
+                                
+                                // Explicitly mark the bill as modified to ensure EF tracks the changes
+                                _context.Entry(bill).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
                             }
                         }
                     }
