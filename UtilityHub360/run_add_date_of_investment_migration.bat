@@ -4,3 +4,6 @@ powershell.exe -ExecutionPolicy Bypass -File "%~dp0run_add_date_of_investment_mi
 pause
 
 
+
+
+

@@ -244,6 +244,12 @@ namespace UtilityHub360.DTOs
         public string ExtractedText { get; set; } = string.Empty;
     }
 
+    public class UpdateUploadErrorDto
+    {
+        [Required]
+        public string ErrorMessage { get; set; } = string.Empty;
+    }
+
     public class TransactionSplitDto
     {
         public string Id { get; set; } = string.Empty;

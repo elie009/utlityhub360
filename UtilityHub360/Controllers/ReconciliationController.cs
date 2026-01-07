@@ -187,6 +187,24 @@ namespace UtilityHub360.Controllers
             }
         }
 
+        [HttpPost("statements/uploads/{uploadId}/save-staging")]
+        public async Task<ActionResult<ApiResponse<bool>>> SaveStagingTransactions(string uploadId, [FromBody] ConfirmBankStatementUploadDto saveDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId)) return Unauthorized(ApiResponse<bool>.ErrorResult("Not authenticated"));
+
+                var result = await _reconciliationService.SaveStagingTransactionsAsync(uploadId, saveDto, userId);
+                if (!result.Success) return BadRequest(result);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult(ex.Message));
+            }
+        }
+
         [HttpPost("statements/uploads/{uploadId}/confirm")]
         public async Task<ActionResult<ApiResponse<BankStatementDto>>> ConfirmUpload(string uploadId, [FromBody] ConfirmBankStatementUploadDto confirmDto)
         {
@@ -250,6 +268,22 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId)) return Unauthorized(ApiResponse<bool>.ErrorResult("Not authenticated"));
 
                 var result = await _reconciliationService.CancelUploadAsync(uploadId, userId);
+                if (!result.Success) return BadRequest(result);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult(ex.Message));
+            }
+        }
+
+        [HttpPost("statements/uploads/{uploadId}/error")]
+        [AllowAnonymous]  // Allow utility to report errors without authentication
+        public async Task<ActionResult<ApiResponse<bool>>> ReportUploadError(string uploadId, [FromBody] UpdateUploadErrorDto errorDto)
+        {
+            try
+            {
+                var result = await _reconciliationService.UpdateUploadErrorAsync(uploadId, errorDto?.ErrorMessage ?? "Processing failed");
                 if (!result.Success) return BadRequest(result);
                 return Ok(result);
             }

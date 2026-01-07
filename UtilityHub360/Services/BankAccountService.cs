@@ -474,30 +474,61 @@ namespace UtilityHub360.Services
 
                 // Convert to BankAccount entities for mapping
                 var bankAccountIds = bankAccountsData.Select(ba => ba.Id).ToList();
-                var bankAccounts = bankAccountsData.Select(ba => new BankAccount
+                var bankAccounts = new List<BankAccount>();
+
+                foreach (var ba in bankAccountsData)
                 {
-                    Id = ba.Id,
-                    UserId = ba.UserId,
-                    AccountName = ba.AccountName,
-                    AccountType = ba.AccountType,
-                    InitialBalance = ba.InitialBalance,
-                    CurrentBalance = ba.CurrentBalance,
-                    Currency = ba.Currency,
-                    Description = ba.Description,
-                    FinancialInstitution = ba.FinancialInstitution,
-                    AccountNumber = ba.AccountNumber,
-                    RoutingNumber = ba.RoutingNumber,
-                    SyncFrequency = ba.SyncFrequency,
-                    IsConnected = ba.IsConnected,
-                    ConnectionId = ba.ConnectionId,
-                    LastSyncedAt = ba.LastSyncedAt,
-                    CreatedAt = ba.CreatedAt,
-                    UpdatedAt = ba.UpdatedAt,
-                    IsActive = ba.IsActive,
-                    Iban = ba.Iban,
-                    SwiftCode = ba.SwiftCode,
-                    Transactions = new List<BankTransaction>()
-                }).ToList();
+                    decimal currentBalance = ba.CurrentBalance;
+
+                    try
+                    {
+                        // Call stored procedure to get the net amount for the bank account and user
+                        var bankAccountIdParam = new Microsoft.Data.SqlClient.SqlParameter("@BankAccountId", ba.Id);
+                        var userIdParam = new Microsoft.Data.SqlClient.SqlParameter("@UserId", ba.UserId);
+
+                        // The stored procedure should return a single row with NetAmount column
+                        var netAmountResult = _context.Database
+                            .SqlQueryRaw<BankAccountNetAmountResult>(
+                                "EXEC GetBankAccountNetAmount @BankAccountId, @UserId", 
+                                bankAccountIdParam, userIdParam
+                            ).AsEnumerable().FirstOrDefault();
+
+                        if (netAmountResult != null)
+                        {
+                            currentBalance = netAmountResult.NetAmount;
+                        }
+                    }
+                    catch
+                    {
+                        // If the stored procedure fails, fallback to ba.CurrentBalance
+                    }
+
+                    bankAccounts.Add(new BankAccount
+                    {
+                        Id = ba.Id,
+                        UserId = ba.UserId,
+                        AccountName = ba.AccountName,
+                        AccountType = ba.AccountType,
+                        InitialBalance = ba.InitialBalance,
+                        CurrentBalance = currentBalance,
+                        Currency = ba.Currency,
+                        Description = ba.Description,
+                        FinancialInstitution = ba.FinancialInstitution,
+                        AccountNumber = ba.AccountNumber,
+                        RoutingNumber = ba.RoutingNumber,
+                        SyncFrequency = ba.SyncFrequency,
+                        IsConnected = ba.IsConnected,
+                        ConnectionId = ba.ConnectionId,
+                        LastSyncedAt = ba.LastSyncedAt,
+                        CreatedAt = ba.CreatedAt,
+                        UpdatedAt = ba.UpdatedAt,
+                        IsActive = ba.IsActive,
+                        Iban = ba.Iban,
+                        SwiftCode = ba.SwiftCode,
+                        Transactions = new List<BankTransaction>()
+                    });
+                }
+
 
                 // Load transactions separately using projection to avoid soft delete columns
                 var transactionsData = await _context.BankTransactions
@@ -724,13 +755,14 @@ namespace UtilityHub360.Services
                 // Get total count of ALL transactions (not filtered by period) for TransactionCount
                 var totalTransactionCount = await _context.Payments
                     .AsNoTracking()
-                    .Where(p => p.UserId == userId && p.IsBankTransaction)
+                    .Where(p => p.UserId == userId && p.IsBankTransaction && !p.IsDeleted)
                     .CountAsync();
 
                 // Get all transactions for the period (now from Payments table) using projection
                 var allTransactionsData = await _context.Payments
                     .AsNoTracking()
                     .Where(p => p.UserId == userId && p.IsBankTransaction && 
+                               !p.IsDeleted &&
                                p.TransactionDate.HasValue &&
                                p.TransactionDate >= periodStart && p.TransactionDate <= periodEnd)
                     .Select(p => new
@@ -770,6 +802,7 @@ namespace UtilityHub360.Services
                 var currentMonthTransactionsData = await _context.Payments
                     .AsNoTracking()
                     .Where(p => p.UserId == userId && p.IsBankTransaction && 
+                               !p.IsDeleted &&
                                p.TransactionDate >= currentMonthStart && p.TransactionDate <= currentMonthEnd)
                     .Select(p => new
                     {
@@ -944,6 +977,7 @@ namespace UtilityHub360.Services
                 var allTransactionsData = await _context.BankTransactions
                     .AsNoTracking()
                     .Where(t => bankAccountIds.Contains(t.BankAccountId) && 
+                               !t.IsDeleted &&
                                t.TransactionDate >= startDate && 
                                t.TransactionDate <= endDate)
                     .Select(t => new
@@ -1575,8 +1609,65 @@ namespace UtilityHub360.Services
                         enhancedDescription = $"Loan Payment - {createTransactionDto.Description}";
                     }
                 }
+                
+                // Handle investment-related transactions
+                string? investmentId = null;
+                if (!string.IsNullOrEmpty(createTransactionDto.InvestmentId))
+                {
+                    investmentId = createTransactionDto.InvestmentId;
+                    
+                    // Validate investment exists and is active
+                    var investment = await _context.Investments
+                        .FirstOrDefaultAsync(i => i.Id == investmentId && i.UserId == userId && !i.IsDeleted && i.IsActive);
+                    
+                    if (investment == null)
+                    {
+                        return ApiResponse<BankTransactionDto>.ErrorResult(
+                            "Invalid investment account. Please select a valid investment account.");
+                    }
+                    
+                    // Set category to [INVESTMENT-{AccountName}]
+                    createTransactionDto.Category = $"[INVESTMENT-{investment.AccountName}]";
+                    
+                    if (string.IsNullOrEmpty(enhancedDescription) || enhancedDescription == createTransactionDto.Description)
+                    {
+                        enhancedDescription = $"Investment - {createTransactionDto.Description}";
+                    }
+                    
+                    // Create InvestmentTransaction automatically
+                    var investmentTransaction = new InvestmentTransaction
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        InvestmentId = investmentId,
+                        TransactionType = createTransactionDto.TransactionType?.ToUpper() == "CREDIT" ? "DEPOSIT" : "WITHDRAWAL",
+                        Symbol = "CASH", // Default for cash transactions
+                        Name = "Cash Transaction",
+                        Amount = createTransactionDto.Amount,
+                        Currency = createTransactionDto.Currency ?? "USD",
+                        Description = createTransactionDto.Description,
+                        Reference = createTransactionDto.ReferenceNumber,
+                        TransactionDate = createTransactionDto.TransactionDate,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    
+                    _context.InvestmentTransactions.Add(investmentTransaction);
+                    
+                    // Update investment account current value
+                    if (createTransactionDto.TransactionType?.ToUpper() == "CREDIT")
+                    {
+                        investment.CurrentValue += createTransactionDto.Amount;
+                        investment.TotalCostBasis += createTransactionDto.Amount;
+                    }
+                    else
+                    {
+                        investment.CurrentValue = Math.Max(0, investment.CurrentValue - createTransactionDto.Amount);
+                    }
+                    
+                    investment.UpdatedAt = DateTime.UtcNow;
+                }
+                
                 // Fallback to category-based detection if no direct IDs provided
-                if (string.IsNullOrEmpty(billId) && string.IsNullOrEmpty(savingsAccountId) && string.IsNullOrEmpty(loanId) && !string.IsNullOrEmpty(createTransactionDto.Category))
+                if (string.IsNullOrEmpty(billId) && string.IsNullOrEmpty(savingsAccountId) && string.IsNullOrEmpty(loanId) && string.IsNullOrEmpty(investmentId) && !string.IsNullOrEmpty(createTransactionDto.Category))
                 {
                     var categoryLowerFallback = createTransactionDto.Category.ToLower();
                     
@@ -1591,9 +1682,17 @@ namespace UtilityHub360.Services
                             enhancedDescription = $"Bill Payment - {createTransactionDto.Description}";
                         }
                     }
-                    // Savings-related categories
+                    // Investment-related categories (check before savings since "investment" could match both)
+                    else if ((categoryLowerFallback.Contains("investment") || categoryLowerFallback.Contains("invest")) &&
+                             !string.IsNullOrEmpty(createTransactionDto.InvestmentId))
+                    {
+                        investmentId = createTransactionDto.InvestmentId;
+                        enhancedDescription = $"Investment - {createTransactionDto.Description}";
+                    }
+                    // Savings-related categories (excluding investment keywords)
                     else if ((categoryLowerFallback.Contains("savings") || categoryLowerFallback.Contains("deposit") || 
-                             categoryLowerFallback.Contains("investment") || categoryLowerFallback.Contains("goal")) &&
+                             categoryLowerFallback.Contains("goal")) &&
+                             !categoryLowerFallback.Contains("investment") &&
                              !string.IsNullOrEmpty(createTransactionDto.SavingsAccountId) &&
                              createTransactionDto.SavingsAccountId != createTransactionDto.BankAccountId)
                     {
@@ -1864,7 +1963,7 @@ namespace UtilityHub360.Services
                     Description = transactionDescription,
                     Category = createTransactionDto.Category,
                     ReferenceNumber = createTransactionDto.ReferenceNumber ?? $"BANK_TXN_{Guid.NewGuid()}",
-                    ExternalTransactionId = createTransactionDto.ExternalTransactionId,
+                    ExternalTransactionId = createTransactionDto.IsSplit ? parentReference : createTransactionDto.ExternalTransactionId,
                     Notes = createTransactionDto.Notes,
                     Merchant = createTransactionDto.Merchant,
                     Location = createTransactionDto.Location,
@@ -2613,9 +2712,339 @@ namespace UtilityHub360.Services
                     }
                 }
 
+                // Handle split transactions if splits are provided in the update
+                if (updateTransactionDto.IsSplit == true && updateTransactionDto.Splits != null && updateTransactionDto.Splits.Count > 0)
+                {
+                    // Check if this is already a split transaction
+                    var existingSplits = new List<Entities.Payment>();
+                    if (!string.IsNullOrEmpty(payment.ExternalTransactionId))
+                    {
+                        existingSplits = await _context.Payments
+                            .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId && 
+                                       p.UserId == userId && 
+                                       p.IsBankTransaction &&
+                                       !p.IsDeleted)
+                            .ToListAsync();
+                    }
+                    
+                    // If this is a new split transaction or updating splits
+                    if (existingSplits.Count <= 1)
+                    {
+                        // This is a new split - create split payments
+                        var parentReference = payment.Reference ?? $"BANK_TXN_{Guid.NewGuid()}";
+                        payment.ExternalTransactionId = parentReference;
+                        
+                        // Validate split amounts sum to transaction amount
+                        var totalSplitAmount = updateTransactionDto.Splits.Sum(s => s.Amount);
+                        if (Math.Abs(totalSplitAmount - payment.Amount) > 0.01m)
+                        {
+                            return ApiResponse<BankTransactionDto>.ErrorResult(
+                                $"Split amounts ({totalSplitAmount}) must equal transaction amount ({payment.Amount})");
+                        }
+                        
+                        // Create split payments
+                        var splitPayments = new List<Entities.Payment>();
+                        var splitIndex = 0;
+                        foreach (var split in updateTransactionDto.Splits)
+                        {
+                            splitIndex++;
+                            var shortGuid = parentReference.Length > 8 
+                                ? parentReference.Substring(Math.Max(0, parentReference.Length - 8)) 
+                                : parentReference;
+                            var splitReference = $"SPLIT_{splitIndex}_{shortGuid}";
+                            if (splitReference.Length > 50)
+                            {
+                                splitReference = splitReference.Substring(0, 50);
+                            }
+                            
+                            var splitPayment = new Entities.Payment
+                            {
+                                Id = Guid.NewGuid().ToString(),
+                                BankAccountId = payment.BankAccountId,
+                                BillId = !string.IsNullOrEmpty(split.BillId) ? split.BillId : null,
+                                UserId = userId,
+                                Amount = split.Amount,
+                                Method = "BANK_TRANSFER",
+                                Reference = splitReference,
+                                Status = "COMPLETED",
+                                IsBankTransaction = true,
+                                TransactionType = payment.TransactionType,
+                                Description = split.Description ?? payment.Description ?? $"Split payment - {split.Amount}",
+                                Category = split.Category ?? payment.Category,
+                                ExternalTransactionId = parentReference,
+                                Notes = payment.Notes,
+                                Merchant = payment.Merchant,
+                                Location = payment.Location,
+                                IsRecurring = false,
+                                Currency = payment.Currency,
+                                ProcessedAt = payment.TransactionDate ?? DateTime.UtcNow,
+                                TransactionDate = payment.TransactionDate ?? DateTime.UtcNow,
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow
+                            };
+                            splitPayments.Add(splitPayment);
+                        }
+                        
+                        _context.Payments.AddRange(splitPayments);
+                        
+                        // Update bill status for splits linked to bills
+                        foreach (var splitPayment in splitPayments.Where(sp => !string.IsNullOrEmpty(sp.BillId)))
+                        {
+                            var bill = await _context.Bills
+                                .FirstOrDefaultAsync(b => b.Id == splitPayment.BillId && b.UserId == userId);
+                            
+                            if (bill != null && bill.Status == "PENDING" && splitPayment.TransactionType == "DEBIT")
+                            {
+                                bill.Status = "PAID";
+                                bill.PaidAt = DateTime.UtcNow;
+                                bill.UpdatedAt = DateTime.UtcNow;
+                                _context.Entry(bill).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Update existing splits - need to handle deletions and updates
+                        // Get all bill IDs from existing splits that will be deleted
+                        var existingBillIds = existingSplits
+                            .Where(s => !string.IsNullOrEmpty(s.BillId))
+                            .Select(s => s.BillId!)
+                            .Distinct()
+                            .ToList();
+                        
+                        var newBillIds = updateTransactionDto.Splits
+                            .Where(s => !string.IsNullOrEmpty(s.BillId))
+                            .Select(s => s.BillId!)
+                            .Distinct()
+                            .ToList();
+                        
+                        // Find bill IDs that are being removed (in existing but not in new)
+                        var removedBillIds = existingBillIds.Except(newBillIds).ToList();
+                        
+                        // REVERSE BALANCE IMPACT OF EXISTING SPLITS BEFORE DELETING THEM
+                        // This is critical - if splits were affecting balance separately, we need to reverse them
+                        // Note: In split transactions, typically only the main payment affects balance,
+                        // but we reverse here to be safe in case splits were created incorrectly
+                        decimal totalSplitAmountToReverse = 0;
+                        foreach (var existingSplit in existingSplits)
+                        {
+                            if (existingSplit.TransactionType == "CREDIT")
+                            {
+                                totalSplitAmountToReverse -= existingSplit.Amount; // Reverse credit = subtract
+                            }
+                            else if (existingSplit.TransactionType == "DEBIT")
+                            {
+                                totalSplitAmountToReverse += existingSplit.Amount; // Reverse debit = add back
+                            }
+                        }
+                        
+                        // Apply the reversal to the bank account balance
+                        // Only reverse if the splits were actually affecting balance (which they shouldn't in normal cases)
+                        // But we do this to fix any existing data issues
+                        if (bankAccount != null && totalSplitAmountToReverse != 0)
+                        {
+                            bankAccount.CurrentBalance += totalSplitAmountToReverse;
+                            bankAccount.UpdatedAt = DateTime.UtcNow;
+                        }
+                        
+                        // Delete all existing splits (we'll recreate them)
+                        _context.Payments.RemoveRange(existingSplits);
+                        
+                        // Revert bills that are no longer referenced by any splits
+                        foreach (var billId in removedBillIds)
+                        {
+                            var bill = await _context.Bills
+                                .FirstOrDefaultAsync(b => b.Id == billId && b.UserId == userId);
+                            
+                            if (bill != null)
+                            {
+                                // Check if there are any remaining payments for this bill
+                                var hasRemainingPayments = await _context.Payments
+                                    .AnyAsync(p => p.BillId == billId && 
+                                                 p.UserId == userId && 
+                                                 p.Status == "COMPLETED" && 
+                                                 !p.IsDeleted);
+                                
+                                // If no payments remain, mark bill as PENDING
+                                if (!hasRemainingPayments && bill.Status == "PAID")
+                                {
+                                    bill.Status = "PENDING";
+                                    bill.PaidAt = null;
+                                    bill.UpdatedAt = DateTime.UtcNow;
+                                    _context.Entry(bill).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+                                }
+                            }
+                        }
+                        
+                        // Validate split amounts sum to transaction amount
+                        var totalSplitAmount = updateTransactionDto.Splits.Sum(s => s.Amount);
+                        if (Math.Abs(totalSplitAmount - payment.Amount) > 0.01m)
+                        {
+                            return ApiResponse<BankTransactionDto>.ErrorResult(
+                                $"Split amounts ({totalSplitAmount}) must equal transaction amount ({payment.Amount})");
+                        }
+                        
+                        // Create new split payments
+                        var parentReference = payment.ExternalTransactionId ?? payment.Reference ?? $"BANK_TXN_{Guid.NewGuid()}";
+                        payment.ExternalTransactionId = parentReference;
+                        var splitPayments = new List<Entities.Payment>();
+                        var splitIndex = 0;
+                        
+                        foreach (var split in updateTransactionDto.Splits)
+                        {
+                            splitIndex++;
+                            var shortGuid = parentReference.Length > 8 
+                                ? parentReference.Substring(Math.Max(0, parentReference.Length - 8)) 
+                                : parentReference;
+                            var splitReference = $"SPLIT_{splitIndex}_{shortGuid}";
+                            if (splitReference.Length > 50)
+                            {
+                                splitReference = splitReference.Substring(0, 50);
+                            }
+                            
+                            var splitPayment = new Entities.Payment
+                            {
+                                Id = Guid.NewGuid().ToString(),
+                                BankAccountId = payment.BankAccountId,
+                                BillId = !string.IsNullOrEmpty(split.BillId) ? split.BillId : null,
+                                UserId = userId,
+                                Amount = split.Amount,
+                                Method = "BANK_TRANSFER",
+                                Reference = splitReference,
+                                Status = "COMPLETED",
+                                IsBankTransaction = true,
+                                TransactionType = payment.TransactionType,
+                                Description = split.Description ?? payment.Description ?? $"Split payment - {split.Amount}",
+                                Category = split.Category ?? payment.Category,
+                                ExternalTransactionId = parentReference,
+                                Notes = payment.Notes,
+                                Merchant = payment.Merchant,
+                                Location = payment.Location,
+                                IsRecurring = false,
+                                Currency = payment.Currency,
+                                ProcessedAt = payment.TransactionDate ?? DateTime.UtcNow,
+                                TransactionDate = payment.TransactionDate ?? DateTime.UtcNow,
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow
+                            };
+                            splitPayments.Add(splitPayment);
+                        }
+                        
+                        _context.Payments.AddRange(splitPayments);
+                        
+                        // Update bill status for new splits linked to bills
+                        foreach (var splitPayment in splitPayments.Where(sp => !string.IsNullOrEmpty(sp.BillId)))
+                        {
+                            var bill = await _context.Bills
+                                .FirstOrDefaultAsync(b => b.Id == splitPayment.BillId && b.UserId == userId);
+                            
+                            if (bill != null && bill.Status == "PENDING" && splitPayment.TransactionType == "DEBIT")
+                            {
+                                bill.Status = "PAID";
+                                bill.PaidAt = DateTime.UtcNow;
+                                bill.UpdatedAt = DateTime.UtcNow;
+                                _context.Entry(bill).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+                            }
+                        }
+                    }
+                }
+                else if (updateTransactionDto.IsSplit == false || updateTransactionDto.Splits == null || updateTransactionDto.Splits.Count == 0)
+                {
+                    // Converting from split transaction to regular transaction or removing splits
+                    // Find and delete all existing splits
+                    var existingSplits = new List<Entities.Payment>();
+                    if (!string.IsNullOrEmpty(payment.ExternalTransactionId))
+                    {
+                        existingSplits = await _context.Payments
+                            .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId && 
+                                       p.UserId == userId && 
+                                       p.IsBankTransaction &&
+                                       !p.IsDeleted)
+                            .ToListAsync();
+                    }
+                    
+                    if (existingSplits.Count > 1)
+                    {
+                        // Get all bill IDs from existing splits that will be removed
+                        var billIdsToCheck = existingSplits
+                            .Where(s => !string.IsNullOrEmpty(s.BillId))
+                            .Select(s => s.BillId!)
+                            .Distinct()
+                            .ToList();
+                        
+                        // REVERSE BALANCE IMPACT OF EXISTING SPLITS BEFORE DELETING THEM
+                        // This prevents double-counting when converting from split to regular transaction
+                        decimal totalSplitAmountToReverse = 0;
+                        foreach (var existingSplit in existingSplits)
+                        {
+                            if (existingSplit.TransactionType == "CREDIT")
+                            {
+                                totalSplitAmountToReverse -= existingSplit.Amount; // Reverse credit = subtract
+                            }
+                            else if (existingSplit.TransactionType == "DEBIT")
+                            {
+                                totalSplitAmountToReverse += existingSplit.Amount; // Reverse debit = add back
+                            }
+                        }
+                        
+                        // Apply the reversal to the bank account balance
+                        if (bankAccount != null && totalSplitAmountToReverse != 0)
+                        {
+                            bankAccount.CurrentBalance += totalSplitAmountToReverse;
+                            bankAccount.UpdatedAt = DateTime.UtcNow;
+                        }
+                        
+                        // Delete all split payments
+                        _context.Payments.RemoveRange(existingSplits);
+                        
+                        // Revert bills that are no longer referenced
+                        foreach (var billId in billIdsToCheck)
+                        {
+                            var bill = await _context.Bills
+                                .FirstOrDefaultAsync(b => b.Id == billId && b.UserId == userId);
+                            
+                            if (bill != null)
+                            {
+                                // Check if there are any remaining payments for this bill
+                                var hasRemainingPayments = await _context.Payments
+                                    .AnyAsync(p => p.BillId == billId && 
+                                                 p.UserId == userId && 
+                                                 p.Status == "COMPLETED" && 
+                                                 !p.IsDeleted);
+                                
+                                // If no payments remain, mark bill as PENDING
+                                if (!hasRemainingPayments && bill.Status == "PAID")
+                                {
+                                    bill.Status = "PENDING";
+                                    bill.PaidAt = null;
+                                    bill.UpdatedAt = DateTime.UtcNow;
+                                    _context.Entry(bill).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+                                }
+                            }
+                        }
+                        
+                        // Clear ExternalTransactionId to convert back to regular transaction
+                        payment.ExternalTransactionId = null;
+                    }
+                }
+                else if (!string.IsNullOrEmpty(updateTransactionDto.BillId))
+                {
+                    // Single bill payment - mark bill as paid
+                    var bill = await _context.Bills
+                        .FirstOrDefaultAsync(b => b.Id == updateTransactionDto.BillId && b.UserId == userId);
+                    
+                    if (bill != null && bill.Status == "PENDING" && payment.TransactionType == "DEBIT")
+                    {
+                        bill.Status = "PAID";
+                        bill.PaidAt = DateTime.UtcNow;
+                        bill.UpdatedAt = DateTime.UtcNow;
+                        _context.Entry(bill).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+                    }
+                }
+
                 await _context.SaveChangesAsync();
 
-                var transactionDto = MapPaymentToBankTransactionDto(payment);
+                var transactionDto = await MapPaymentToBankTransactionDtoAsync(payment);
                 return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, "Transaction updated successfully");
             }
             catch (Exception ex)
@@ -3003,6 +3432,7 @@ namespace UtilityHub360.Services
                     .AsNoTracking()
                     .Where(p => p.UserId == userId && 
                                p.IsBankTransaction &&
+                               !p.IsDeleted &&
                                p.TransactionDate.HasValue &&
                                p.TransactionDate >= startDate && 
                                p.TransactionDate <= endDate)
@@ -3272,6 +3702,81 @@ namespace UtilityHub360.Services
             catch (Exception ex)
             {
                 return ApiResponse<BankAccountDto>.ErrorResult($"Failed to archive bank account: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<decimal>> RecalculateBalanceFromTransactionsAsync(string bankAccountId, string userId)
+        {
+            try
+            {
+                var bankAccount = await _context.BankAccounts
+                    .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
+
+                if (bankAccount == null)
+                {
+                    return ApiResponse<decimal>.ErrorResult("Bank account not found");
+                }
+
+                // Get total credits and debits from Payments table (COMPLETED transactions only)
+                var paymentCredits = await _context.Payments
+                    .AsNoTracking()
+                    .Where(p => p.BankAccountId == bankAccountId && 
+                               p.UserId == userId && 
+                               p.IsBankTransaction &&
+                               p.Status == "COMPLETED" &&
+                               p.TransactionType == "CREDIT" &&
+                               !p.IsDeleted)
+                    .SumAsync(p => (decimal?)p.Amount) ?? 0m;
+
+                var paymentDebits = await _context.Payments
+                    .AsNoTracking()
+                    .Where(p => p.BankAccountId == bankAccountId && 
+                               p.UserId == userId && 
+                               p.IsBankTransaction &&
+                               p.Status == "COMPLETED" &&
+                               p.TransactionType == "DEBIT" &&
+                               !p.IsDeleted)
+                    .SumAsync(p => (decimal?)p.Amount) ?? 0m;
+
+                // Get total credits and debits from BankTransactions table
+                // Exclude transactions that have a PaymentId (they're already counted in Payments)
+                var bankTransactionCredits = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(bt => bt.BankAccountId == bankAccountId && 
+                               bt.UserId == userId &&
+                               bt.TransactionType == "CREDIT" &&
+                               !bt.IsDeleted &&
+                               (bt.PaymentId == null || bt.PaymentId == "")) // Exclude if linked to Payment
+                    .SumAsync(bt => (decimal?)bt.Amount) ?? 0m;
+
+                var bankTransactionDebits = await _context.BankTransactions
+                    .AsNoTracking()
+                    .Where(bt => bt.BankAccountId == bankAccountId && 
+                               bt.UserId == userId &&
+                               bt.TransactionType == "DEBIT" &&
+                               !bt.IsDeleted &&
+                               (bt.PaymentId == null || bt.PaymentId == "")) // Exclude if linked to Payment
+                    .SumAsync(bt => (decimal?)bt.Amount) ?? 0m;
+
+                // Combine totals from both tables
+                decimal totalCredits = paymentCredits;
+                decimal totalDebits = paymentDebits;
+
+                // Calculate new balance: Initial Balance + Total Credits - Total Debits
+                // Formula: Starting Balance + All Money In - All Money Out = Current Balance
+                decimal calculatedBalance = bankAccount.InitialBalance + totalCredits - totalDebits;
+
+                // Update the account balance
+                bankAccount.CurrentBalance = calculatedBalance;
+                bankAccount.UpdatedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                return ApiResponse<decimal>.SuccessResult(calculatedBalance, "Balance recalculated successfully from transactions");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<decimal>.ErrorResult($"Failed to recalculate balance: {ex.Message}");
             }
         }
 
@@ -3709,7 +4214,7 @@ namespace UtilityHub360.Services
                     // ==================== END MONTH CLOSURE VALIDATION ====================
 
                     // Check if transaction is synced from bank (read-only)
-                    if (!string.IsNullOrEmpty(payment.ExternalTransactionId))
+                    if (await IsSyncedFromBankAsync(payment.ExternalTransactionId, payment.BankAccountId))
                     {
                         return ApiResponse<bool>.ErrorResult("Cannot delete transactions synced from bank");
                     }
@@ -3724,22 +4229,366 @@ namespace UtilityHub360.Services
                         return await SoftDeleteTransactionAsync(transactionId, userId, "Auto-soft-deleted: Transaction older than 24 hours");
                     }
 
-                    // Reverse the transaction effect on the bank account balance
-                    if (payment.BankAccount != null)
+                    // Check if this is part of a split transaction
+                    // Split transactions have multiple Payment records with the same ExternalTransactionId
+                    // OR the Reference field starts with "SPLIT_"
+                    var isSplitTransaction = false;
+                    if (!string.IsNullOrEmpty(payment.ExternalTransactionId))
                     {
-                        if (payment.TransactionType == "CREDIT")
-                        {
-                            payment.BankAccount.CurrentBalance -= payment.Amount;
-                        }
-                        else if (payment.TransactionType == "DEBIT")
-                        {
-                            payment.BankAccount.CurrentBalance += payment.Amount;
-                        }
-                        payment.BankAccount.UpdatedAt = DateTime.UtcNow;
+                        // Check if there are multiple payments with the same ExternalTransactionId (split transaction)
+                        var splitCount = await _context.Payments
+                            .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId && 
+                                       p.UserId == userId && 
+                                       p.IsBankTransaction &&
+                                       !p.IsDeleted)
+                            .CountAsync();
+                        
+                        isSplitTransaction = splitCount > 1;
+                    }
+                    else if (!string.IsNullOrEmpty(payment.Reference) && 
+                             payment.Reference.StartsWith("SPLIT_", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Fallback: check Reference field if ExternalTransactionId is empty
+                        isSplitTransaction = true;
                     }
 
-                    // Remove from Payments table
-                    _context.Payments.Remove(payment);
+                    if (isSplitTransaction)
+                    {
+                        // For split transactions, find ALL payments with the same ExternalTransactionId
+                        var allSplitPayments = await _context.Payments
+                            .Include(p => p.BankAccount)
+                            .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId && 
+                                       p.UserId == userId && 
+                                       p.IsBankTransaction &&
+                                       !p.IsDeleted)
+                            .ToListAsync();
+
+                        // If ExternalTransactionId is empty but Reference starts with SPLIT_, use Reference instead
+                        if (!allSplitPayments.Any() && !string.IsNullOrEmpty(payment.Reference) && 
+                            payment.Reference.StartsWith("SPLIT_", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Extract the parent reference from the split reference (format: SPLIT_{index}_{parentRef})
+                            var referenceParts = payment.Reference.Split('_');
+                            if (referenceParts.Length >= 3)
+                            {
+                                var parentRefFromSplit = string.Join("_", referenceParts.Skip(2));
+                                allSplitPayments = await _context.Payments
+                                    .Include(p => p.BankAccount)
+                                    .Where(p => p.Reference.StartsWith("SPLIT_", StringComparison.OrdinalIgnoreCase) &&
+                                               p.Reference.Contains(parentRefFromSplit) &&
+                                               p.UserId == userId && 
+                                               p.IsBankTransaction &&
+                                               !p.IsDeleted)
+                                    .ToListAsync();
+                            }
+                        }
+
+                        // Reverse balance for ALL splits (sum of all split amounts)
+                        if (payment.BankAccount != null && allSplitPayments.Any())
+                        {
+                            decimal totalAmountToReverse = 0;
+                            foreach (var splitPayment in allSplitPayments)
+                            {
+                                if (splitPayment.TransactionType == "CREDIT")
+                                {
+                                    totalAmountToReverse -= splitPayment.Amount; // Reverse credit = subtract
+                                }
+                                else if (splitPayment.TransactionType == "DEBIT")
+                                {
+                                    totalAmountToReverse += splitPayment.Amount; // Reverse debit = add back
+                                }
+                            }
+                            
+                            payment.BankAccount.CurrentBalance += totalAmountToReverse;
+                            payment.BankAccount.UpdatedAt = DateTime.UtcNow;
+                        }
+
+                        // Delete ALL split payments
+                        if (allSplitPayments.Any())
+                        {
+                            // Get all unique origin IDs from the split payments (bills, loans, savings)
+                            var billIdsToCheck = allSplitPayments
+                                .Where(p => !string.IsNullOrEmpty(p.BillId))
+                                .Select(p => p.BillId!)
+                                .Distinct()
+                                .ToList();
+                            
+                            var loanIdsToCheck = allSplitPayments
+                                .Where(p => !string.IsNullOrEmpty(p.LoanId))
+                                .Select(p => p.LoanId!)
+                                .Distinct()
+                                .ToList();
+                            
+                            var savingsAccountIdsToCheck = allSplitPayments
+                                .Where(p => !string.IsNullOrEmpty(p.SavingsAccountId))
+                                .Select(p => p.SavingsAccountId!)
+                                .Distinct()
+                                .ToList();
+                            
+                            _context.Payments.RemoveRange(allSplitPayments);
+                            
+                            // Update bills: Check if there are remaining payments, if not, revert to PENDING
+                            if (billIdsToCheck.Any())
+                            {
+                                foreach (var billId in billIdsToCheck)
+                                {
+                                    var bill = await _context.Bills
+                                        .FirstOrDefaultAsync(b => b.Id == billId && b.UserId == userId);
+                                    
+                                    if (bill != null)
+                                    {
+                                        // Check if there are any remaining payments for this bill
+                                        var hasRemainingPayments = await _context.Payments
+                                            .AnyAsync(p => p.BillId == billId && 
+                                                         p.UserId == userId && 
+                                                         p.Status == "COMPLETED" && 
+                                                         !p.IsDeleted);
+                                        
+                                        // If no payments remain, mark bill as PENDING
+                                        if (!hasRemainingPayments && bill.Status == "PAID")
+                                        {
+                                            bill.Status = "PENDING";
+                                            bill.PaidAt = null;
+                                            bill.UpdatedAt = DateTime.UtcNow;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Update loans: Reverse balance and update repayment schedules
+                            if (loanIdsToCheck.Any())
+                            {
+                                foreach (var loanId in loanIdsToCheck)
+                                {
+                                    var loan = await _context.Loans
+                                        .FirstOrDefaultAsync(l => l.Id == loanId && l.UserId == userId);
+                                    
+                                    if (loan != null)
+                                    {
+                                        // Calculate total amount to reverse from deleted payments
+                                        var deletedLoanPayments = allSplitPayments
+                                            .Where(p => p.LoanId == loanId)
+                                            .ToList();
+                                        
+                                        var totalAmountToReverse = deletedLoanPayments.Sum(p => p.Amount);
+                                        
+                                        // Reverse the loan balance
+                                        loan.RemainingBalance += totalAmountToReverse;
+                                        
+                                        // Check if there are any remaining payments for this loan
+                                        var hasRemainingPayments = await _context.Payments
+                                            .AnyAsync(p => p.LoanId == loanId && 
+                                                         p.UserId == userId && 
+                                                         p.Status == "COMPLETED" && 
+                                                         !p.IsDeleted);
+                                        
+                                        // If no payments remain and loan was completed, reopen it
+                                        if (!hasRemainingPayments && loan.Status == "COMPLETED")
+                                        {
+                                            var hasPendingInstallments = await _context.RepaymentSchedules
+                                                .AnyAsync(rs => rs.LoanId == loanId && rs.Status == "PENDING");
+                                            
+                                            if (hasPendingInstallments)
+                                            {
+                                                loan.Status = "ACTIVE";
+                                                loan.CompletedAt = null;
+                                            }
+                                        }
+                                        
+                                        // Update repayment schedules: Find installments that were marked as PAID by these payments
+                                        // Note: This is a simplified approach. You may need to track which installment each payment was for
+                                        var paidInstallments = await _context.RepaymentSchedules
+                                            .Where(rs => rs.LoanId == loanId && 
+                                                       rs.Status == "PAID" && 
+                                                       rs.PaidAt.HasValue)
+                                            .OrderByDescending(rs => rs.PaidAt)
+                                            .ToListAsync();
+                                        
+                                        // Reverse the most recent paid installments up to the deleted payment amount
+                                        decimal reversedAmount = 0;
+                                        foreach (var installment in paidInstallments)
+                                        {
+                                            if (reversedAmount >= totalAmountToReverse)
+                                                break;
+                                            
+                                            if (installment.TotalAmount <= (totalAmountToReverse - reversedAmount))
+                                            {
+                                                installment.Status = "PENDING";
+                                                installment.PaidAt = null;
+                                                reversedAmount += installment.TotalAmount;
+                                            }
+                                        }
+                                        
+                                        // Loan entity doesn't have UpdatedAt property
+                                        // No update needed for timestamp
+                                    }
+                                }
+                            }
+                            
+                            // Update savings accounts: Reverse balance changes
+                            if (savingsAccountIdsToCheck.Any())
+                            {
+                                foreach (var savingsAccountId in savingsAccountIdsToCheck)
+                                {
+                                    var savingsAccount = await _context.SavingsAccounts
+                                        .FirstOrDefaultAsync(sa => sa.Id == savingsAccountId && sa.UserId == userId);
+                                    
+                                    if (savingsAccount != null)
+                                    {
+                                        // Calculate total amount to reverse from deleted payments
+                                        var deletedSavingsPayments = allSplitPayments
+                                            .Where(p => p.SavingsAccountId == savingsAccountId)
+                                            .ToList();
+                                        
+                                        foreach (var savingsPayment in deletedSavingsPayments)
+                                        {
+                                            // Reverse the transaction based on type
+                                            // If it was a DEPOSIT (DEBIT from bank), reverse by subtracting from savings
+                                            // If it was a WITHDRAWAL (CREDIT to bank), reverse by adding back to savings
+                                            if (savingsPayment.TransactionType == "DEBIT")
+                                            {
+                                                // Was a deposit to savings, reverse by subtracting
+                                                savingsAccount.CurrentBalance -= savingsPayment.Amount;
+                                            }
+                                            else if (savingsPayment.TransactionType == "CREDIT")
+                                            {
+                                                // Was a withdrawal from savings, reverse by adding back
+                                                savingsAccount.CurrentBalance += savingsPayment.Amount;
+                                            }
+                                        }
+                                        
+                                        savingsAccount.UpdatedAt = DateTime.UtcNow;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Fallback: if we couldn't find splits, just delete this one
+                            _context.Payments.Remove(payment);
+                        }
+                    }
+                    else
+                    {
+                        // Single transaction - reverse balance normally
+                        if (payment.BankAccount != null)
+                        {
+                            if (payment.TransactionType == "CREDIT")
+                            {
+                                payment.BankAccount.CurrentBalance -= payment.Amount;
+                            }
+                            else if (payment.TransactionType == "DEBIT")
+                            {
+                                payment.BankAccount.CurrentBalance += payment.Amount;
+                            }
+                            payment.BankAccount.UpdatedAt = DateTime.UtcNow;
+                        }
+
+                        // Update bill status if this payment was for a bill
+                        if (!string.IsNullOrEmpty(payment.BillId))
+                        {
+                            var bill = await _context.Bills
+                                .FirstOrDefaultAsync(b => b.Id == payment.BillId && b.UserId == userId);
+                            
+                            if (bill != null)
+                            {
+                                // Check if there are any remaining payments for this bill
+                                var hasRemainingPayments = await _context.Payments
+                                    .AnyAsync(p => p.BillId == payment.BillId && 
+                                                 p.UserId == userId && 
+                                                 p.Status == "COMPLETED" && 
+                                                 !p.IsDeleted &&
+                                                 p.Id != payment.Id); // Exclude the current payment being deleted
+                                
+                                // If no payments remain, mark bill as PENDING
+                                if (!hasRemainingPayments && bill.Status == "PAID")
+                                {
+                                    bill.Status = "PENDING";
+                                    bill.PaidAt = null;
+                                    bill.UpdatedAt = DateTime.UtcNow;
+                                }
+                            }
+                        }
+
+                        // Update loan if this payment was for a loan
+                        if (!string.IsNullOrEmpty(payment.LoanId))
+                        {
+                            var loan = await _context.Loans
+                                .FirstOrDefaultAsync(l => l.Id == payment.LoanId && l.UserId == userId);
+                            
+                            if (loan != null)
+                            {
+                                // Reverse the loan balance
+                                loan.RemainingBalance += payment.Amount;
+                                
+                                // Check if there are any remaining payments
+                                var hasRemainingPayments = await _context.Payments
+                                    .AnyAsync(p => p.LoanId == payment.LoanId && 
+                                                 p.UserId == userId && 
+                                                 p.Status == "COMPLETED" && 
+                                                 !p.IsDeleted &&
+                                                 p.Id != payment.Id);
+                                
+                                // If no payments remain and loan was completed, reopen it
+                                if (!hasRemainingPayments && loan.Status == "COMPLETED")
+                                {
+                                    var hasPendingInstallments = await _context.RepaymentSchedules
+                                        .AnyAsync(rs => rs.LoanId == payment.LoanId && rs.Status == "PENDING");
+                                    
+                                    if (hasPendingInstallments)
+                                    {
+                                        loan.Status = "ACTIVE";
+                                        loan.CompletedAt = null;
+                                    }
+                                }
+                                
+                                // Update repayment schedules: Find the most recent paid installment
+                                var paidInstallment = await _context.RepaymentSchedules
+                                    .Where(rs => rs.LoanId == payment.LoanId && 
+                                               rs.Status == "PAID" && 
+                                               rs.PaidAt.HasValue)
+                                    .OrderByDescending(rs => rs.PaidAt)
+                                    .FirstOrDefaultAsync();
+                                
+                                // Reverse the installment if it matches the payment amount
+                                if (paidInstallment != null && paidInstallment.TotalAmount == payment.Amount)
+                                {
+                                    paidInstallment.Status = "PENDING";
+                                    paidInstallment.PaidAt = null;
+                                }
+                                
+                                // Loan entity doesn't have UpdatedAt property
+                                // No update needed for timestamp
+                            }
+                        }
+
+                        // Update savings account if this payment was for savings
+                        if (!string.IsNullOrEmpty(payment.SavingsAccountId))
+                        {
+                            var savingsAccount = await _context.SavingsAccounts
+                                .FirstOrDefaultAsync(sa => sa.Id == payment.SavingsAccountId && sa.UserId == userId);
+                            
+                            if (savingsAccount != null)
+                            {
+                                // Reverse the transaction based on type
+                                if (payment.TransactionType == "DEBIT")
+                                {
+                                    // Was a deposit to savings, reverse by subtracting
+                                    savingsAccount.CurrentBalance -= payment.Amount;
+                                }
+                                else if (payment.TransactionType == "CREDIT")
+                                {
+                                    // Was a withdrawal from savings, reverse by adding back
+                                    savingsAccount.CurrentBalance += payment.Amount;
+                                }
+                                
+                                savingsAccount.UpdatedAt = DateTime.UtcNow;
+                            }
+                        }
+
+                        // Remove from Payments table
+                        _context.Payments.Remove(payment);
+                    }
                 }
 
                 // Also check and remove from BankTransactions table if it exists
@@ -3749,50 +4598,64 @@ namespace UtilityHub360.Services
 
                 if (bankTransaction != null)
                 {
-                    // Check if already deleted
-                    if (bankTransaction.IsDeleted)
+                    // If this was a split transaction, we've already handled the balance reversal above
+                    // Only process BankTransaction if it's NOT a split transaction
+                    var isSplitFromBankTransaction = !string.IsNullOrEmpty(bankTransaction.ExternalTransactionId) && 
+                                                     bankTransaction.ExternalTransactionId.StartsWith("SPLIT_", StringComparison.OrdinalIgnoreCase);
+                    
+                    if (!isSplitFromBankTransaction)
                     {
-                        return ApiResponse<bool>.ErrorResult("Transaction is already deleted");
-                    }
-
-                    // ==================== MONTH CLOSURE VALIDATION ====================
-                    var transactionDate = bankTransaction.TransactionDate;
-                    var isMonthClosed = await _context.ClosedMonths
-                        .AnyAsync(cm => cm.BankAccountId == bankTransaction.BankAccountId &&
-                                       cm.Year == transactionDate.Year &&
-                                       cm.Month == transactionDate.Month);
-
-                    if (isMonthClosed)
-                    {
-                        var monthName = new[] { "", "January", "February", "March", "April", "May", "June",
-                                                "July", "August", "September", "October", "November", "December" }[transactionDate.Month];
-                        return ApiResponse<bool>.ErrorResult(
-                            $"Cannot delete transaction. The month {monthName} {transactionDate.Year} is closed for this account.");
-                    }
-                    // ==================== END MONTH CLOSURE VALIDATION ====================
-
-                    // Check if transaction is synced from bank (read-only)
-                    if (!string.IsNullOrEmpty(bankTransaction.ExternalTransactionId))
-                    {
-                        return ApiResponse<bool>.ErrorResult("Cannot delete transactions synced from bank");
-                    }
-
-                    // Reverse balance impact (only if not already reversed from Payment above)
-                    if (payment == null && bankTransaction.BankAccount != null)
-                    {
-                        if (bankTransaction.TransactionType == "CREDIT")
+                        // Check if already deleted
+                        if (bankTransaction.IsDeleted)
                         {
-                            bankTransaction.BankAccount.CurrentBalance -= bankTransaction.Amount;
+                            return ApiResponse<bool>.ErrorResult("Transaction is already deleted");
                         }
-                        else if (bankTransaction.TransactionType == "DEBIT")
-                        {
-                            bankTransaction.BankAccount.CurrentBalance += bankTransaction.Amount;
-                        }
-                        bankTransaction.BankAccount.UpdatedAt = DateTime.UtcNow;
-                    }
 
-                    // Remove from BankTransactions table
-                    _context.BankTransactions.Remove(bankTransaction);
+                        // ==================== MONTH CLOSURE VALIDATION ====================
+                        var transactionDate = bankTransaction.TransactionDate;
+                        var isMonthClosed = await _context.ClosedMonths
+                            .AnyAsync(cm => cm.BankAccountId == bankTransaction.BankAccountId &&
+                                           cm.Year == transactionDate.Year &&
+                                           cm.Month == transactionDate.Month);
+
+                        if (isMonthClosed)
+                        {
+                            var monthName = new[] { "", "January", "February", "March", "April", "May", "June",
+                                                    "July", "August", "September", "October", "November", "December" }[transactionDate.Month];
+                            return ApiResponse<bool>.ErrorResult(
+                                $"Cannot delete transaction. The month {monthName} {transactionDate.Year} is closed for this account.");
+                        }
+                        // ==================== END MONTH CLOSURE VALIDATION ====================
+
+                        // Check if transaction is synced from bank (read-only)
+                        if (await IsSyncedFromBankAsync(bankTransaction.ExternalTransactionId, bankTransaction.BankAccountId))
+                        {
+                            return ApiResponse<bool>.ErrorResult("Cannot delete transactions synced from bank");
+                        }
+
+                        // Reverse balance impact (only if not already reversed from Payment above)
+                        if (payment == null && bankTransaction.BankAccount != null)
+                        {
+                            if (bankTransaction.TransactionType == "CREDIT")
+                            {
+                                bankTransaction.BankAccount.CurrentBalance -= bankTransaction.Amount;
+                            }
+                            else if (bankTransaction.TransactionType == "DEBIT")
+                            {
+                                bankTransaction.BankAccount.CurrentBalance += bankTransaction.Amount;
+                            }
+                            bankTransaction.BankAccount.UpdatedAt = DateTime.UtcNow;
+                        }
+
+                        // Remove from BankTransactions table
+                        _context.BankTransactions.Remove(bankTransaction);
+                    }
+                    else
+                    {
+                        // For split transactions, just remove the BankTransaction record without reversing balance
+                        // (balance was already reversed for all splits above)
+                        _context.BankTransactions.Remove(bankTransaction);
+                    }
                 }
 
                 // If neither was found, return error
@@ -3809,6 +4672,61 @@ namespace UtilityHub360.Services
             {
                 return ApiResponse<bool>.ErrorResult($"Failed to delete transaction: {ex.Message}");
             }
+        }
+
+        public async Task<ApiResponse<BulkDeleteTransactionsResultDto>> BulkDeleteTransactionsAsync(List<string> transactionIds, string userId)
+        {
+            var result = new BulkDeleteTransactionsResultDto
+            {
+                TotalRequested = transactionIds.Count
+            };
+
+            if (transactionIds == null || transactionIds.Count == 0)
+            {
+                return ApiResponse<BulkDeleteTransactionsResultDto>.ErrorResult("No transaction IDs provided");
+            }
+
+            // Remove duplicates
+            var uniqueIds = transactionIds.Distinct().ToList();
+            if (uniqueIds.Count != transactionIds.Count)
+            {
+                result.TotalRequested = uniqueIds.Count;
+            }
+
+            // Process each transaction
+            foreach (var transactionId in uniqueIds)
+            {
+                try
+                {
+                    var deleteResult = await DeleteTransactionAsync(transactionId, userId);
+                    if (deleteResult.Success)
+                    {
+                        result.Successful++;
+                    }
+                    else
+                    {
+                        result.Failed++;
+                        result.FailedTransactionIds.Add(transactionId);
+                        result.FailureReasons.Add(deleteResult.Message ?? "Unknown error");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.Failed++;
+                    result.FailedTransactionIds.Add(transactionId);
+                    result.FailureReasons.Add($"Exception: {ex.Message}");
+                }
+            }
+
+            var message = result.Failed > 0
+                ? (result.Successful > 0 
+                    ? $"Successfully deleted {result.Successful} transaction(s), {result.Failed} failed."
+                    : $"Failed to delete all {result.Failed} transaction(s).")
+                : $"Successfully deleted {result.Successful} transaction(s).";
+
+            // Always return SuccessResult because the API call itself succeeded
+            // The result DTO contains details about individual transaction success/failure
+            return ApiResponse<BulkDeleteTransactionsResultDto>.SuccessResult(result, message);
         }
 
         /// <summary>
@@ -3835,7 +4753,7 @@ namespace UtilityHub360.Services
                 if (paymentTransactionData != null)
                 {
                     // Check if transaction is synced from bank (read-only)
-                    if (!string.IsNullOrEmpty(paymentTransactionData.ExternalTransactionId))
+                    if (await IsSyncedFromBankAsync(paymentTransactionData.ExternalTransactionId, paymentTransactionData.BankAccountId))
                     {
                         return ApiResponse<bool>.ErrorResult("Cannot delete transactions synced from bank");
                     }
@@ -3917,7 +4835,7 @@ namespace UtilityHub360.Services
                 if (bankTransactionData != null)
                 {
                     // Check if transaction is synced from bank (read-only)
-                    if (!string.IsNullOrEmpty(bankTransactionData.ExternalTransactionId))
+                    if (await IsSyncedFromBankAsync(bankTransactionData.ExternalTransactionId, bankTransactionData.BankAccountId))
                     {
                         return ApiResponse<bool>.ErrorResult("Cannot delete transactions synced from bank");
                     }
@@ -4416,6 +5334,77 @@ namespace UtilityHub360.Services
             };
         }
 
+        private async Task<BankTransactionDto> MapPaymentToBankTransactionDtoAsync(Entities.Payment payment)
+        {
+            var dto = new BankTransactionDto
+            {
+                Id = payment.Id,
+                BankAccountId = payment.BankAccountId,
+                AccountName = payment.BankAccount?.AccountName ?? string.Empty,
+                UserId = payment.UserId,
+                Amount = payment.Amount,
+                TransactionType = payment.TransactionType ?? "UNKNOWN",
+                Description = payment.Description ?? "",
+                Category = payment.Category,
+                ReferenceNumber = payment.Reference,
+                ExternalTransactionId = payment.ExternalTransactionId,
+                TransactionDate = payment.TransactionDate ?? payment.ProcessedAt,
+                CreatedAt = payment.CreatedAt,
+                UpdatedAt = payment.UpdatedAt,
+                Notes = payment.Notes,
+                Merchant = payment.Merchant,
+                Location = payment.Location,
+                IsRecurring = payment.IsRecurring,
+                RecurringFrequency = payment.RecurringFrequency,
+                Currency = payment.Currency,
+                BalanceAfterTransaction = payment.BalanceAfterTransaction ?? 0,
+                // Link fields from Payment entity
+                BillId = payment.BillId,
+                LoanId = payment.LoanId,
+                SavingsAccountId = payment.SavingsAccountId,
+                // TransactionPurpose can be derived from linked entities
+                TransactionPurpose = payment.BillId != null 
+                    ? (payment.Bill?.BillType.ToUpper() == "UTILITY" ? "UTILITY" : "BILL")
+                    : payment.LoanId != null ? "LOAN"
+                    : payment.SavingsAccountId != null ? "SAVINGS"
+                    : null,
+                // Related entity names
+                BillName = payment.Bill?.BillName,
+                LoanPurpose = payment.Loan?.Purpose,
+                SavingsAccountName = payment.SavingsAccount?.AccountName
+            };
+            
+            // Load split information if this transaction has an ExternalTransactionId
+            if (!string.IsNullOrEmpty(payment.ExternalTransactionId))
+            {
+                var splits = await _context.Payments
+                    .AsNoTracking()
+                    .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId && 
+                               p.UserId == payment.UserId && 
+                               p.IsBankTransaction)
+                    .OrderBy(p => p.CreatedAt)
+                    .Select(p => new TransactionSplitDto
+                    {
+                        Id = p.Id,
+                        Amount = p.Amount,
+                        BillId = p.BillId,
+                        Category = p.Category,
+                        Description = p.Description ?? ""
+                    })
+                    .ToListAsync();
+                
+                if (splits.Count > 1)
+                {
+                    dto.IsSplit = true;
+                    dto.SplitCount = splits.Count;
+                    dto.Splits = splits;
+                }
+            }
+            
+            return dto;
+        }
+        
+        // Keep the static version for backward compatibility where context is not available
         private static BankTransactionDto MapPaymentToBankTransactionDto(Entities.Payment payment)
         {
             return new BankTransactionDto
@@ -4745,7 +5734,81 @@ namespace UtilityHub360.Services
                     } : null
                 }).ToList();
 
-                var transactionDtos = transactions.Select(p => MapPaymentToBankTransactionDto(p)).ToList();
+                // Group transactions by ExternalTransactionId to handle split transactions
+                // Only group if ExternalTransactionId is not null/empty
+                var transactionsWithSplits = transactions
+                    .Where(t => !string.IsNullOrEmpty(t.ExternalTransactionId))
+                    .GroupBy(t => t.ExternalTransactionId!)
+                    .Where(g => g.Count() > 1) // Only groups with more than 1 transaction (actual splits)
+                    .ToList();
+
+                var splitTransactionIds = new HashSet<string>();
+                foreach (var splitGroup in transactionsWithSplits)
+                {
+                    splitTransactionIds.UnionWith(splitGroup.Select(t => t.Id));
+                }
+
+                var transactionDtos = new List<BankTransactionDto>();
+
+                // Process split transactions (only return parent)
+                foreach (var splitGroup in transactionsWithSplits)
+                {
+                    var groupList = splitGroup.ToList();
+                    
+                    // Get the first transaction as the parent (ordered by creation time)
+                    var parentTransaction = groupList.OrderBy(t => t.CreatedAt).First();
+                    var parentId = parentTransaction.Id;
+                    
+                    // Identify split transactions (exclude the parent)
+                    var splitTransactions = groupList
+                        .Where(t => t.Id != parentId) // Exclude parent from splits
+                        .OrderBy(t => t.CreatedAt)
+                        .ToList();
+                    
+                    // Load only the split transactions (not the parent) with their bill information
+                    var splitIds = splitTransactions.Select(p => p.Id).ToList();
+                    var splitsWithBills = await _context.Payments
+                        .AsNoTracking()
+                        .Include(p => p.Bill)
+                        .Where(p => splitIds.Contains(p.Id))
+                        .OrderBy(p => p.CreatedAt)
+                        .ToListAsync();
+                    
+                    var splitDtos = splitsWithBills.Select(p => new TransactionSplitDto
+                    {
+                        Id = p.Id,
+                        Amount = p.Amount,
+                        BillId = p.BillId,
+                        Category = p.Category,
+                        Description = p.Description ?? ""
+                    }).ToList();
+
+                    // Create parent DTO with split information
+                    var parentDto = await MapPaymentToBankTransactionDtoAsync(parentTransaction);
+                    parentDto.IsSplit = true;
+                    parentDto.SplitCount = splitTransactions.Count;
+                    parentDto.Splits = splitDtos; // Only actual splits, not the parent
+                    parentDto.Amount = splitTransactions.Sum(p => p.Amount); // Total amount of splits only, excluding parent
+                    
+                    transactionDtos.Add(parentDto);
+                }
+
+                // Process regular transactions (exclude split transactions that were already processed)
+                var regularTransactions = transactions
+                    .Where(t => !splitTransactionIds.Contains(t.Id))
+                    .ToList();
+
+                foreach (var transaction in regularTransactions)
+                {
+                    var dto = await MapPaymentToBankTransactionDtoAsync(transaction);
+                    transactionDtos.Add(dto);
+                }
+
+                // Sort by transaction date descending
+                transactionDtos = transactionDtos
+                    .OrderByDescending(t => t.TransactionDate)
+                    .ToList();
+
                 return ApiResponse<List<BankTransactionDto>>.SuccessResult(transactionDtos);
             }
             catch (Exception ex)
@@ -4801,7 +5864,7 @@ namespace UtilityHub360.Services
                 // Get total count of ALL transactions (not filtered by period) for TransactionCount
                 var totalTransactionCount = await _context.Payments
                     .AsNoTracking()
-                    .Where(p => p.UserId == userId && p.IsBankTransaction)
+                    .Where(p => p.UserId == userId && p.IsBankTransaction && !p.IsDeleted)
                     .CountAsync();
                 
                 // Get aggregated transaction statistics from Payments table grouped by BankAccountId (ALL transactions, not just period)
@@ -4861,6 +5924,7 @@ namespace UtilityHub360.Services
                     .AsNoTracking()
                     .Where(p => p.UserId == userId && 
                                p.IsBankTransaction && 
+                               !p.IsDeleted &&
                                p.TransactionDate.HasValue &&
                                p.TransactionDate >= startDate && 
                                p.TransactionDate <= endDate)
@@ -5191,6 +6255,48 @@ namespace UtilityHub360.Services
                 // If query fails (table doesn't exist, etc.), assume columns don't exist
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Determines if a transaction was synced from a bank connection (e.g., Plaid)
+        /// vs. being created internally (bill payments, loan payments, savings, bank statement uploads, etc.)
+        /// </summary>
+        private async Task<bool> IsSyncedFromBankAsync(string? externalTransactionId, string? bankAccountId)
+        {
+            if (string.IsNullOrEmpty(externalTransactionId))
+                return false;
+            
+            // System-generated ExternalTransactionIds have specific prefixes
+            // These are always deletable (bill payments, loan payments, savings, etc.)
+            var systemPrefixes = new[] { "BILL_PAY_", "LOAN_PAY_", "SAVINGS_", "SAVINGS_PAID_", "SPLIT_" };
+            
+            if (systemPrefixes.Any(prefix => externalTransactionId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                return false; // System-generated, not bank-synced
+            
+            // If no bank account ID provided, can't determine - allow deletion to be safe
+            if (string.IsNullOrEmpty(bankAccountId))
+                return false;
+            
+            // Only consider it bank-synced if the bank account is actually connected (Plaid)
+            // Bank statement uploads don't have connected accounts, so they should be deletable
+            var bankAccount = await _context.BankAccounts
+                .AsNoTracking()
+                .FirstOrDefaultAsync(ba => ba.Id == bankAccountId);
+            
+            if (bankAccount == null)
+                return false; // Account not found - allow deletion to be safe
+            
+            // CRITICAL: Only prevent deletion if account is BOTH connected AND has a connection ID
+            // If either condition is false, allow deletion
+            // This ensures bank statement uploads (IsConnected = false) are always deletable
+            if (!bankAccount.IsConnected)
+                return false; // Not connected - definitely deletable
+            
+            if (string.IsNullOrEmpty(bankAccount.ConnectionId))
+                return false; // No connection ID - allow deletion to be safe
+            
+            // Only block deletion if BOTH conditions are true: IsConnected AND has ConnectionId
+            return true;
         }
     }
 }

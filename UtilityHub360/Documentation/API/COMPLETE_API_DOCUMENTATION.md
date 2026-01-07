@@ -883,9 +883,9 @@ Update `appsettings.json` for:
   "SmtpSettings": {
     "Host": "smtp.gmail.com",
     "Port": "587",
-    "Username": "your-email@gmail.com",
-    "Password": "your-app-password",
-    "FromEmail": "your-email@gmail.com",
+    "Username": "elibarabarquez.dev@gmail.com",
+    "Password": "xfhu smfj bqsa uhmf",
+    "FromEmail": "elibarabarquez.dev@gmail.com",
     "FromName": "UtilityHub360"
   },
   "AppSettings": {

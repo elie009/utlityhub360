@@ -33,6 +33,13 @@ namespace UtilityHub360.Entities
 
         public bool IsActive { get; set; } = true;
 
+        public bool EmailVerified { get; set; } = false;
+
+        [StringLength(255)]
+        public string? EmailVerificationToken { get; set; }
+
+        public DateTime? EmailVerificationTokenExpiresAt { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

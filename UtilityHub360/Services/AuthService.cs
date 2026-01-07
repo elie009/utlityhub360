@@ -42,6 +42,10 @@ namespace UtilityHub360.Services
                 throw new InvalidOperationException("User with this phone number already exists");
             }
 
+            // Generate email verification token
+            var verificationToken = Guid.NewGuid().ToString();
+            var tokenExpiresAt = DateTime.UtcNow.AddHours(24);
+
             // Create new user
             var user = new Entities.User
             {
@@ -52,6 +56,9 @@ namespace UtilityHub360.Services
                 Role = "USER",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerData.Password),
                 IsActive = true,
+                EmailVerified = false,
+                EmailVerificationToken = verificationToken,
+                EmailVerificationTokenExpiresAt = tokenExpiresAt,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -70,15 +77,27 @@ namespace UtilityHub360.Services
                 Console.WriteLine($"[AuthService] Failed to create default categories for user {user.Id}: {ex.Message}");
             }
 
-            // Generate tokens
-            var token = GenerateJwtToken(user);
-            var refreshToken = GenerateRefreshToken();
+            // Send verification email
+            try
+            {
+                await _emailService.SendEmailVerificationEmailAsync(
+                    user.Email, 
+                    verificationToken, 
+                    user.Name
+                );
+            }
+            catch (Exception ex)
+            {
+                // Log but don't fail registration if email fails
+                Console.WriteLine($"[AuthService] Failed to send verification email: {ex.Message}");
+            }
 
+            // Don't generate JWT tokens yet - user needs to verify email first
             return ApiResponse<AuthResponseDto>.SuccessResult(new AuthResponseDto
             {
-                Token = token,
-                RefreshToken = refreshToken,
-                ExpiresAt = DateTime.UtcNow.AddMinutes(_jwtSettings.ExpirationMinutes),
+                Token = null,
+                RefreshToken = null,
+                ExpiresAt = null,
                 User = new UserDto
                 {
                     Id = user.Id,
@@ -88,9 +107,11 @@ namespace UtilityHub360.Services
                     Country = user.Country,
                     Role = user.Role,
                     IsActive = user.IsActive,
+                    EmailVerified = user.EmailVerified,
                     CreatedAt = user.CreatedAt,
                     UpdatedAt = user.UpdatedAt
-                }
+                },
+                RequiresEmailVerification = true
             });
         }
 
@@ -153,6 +174,13 @@ namespace UtilityHub360.Services
                     throw new UnauthorizedAccessException("Invalid email or password");
                 }
 
+                // Check if email is verified
+                if (!user.EmailVerified)
+                {
+                    Console.WriteLine($"[AuthService] Email not verified for email: {loginCredentials.Email}");
+                    throw new UnauthorizedAccessException("Please verify your email address before logging in. Check your inbox for the verification link.");
+                }
+
                 // Generate JWT token
                 string token;
                 try
@@ -183,6 +211,7 @@ namespace UtilityHub360.Services
                         Country = user.Country,
                         Role = user.Role,
                         IsActive = user.IsActive,
+                        EmailVerified = user.EmailVerified,
                         CreatedAt = user.CreatedAt,
                         UpdatedAt = user.UpdatedAt
                     }
@@ -199,6 +228,87 @@ namespace UtilityHub360.Services
                 Console.WriteLine($"[AuthService] Stack trace: {ex.StackTrace}");
                 throw;
             }
+        }
+
+        public async Task<ApiResponse<bool>> VerifyEmailAsync(string email, string token)
+        {
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
+
+            if (user == null)
+            {
+                throw new InvalidOperationException("User not found");
+            }
+
+            if (user.EmailVerified)
+            {
+                return ApiResponse<bool>.SuccessResult(true, "Email already verified");
+            }
+
+            if (user.EmailVerificationToken != token)
+            {
+                throw new InvalidOperationException("Invalid verification token");
+            }
+
+            if (user.EmailVerificationTokenExpiresAt.HasValue && 
+                user.EmailVerificationTokenExpiresAt.Value < DateTime.UtcNow)
+            {
+                throw new InvalidOperationException("Verification token has expired");
+            }
+
+            // Verify the email
+            user.EmailVerified = true;
+            user.EmailVerificationToken = null;
+            user.EmailVerificationTokenExpiresAt = null;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return ApiResponse<bool>.SuccessResult(true, "Email verified successfully");
+        }
+
+        public async Task<ApiResponse<bool>> ResendVerificationEmailAsync(string email)
+        {
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
+
+            if (user == null)
+            {
+                // Don't reveal if email exists for security
+                return ApiResponse<bool>.SuccessResult(true, "If the email exists, a verification link has been sent.");
+            }
+
+            if (user.EmailVerified)
+            {
+                return ApiResponse<bool>.SuccessResult(true, "Email is already verified");
+            }
+
+            // Generate new token
+            var verificationToken = Guid.NewGuid().ToString();
+            var tokenExpiresAt = DateTime.UtcNow.AddHours(24);
+
+            user.EmailVerificationToken = verificationToken;
+            user.EmailVerificationTokenExpiresAt = tokenExpiresAt;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            // Send verification email
+            try
+            {
+                await _emailService.SendEmailVerificationEmailAsync(
+                    user.Email, 
+                    verificationToken, 
+                    user.Name
+                );
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AuthService] Failed to send verification email: {ex.Message}");
+                throw new InvalidOperationException("Failed to send verification email");
+            }
+
+            return ApiResponse<bool>.SuccessResult(true, "Verification email sent successfully");
         }
 
         public async Task<ApiResponse<AuthResponseDto>> RefreshTokenAsync(string refreshToken)
@@ -224,6 +334,7 @@ namespace UtilityHub360.Services
                 Phone = user.Phone,
                 Role = user.Role,
                 IsActive = user.IsActive,
+                EmailVerified = user.EmailVerified,
                 CreatedAt = user.CreatedAt,
                 UpdatedAt = user.UpdatedAt
             };

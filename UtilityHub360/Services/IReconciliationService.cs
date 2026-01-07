@@ -19,9 +19,11 @@ namespace UtilityHub360.Services
         Task<ApiResponse<(Stream fileStream, string fileName, string contentType)>> GetUploadFileAsync(string uploadId);
         Task<ApiResponse<bool>> ProcessExtractedTextAsync(ProcessExtractedTextDto processDto);
         Task<ApiResponse<List<StagingTransactionDto>>> GetStagingTransactionsAsync(string uploadId, string userId);
+        Task<ApiResponse<bool>> SaveStagingTransactionsAsync(string uploadId, ConfirmBankStatementUploadDto saveDto, string userId);
         Task<ApiResponse<BankStatementDto>> ConfirmUploadAsync(string uploadId, ConfirmBankStatementUploadDto confirmDto, string userId);
         Task<ApiResponse<BankStatementUploadDto>> GetUploadStatusAsync(string uploadId, string userId);
         Task<ApiResponse<bool>> CancelUploadAsync(string uploadId, string userId);
+        Task<ApiResponse<bool>> UpdateUploadErrorAsync(string uploadId, string errorMessage);
         
         // Bank Statement Extraction Operations
         Task<ApiResponse<ExtractBankStatementResponseDto>> ExtractBankStatementFromFileAsync(Stream fileStream, string fileName, string bankAccountId, string userId);

@@ -545,6 +545,35 @@ namespace UtilityHub360.Controllers
             }
         }
 
+        /// <summary>
+        /// Recalculate account balance from transactions
+        /// </summary>
+        [HttpPost("{bankAccountId}/recalculate-balance")]
+        public async Task<ActionResult<ApiResponse<decimal>>> RecalculateBalance(string bankAccountId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<decimal>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _bankAccountService.RecalculateBalanceFromTransactionsAsync(bankAccountId, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<decimal>.ErrorResult($"Failed to recalculate balance: {ex.Message}"));
+            }
+        }
+
         // Transaction endpoints
 
         /// <summary>
@@ -808,6 +837,40 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete transaction: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Bulk delete multiple bank transactions
+        /// </summary>
+        [HttpPost("transactions/bulk-delete")]
+        public async Task<ActionResult<ApiResponse<BulkDeleteTransactionsResultDto>>> BulkDeleteTransactions([FromBody] BulkDeleteTransactionsDto bulkDeleteDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<BulkDeleteTransactionsResultDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (bulkDeleteDto?.TransactionIds == null || bulkDeleteDto.TransactionIds.Count == 0)
+                {
+                    return BadRequest(ApiResponse<BulkDeleteTransactionsResultDto>.ErrorResult("No transaction IDs provided"));
+                }
+
+                var result = await _bankAccountService.BulkDeleteTransactionsAsync(bulkDeleteDto.TransactionIds, userId);
+                
+                if (!result.Success && result.Data?.Successful == 0)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BulkDeleteTransactionsResultDto>.ErrorResult($"Failed to delete transactions: {ex.Message}"));
             }
         }
 

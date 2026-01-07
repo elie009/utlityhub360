@@ -52,6 +52,41 @@ namespace UtilityHub360.Services
             return await SendEmailAsync(email, subject, body);
         }
 
+        public async Task<bool> SendEmailVerificationEmailAsync(string email, string verificationToken, string userName)
+        {
+            var baseUrl = (_configuration["AppSettings:BaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
+            var verificationUrl = $"{baseUrl}/verify-email?token={verificationToken}&email={Uri.EscapeDataString(email)}";
+            
+            var subject = "Verify Your Email - UtilityHub360";
+            var body = $@"
+                <html>
+                <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+                    <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                        <h2 style='color: #1976d2;'>Welcome to UtilityHub360!</h2>
+                        <p>Hi {userName},</p>
+                        <p>Thank you for registering with UtilityHub360. Please verify your email address to complete your registration.</p>
+                        <div style='text-align: center; margin: 30px 0;'>
+                            <a href='{verificationUrl}' 
+                               style='background-color: #1976d2; color: white; padding: 12px 30px; 
+                                      text-decoration: none; border-radius: 5px; display: inline-block;'>
+                                Verify Email Address
+                            </a>
+                        </div>
+                        <p>Or copy and paste this link into your browser:</p>
+                        <p style='word-break: break-all; color: #666;'>{verificationUrl}</p>
+                        <p>This link will expire in 24 hours.</p>
+                        <p>If you didn't create an account, please ignore this email.</p>
+                        <hr style='border: none; border-top: 1px solid #eee; margin: 20px 0;'/>
+                        <p style='color: #666; font-size: 12px;'>
+                            © {DateTime.Now.Year} UtilityHub360. All rights reserved.
+                        </p>
+                    </div>
+                </body>
+                </html>";
+
+            return await SendEmailAsync(email, subject, body);
+        }
+
         public async Task<bool> SendEmailAsync(string to, string subject, string body)
         {
             try

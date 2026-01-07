@@ -97,7 +97,7 @@ namespace UtilityHub360.Services
                 _context.BankStatementItems.AddRange(statementItems);
                 await _context.SaveChangesAsync();
 
-                await AutoMatchStatementItemsAsync(bankStatement.Id, userId);
+                // Create transactions for all statement items (auto-matching removed)
                 await CreateTransactionsFromUnmatchedItemsAsync(bankStatement.Id, userId);
 
                 return await GetBankStatementAsync(bankStatement.Id, userId);
@@ -156,8 +156,139 @@ namespace UtilityHub360.Services
                 if (statement == null) return ApiResponse<bool>.ErrorResult("Not found");
                 if (statement.IsReconciled) return ApiResponse<bool>.ErrorResult("Cannot delete reconciled statement");
 
+                // Get all statement item IDs
+                var statementItemIds = statement.StatementItems.Select(i => i.Id).ToList();
+
+                // Delete ReconciliationMatches that reference these statement items
+                if (statementItemIds.Any())
+                {
+                    var matches = await _context.ReconciliationMatches
+                        .Where(m => statementItemIds.Contains(m.StatementItemId))
+                        .ToListAsync();
+                    
+                    if (matches.Any())
+                    {
+                        _context.ReconciliationMatches.RemoveRange(matches);
+                    }
+                }
+
+                // Get all Payment IDs that were created from this statement
+                var paymentIds = statement.StatementItems
+                    .Where(i => !string.IsNullOrEmpty(i.MatchedTransactionId) && i.MatchedTransactionType == "Payment")
+                    .Select(i => i.MatchedTransactionId)
+                    .ToList();
+
+                // Also get BankTransaction IDs that were created from this statement
+                var bankTransactionIds = statement.StatementItems
+                    .Where(i => !string.IsNullOrEmpty(i.MatchedTransactionId) && i.MatchedTransactionType == "BankTransaction")
+                    .Select(i => i.MatchedTransactionId)
+                    .ToList();
+
+                // Find and handle all associated Payment records
+                if (paymentIds.Any())
+                {
+                    var payments = await _context.Payments
+                        .Where(p => paymentIds.Contains(p.Id) && p.UserId == userId && !p.IsDeleted)
+                        .ToListAsync();
+
+                    if (payments.Any())
+                    {
+                        // Get the bank account to reverse balance changes
+                        var bankAccount = await _context.BankAccounts
+                            .FirstOrDefaultAsync(ba => ba.Id == statement.BankAccountId && ba.UserId == userId);
+
+                        if (bankAccount != null)
+                        {
+                            // Reverse balance changes for each payment
+                            foreach (var payment in payments)
+                            {
+                                if (payment.TransactionType == "CREDIT")
+                                {
+                                    bankAccount.CurrentBalance -= payment.Amount;
+                                }
+                                else if (payment.TransactionType == "DEBIT")
+                                {
+                                    bankAccount.CurrentBalance += payment.Amount;
+                                }
+                            }
+                            bankAccount.UpdatedAt = DateTime.UtcNow;
+                        }
+
+                        // Soft-delete the Payment records instead of hard delete
+                        foreach (var payment in payments)
+                        {
+                            payment.IsDeleted = true;
+                            payment.DeletedAt = DateTime.UtcNow;
+                            payment.DeletedBy = userId;
+                            payment.DeleteReason = "Bank statement deleted";
+                            payment.UpdatedAt = DateTime.UtcNow;
+                        }
+                    }
+                }
+
+                // Find and handle all associated BankTransaction records
+                if (bankTransactionIds.Any())
+                {
+                    var bankTransactions = await _context.BankTransactions
+                        .Where(bt => bankTransactionIds.Contains(bt.Id) && bt.UserId == userId)
+                        .ToListAsync();
+
+                    if (bankTransactions.Any())
+                    {
+                        // Get the bank account to reverse balance changes
+                        var bankAccount = await _context.BankAccounts
+                            .FirstOrDefaultAsync(ba => ba.Id == statement.BankAccountId && ba.UserId == userId);
+
+                        if (bankAccount != null)
+                        {
+                            // Reverse balance changes for each bank transaction
+                            foreach (var transaction in bankTransactions)
+                            {
+                                if (transaction.TransactionType == "CREDIT")
+                                {
+                                    bankAccount.CurrentBalance -= transaction.Amount;
+                                }
+                                else if (transaction.TransactionType == "DEBIT")
+                                {
+                                    bankAccount.CurrentBalance += transaction.Amount;
+                                }
+                            }
+                            bankAccount.UpdatedAt = DateTime.UtcNow;
+                        }
+
+                        // Get associated Payment IDs from BankTransactions (via PaymentId foreign key)
+                        var associatedPaymentIds = bankTransactions
+                            .Where(bt => !string.IsNullOrEmpty(bt.PaymentId))
+                            .Select(bt => bt.PaymentId)
+                            .Distinct()
+                            .ToList();
+
+                        // Soft-delete associated Payment records
+                        if (associatedPaymentIds.Any())
+                        {
+                            var associatedPayments = await _context.Payments
+                                .Where(p => associatedPaymentIds.Contains(p.Id) && p.UserId == userId && !p.IsDeleted)
+                                .ToListAsync();
+
+                            foreach (var payment in associatedPayments)
+                            {
+                                payment.IsDeleted = true;
+                                payment.DeletedAt = DateTime.UtcNow;
+                                payment.DeletedBy = userId;
+                                payment.DeleteReason = "Bank statement deleted";
+                                payment.UpdatedAt = DateTime.UtcNow;
+                            }
+                        }
+
+                        // Delete the BankTransaction records (hard delete since they're from statement import)
+                        _context.BankTransactions.RemoveRange(bankTransactions);
+                    }
+                }
+
+                // Delete statement items and statement
                 _context.BankStatementItems.RemoveRange(statement.StatementItems);
                 _context.BankStatements.Remove(statement);
+                
                 await _context.SaveChangesAsync();
 
                 return ApiResponse<bool>.SuccessResult(true);
@@ -388,6 +519,71 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<bool>> SaveStagingTransactionsAsync(string uploadId, ConfirmBankStatementUploadDto saveDto, string userId)
+        {
+            try
+            {
+                var upload = await _context.BankStatementUploads
+                    .FirstOrDefaultAsync(u => u.Id == uploadId && u.UserId == userId);
+                
+                if (upload == null) return ApiResponse<bool>.ErrorResult("Not found");
+
+                // Allow saving staging transactions regardless of upload status
+                // This enables users to update staging data even after confirmation if needed
+
+                // Delete existing staging transactions for this upload
+                var existingTransactions = await _context.StagingTransactions
+                    .Where(t => t.UploadId == uploadId)
+                    .ToListAsync();
+                
+                if (existingTransactions.Any())
+                {
+                    _context.StagingTransactions.RemoveRange(existingTransactions);
+                }
+
+                // Create new staging transactions from the DTO
+                if (saveDto.Transactions != null && saveDto.Transactions.Any())
+                {
+                    var newStagingTransactions = saveDto.Transactions.Select(t => 
+                    {
+                        // If ID is a temp ID or doesn't look like a GUID, generate a new one
+                        // Otherwise preserve the ID to maintain references
+                        string transactionId = t.Id;
+                        if (t.Id.StartsWith("temp-") || t.Id.StartsWith("imported-") || !Guid.TryParse(t.Id, out _))
+                        {
+                            transactionId = Guid.NewGuid().ToString();
+                        }
+
+                        return new StagingTransaction
+                        {
+                            Id = transactionId,
+                            UploadId = uploadId,
+                            TransactionDate = t.TransactionDate,
+                            Amount = t.Amount,
+                            TransactionType = t.TransactionType,
+                            Description = t.Description,
+                            ReferenceNumber = t.ReferenceNumber,
+                            Merchant = t.Merchant,
+                            Category = t.Category,
+                            BalanceAfterTransaction = t.BalanceAfterTransaction,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                    }).ToList();
+
+                    _context.StagingTransactions.AddRange(newStagingTransactions);
+                }
+
+                upload.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+                return ApiResponse<bool>.SuccessResult(true, "Staging transactions saved successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+
         public async Task<ApiResponse<BankStatementDto>> ConfirmUploadAsync(string uploadId, ConfirmBankStatementUploadDto confirmDto, string userId)
         {
             try
@@ -539,8 +735,7 @@ namespace UtilityHub360.Services
 
                 await _context.SaveChangesAsync();
 
-                // Auto-match with existing transactions and create new ones for unmatched items
-                await AutoMatchStatementItemsAsync(statement.Id, userId);
+                // Create transactions for all statement items (auto-matching removed)
                 await CreateTransactionsFromUnmatchedItemsAsync(statement.Id, userId);
 
                 return await GetBankStatementAsync(statement.Id, userId);
@@ -601,6 +796,26 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<bool>> UpdateUploadErrorAsync(string uploadId, string errorMessage)
+        {
+            try
+            {
+                var upload = await _context.BankStatementUploads.FindAsync(uploadId);
+                if (upload == null) return ApiResponse<bool>.ErrorResult("Not found");
+
+                upload.Status = "FAILED";
+                upload.ErrorMessage = errorMessage?.Length > 1000 ? errorMessage.Substring(0, 1000) : errorMessage;
+                upload.UpdatedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+                return ApiResponse<bool>.SuccessResult(true);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+     
         // ==================== RECONCILIATION OPERATIONS ====================
 
         public async Task<ApiResponse<ReconciliationDto>> CreateReconciliationAsync(CreateReconciliationDto createDto, string userId)
@@ -993,7 +1208,40 @@ namespace UtilityHub360.Services
         {
             if (string.IsNullOrEmpty(_openAISettings.ApiKey)) return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("No API key");
 
-            var prompt = "Extract bank statement JSON. Text: " + extractedText.Substring(0, Math.Min(extractedText.Length, 10000));
+            // Increase limit from 10,000 to 100,000 characters to handle longer statements with more transactions
+            // gpt-4o-mini has a 128k token context window, so 100k characters is safe
+            const int maxChars = 100000;
+            var textToProcess = extractedText.Length > maxChars 
+                ? extractedText.Substring(0, maxChars) 
+                : extractedText;
+
+            // Improved prompt with clear instructions to extract ALL transactions
+            var prompt = @"Extract ALL transactions from the following bank statement text and return a JSON object with this exact structure:
+{
+  ""statementName"": ""string"",
+  ""statementStartDate"": ""YYYY-MM-DD"",
+  ""statementEndDate"": ""YYYY-MM-DD"",
+  ""openingBalance"": number,
+  ""closingBalance"": number,
+  ""transactions"": [
+    {
+      ""transactionDate"": ""YYYY-MM-DD"",
+      ""amount"": number,
+      ""transactionType"": ""DEBIT"" or ""CREDIT"",
+      ""description"": ""string"",
+      ""referenceNumber"": ""string"" (optional),
+      ""merchant"": ""string"" (optional),
+      ""category"": ""string"" (optional),
+      ""balanceAfterTransaction"": number (optional)
+    }
+  ]
+}
+
+IMPORTANT: Extract ALL transactions you can find in the text. Do not skip any transactions. Include every transaction line item.
+
+Bank statement text:
+" + textToProcess;
+
             var messages = new List<object> { new { role = "user", content = prompt } };
             var openAIRequest = new { model = "gpt-4o-mini", messages = messages, response_format = new { type = "json_object" } };
             
@@ -1064,7 +1312,11 @@ namespace UtilityHub360.Services
             var statement = await _context.BankStatements.Include(s => s.StatementItems).FirstOrDefaultAsync(s => s.Id == statementId);
             if (statement == null) return;
             foreach (var item in statement.StatementItems.Where(i => !i.IsMatched)) {
-                var match = await _context.Payments.FirstOrDefaultAsync(p => p.BankAccountId == statement.BankAccountId && Math.Abs((decimal)(p.Amount - item.Amount)) < 0.01m);
+                // Match by amount AND transaction type to prevent incorrect matches between CREDIT and DEBIT
+                var match = await _context.Payments.FirstOrDefaultAsync(p => 
+                    p.BankAccountId == statement.BankAccountId && 
+                    Math.Abs((decimal)(p.Amount - item.Amount)) < 0.01m &&
+                    p.TransactionType == item.TransactionType);
                 if (match != null) {
                     item.IsMatched = true; item.MatchedTransactionId = match.Id; item.MatchedTransactionType = "Payment";
                     item.MatchedAt = DateTime.UtcNow; item.MatchedBy = userId; item.UpdatedAt = DateTime.UtcNow;
@@ -1076,15 +1328,39 @@ namespace UtilityHub360.Services
         private async Task CreateTransactionsFromUnmatchedItemsAsync(string statementId, string userId) {
             var statement = await _context.BankStatements.Include(s => s.StatementItems).FirstOrDefaultAsync(s => s.Id == statementId);
             if (statement == null) return;
-            foreach (var item in statement.StatementItems.Where(i => !i.IsMatched)) {
-                var res = await _bankAccountService.CreateTransactionAsync(new CreateBankTransactionDto {
-                    BankAccountId = statement.BankAccountId, Amount = item.Amount, TransactionType = item.TransactionType,
-                    Description = item.Description ?? "Statement Import", TransactionDate = item.TransactionDate,
-                    Currency = "USD"
-                }, userId);
-                if (res.Success) {
-                    item.IsMatched = true; item.MatchedTransactionId = res.Data.Id; item.MatchedTransactionType = "Payment";
-                    item.MatchedAt = DateTime.UtcNow; item.MatchedBy = userId; item.UpdatedAt = DateTime.UtcNow;
+            
+            // Process ALL items that don't have a Payment record created yet
+            // Check for items without MatchedTransactionId (not just IsMatched flag)
+            // This ensures we create transactions for all statement items, even if they were auto-matched
+            foreach (var item in statement.StatementItems.Where(i => string.IsNullOrEmpty(i.MatchedTransactionId))) {
+                try {
+                    var res = await _bankAccountService.CreateTransactionAsync(new CreateBankTransactionDto {
+                        BankAccountId = statement.BankAccountId, 
+                        Amount = item.Amount, 
+                        TransactionType = item.TransactionType,
+                        Description = item.Description ?? "Statement Import", 
+                        TransactionDate = item.TransactionDate,
+                        Currency = "USD",
+                        ReferenceNumber = item.ReferenceNumber,
+                        Merchant = item.Merchant,
+                        Category = item.Category
+                    }, userId);
+                    
+                    if (res.Success && res.Data != null) {
+                        // Mark as matched with the created transaction
+                        item.IsMatched = true; 
+                        item.MatchedTransactionId = res.Data.Id; 
+                        item.MatchedTransactionType = "Payment";
+                        item.MatchedAt = DateTime.UtcNow; 
+                        item.MatchedBy = userId; 
+                        item.UpdatedAt = DateTime.UtcNow;
+                    } else {
+                        // Log the error but continue processing other items
+                        _logger?.LogWarning($"Failed to create transaction for statement item {item.Id}: {res?.Message ?? "Unknown error"}");
+                    }
+                } catch (Exception ex) {
+                    // Log the exception but continue processing other items
+                    _logger?.LogError(ex, $"Error creating transaction for statement item {item.Id}");
                 }
             }
             await _context.SaveChangesAsync();

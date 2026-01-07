@@ -9,6 +9,7 @@ namespace UtilityHub360.DTOs
         public string? Country { get; set; }
         public string Role { get; set; } = string.Empty;
         public bool IsActive { get; set; }
+        public bool EmailVerified { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }

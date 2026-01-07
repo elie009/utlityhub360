@@ -260,5 +260,51 @@ namespace UtilityHub360.Controllers
                 return BadRequest(ApiResponse<object>.ErrorResult($"Failed to clear user data: {ex.Message}"));
             }
         }
+
+        [HttpPost("verify-email")]
+        public async Task<ActionResult<ApiResponse<bool>>> VerifyEmail([FromBody] VerifyEmailDto verifyEmailData)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<bool>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _authService.VerifyEmailAsync(verifyEmailData.Email, verifyEmailData.Token);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Email verification failed: {ex.Message}"));
+            }
+        }
+
+        [HttpPost("resend-verification")]
+        public async Task<ActionResult<ApiResponse<bool>>> ResendVerificationEmail([FromBody] ResendVerificationDto request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<bool>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _authService.ResendVerificationEmailAsync(request.Email);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to resend verification email: {ex.Message}"));
+            }
+        }
     }
 }
