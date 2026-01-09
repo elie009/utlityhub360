@@ -425,8 +425,8 @@ namespace UtilityHub360.DTOs
         // EXPENSES SECTION
         public ExpensesSectionDto Expenses { get; set; } = new();
         
-        // NET INCOME
-        public decimal NetIncome => Revenue.TotalRevenue - Expenses.TotalExpenses;
+        // NET INCOME - use absolute value for expenses to handle negative amounts
+        public decimal NetIncome => Revenue.TotalRevenue - Math.Abs(Expenses.TotalExpenses);
         
         // Comparison with previous period
         public IncomeStatementComparisonDto? Comparison { get; set; }
@@ -476,8 +476,8 @@ namespace UtilityHub360.DTOs
         public decimal LoanFeesExpense { get; set; }
         public decimal TotalFinancialExpenses { get; set; }
         
-        // Total Expenses
-        public decimal TotalExpenses => TotalOperatingExpenses + TotalFinancialExpenses;
+        // Total Expenses - use absolute value to handle negative amounts
+        public decimal TotalExpenses => Math.Abs(TotalOperatingExpenses) + Math.Abs(TotalFinancialExpenses);
         
         // Details
         public List<IncomeStatementItemDto> ExpenseItems { get; set; } = new();

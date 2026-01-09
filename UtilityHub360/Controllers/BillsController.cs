@@ -41,20 +41,6 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<BillDto>.ErrorResult("User not authenticated"));
                 }
 
-                // ============================================
-                // CONTROLLER-LEVEL VALIDATION: Current year only
-                // ============================================
-                var currentYear = DateTime.UtcNow.Year;
-                var billYear = createBillDto.DueDate.Year;
-
-                if (billYear != currentYear)
-                {
-                    return BadRequest(ApiResponse<BillDto>.ErrorResult(
-                        $"Bills can only be created for the current year ({currentYear}). " +
-                        $"You tried to create a bill for {createBillDto.DueDate:MMMM yyyy}. " +
-                        $"Please select a date within {currentYear}."));
-                }
-
                 // Check subscription limit for bills
                 var currentMonth = DateTime.UtcNow.Month;
                 var currentYearForLimit = DateTime.UtcNow.Year;
@@ -154,23 +140,6 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId))
                 {
                     return Unauthorized(ApiResponse<BillDto>.ErrorResult("User not authenticated"));
-                }
-
-                // ============================================
-                // CONTROLLER-LEVEL VALIDATION: Current year only for due date updates
-                // ============================================
-                if (updateBillDto.DueDate.HasValue)
-                {
-                    var currentYear = DateTime.UtcNow.Year;
-                    var newDueDateYear = updateBillDto.DueDate.Value.Year;
-
-                    if (newDueDateYear != currentYear)
-                    {
-                        return BadRequest(ApiResponse<BillDto>.ErrorResult(
-                            $"Bill due dates can only be set for the current year ({currentYear}). " +
-                            $"You tried to set a due date for {updateBillDto.DueDate.Value:MMMM yyyy}. " +
-                            $"Please select a date within {currentYear}."));
-                    }
                 }
 
                 var result = await _billService.UpdateBillAsync(billId, updateBillDto, userId);
@@ -1307,16 +1276,6 @@ namespace UtilityHub360.Controllers
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized(ApiResponse<List<BillDto>>.ErrorResult("User not authenticated"));
-
-                // ============================================
-                // VALIDATION: Only allow current year for consistency
-                // ============================================
-                var currentYear = DateTime.UtcNow.Year;
-                
-                if (year != currentYear)
-                    return BadRequest(ApiResponse<List<BillDto>>.ErrorResult(
-                        $"Can only view bills for the current year ({currentYear}). " +
-                        $"You requested {year}. Please use {currentYear}."));
 
                 if (month < 1 || month > 12)
                     return BadRequest(ApiResponse<List<BillDto>>.ErrorResult("Invalid month"));

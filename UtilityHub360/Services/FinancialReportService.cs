@@ -1017,7 +1017,7 @@ namespace UtilityHub360.Services
                              && p.TransactionDate <= reportDate)
                     .SumAsync(p => p.Amount);
 
-                var netIncome = totalIncome - expenseTransactions;
+                var netIncome = totalIncome - Math.Abs(expenseTransactions);
                 equity.RetainedEarnings = netIncome > 0 ? netIncome : 0;
 
                 equity.OwnersCapital = totalAssets - totalLiabilities - equity.RetainedEarnings;
@@ -1736,19 +1736,19 @@ namespace UtilityHub360.Services
                     var (prevStart, prevEnd) = GetPreviousPeriod(periodStart, periodEnd);
                     var prevRevenue = await CalculateTotalIncomeAsync(userId, prevStart, prevEnd);
                     var prevExpenses = await CalculateTotalExpensesAsync(userId, prevStart, prevEnd);
-                    var prevNetIncome = prevRevenue - prevExpenses;
+                    var prevNetIncome = prevRevenue - Math.Abs(prevExpenses);
 
                     comparison = new DTOs.IncomeStatementComparisonDto
                     {
                         PreviousRevenue = prevRevenue,
-                        PreviousExpenses = prevExpenses,
+                        PreviousExpenses = Math.Abs(prevExpenses),
                         PreviousNetIncome = prevNetIncome,
                         RevenueChange = revenue.TotalRevenue - prevRevenue,
                         RevenueChangePercentage = CalculatePercentageChange(prevRevenue, revenue.TotalRevenue),
-                        ExpensesChange = expenses.TotalExpenses - prevExpenses,
-                        ExpensesChangePercentage = CalculatePercentageChange(prevExpenses, expenses.TotalExpenses),
-                        NetIncomeChange = (revenue.TotalRevenue - expenses.TotalExpenses) - prevNetIncome,
-                        NetIncomeChangePercentage = CalculatePercentageChange(prevNetIncome, revenue.TotalRevenue - expenses.TotalExpenses)
+                        ExpensesChange = Math.Abs(expenses.TotalExpenses) - Math.Abs(prevExpenses),
+                        ExpensesChangePercentage = CalculatePercentageChange(Math.Abs(prevExpenses), Math.Abs(expenses.TotalExpenses)),
+                        NetIncomeChange = (revenue.TotalRevenue - Math.Abs(expenses.TotalExpenses)) - prevNetIncome,
+                        NetIncomeChangePercentage = CalculatePercentageChange(prevNetIncome, revenue.TotalRevenue - Math.Abs(expenses.TotalExpenses))
                     };
                 }
 
@@ -3515,8 +3515,8 @@ namespace UtilityHub360.Services
                 report.Summary = new CustomReportSummaryDto
                 {
                     TotalIncome = report.IncomeReport?.TotalIncome ?? 0,
-                    TotalExpenses = report.ExpenseReport?.TotalExpenses ?? 0,
-                    NetIncome = (report.IncomeReport?.TotalIncome ?? 0) - (report.ExpenseReport?.TotalExpenses ?? 0),
+                    TotalExpenses = Math.Abs(report.ExpenseReport?.TotalExpenses ?? 0),
+                    NetIncome = (report.IncomeReport?.TotalIncome ?? 0) - Math.Abs(report.ExpenseReport?.TotalExpenses ?? 0),
                     TotalAssets = report.BalanceSheet?.TotalAssets ?? 0,
                     TotalLiabilities = report.BalanceSheet?.Liabilities.TotalLiabilities ?? 0,
                     NetWorth = report.NetWorthReport?.CurrentNetWorth ?? 0,

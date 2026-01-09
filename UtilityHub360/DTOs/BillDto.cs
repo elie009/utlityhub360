@@ -78,10 +78,8 @@ namespace UtilityHub360.DTOs
         public decimal Amount { get; set; }
 
         [Required]
-        [CurrentYearOnly]
         public DateTime DueDate { get; set; }
 
-        [CurrentYearOnly]
         public DateTime? StatementDate { get; set; }
 
         [Required]
@@ -126,10 +124,8 @@ namespace UtilityHub360.DTOs
         [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than 0")]
         public decimal? Amount { get; set; }
 
-        [CurrentYearOnly]
         public DateTime? DueDate { get; set; }
 
-        [CurrentYearOnly]
         public DateTime? StatementDate { get; set; }
 
         [StringLength(20)]
