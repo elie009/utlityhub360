@@ -4,6 +4,7 @@ using UtilityHub360.DTOs;
 using UtilityHub360.Models;
 using UtilityHub360.Entities;
 using System.Text;
+using Microsoft.Data.SqlClient;
 
 namespace UtilityHub360.Services
 {
@@ -658,13 +659,13 @@ namespace UtilityHub360.Services
                 Console.WriteLine($"[NET WORTH REPORT DEBUG] UserId: {userId}, Query Period: {query.Period}");
                 Console.WriteLine($"[NET WORTH REPORT DEBUG] Date Range: {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd}");
 
-                // Calculate Assets: Bank Accounts + Savings
-                var bankAccounts = await _context.BankAccounts
-                    .Where(ba => ba.UserId == userId && ba.IsActive)
+                // Calculate Assets: Bank Accounts + Savings using stored procedure
+                var totalBalanceParam = new SqlParameter("@UserId", userId);
+                var totalBalanceResult = await _context.Database
+                    .SqlQueryRaw<decimal>("EXEC GetTotalBankAccountNetAmount @UserId", totalBalanceParam)
                     .ToListAsync();
-
-                var totalBankBalance = bankAccounts.Sum(ba => ba.CurrentBalance);
-                Console.WriteLine($"[NET WORTH REPORT DEBUG] Total Bank Accounts: {bankAccounts.Count}, Total Balance: {totalBankBalance}");
+                var totalBankBalance = totalBalanceResult.FirstOrDefault();
+                Console.WriteLine($"[NET WORTH REPORT DEBUG] Total Bank Balance (from stored procedure): {totalBankBalance}");
 
                 // Calculate Savings (from SavingsAccounts)
                 var totalSavings = await CalculateTotalSavingsAsync(userId);
@@ -783,45 +784,16 @@ namespace UtilityHub360.Services
                     var isCreditCard = accountTypeLower == "credit_card"
                                     || accountTypeLower == "credit card"
                                     || accountTypeLower == "creditcard";
-                    if (!isCreditCard)
+                    if (!isCreditCard && account.CurrentBalance > 0)
                     {
-                        // Calculate balance as of reportDate
-                        // Get the last bank transaction on or before the report date
-                        var lastTransactionBeforeDate = await _context.Payments
-                            .Where(p => p.BankAccountId == account.Id && 
-                                       p.IsBankTransaction &&
-                                       p.TransactionDate.HasValue &&
-                                       p.TransactionDate <= reportDate &&
-                                       !p.IsDeleted)
-                            .OrderByDescending(p => p.TransactionDate)
-                            .ThenByDescending(p => p.CreatedAt)
-                            .FirstOrDefaultAsync();
-
-                        decimal accountBalanceAsOfDate;
-                        
-                        if (lastTransactionBeforeDate != null && lastTransactionBeforeDate.BalanceAfterTransaction.HasValue)
+                        assets.CurrentAssets.Add(new DTOs.BalanceSheetItemDto
                         {
-                            // Use the balance after the last transaction on or before the report date
-                            accountBalanceAsOfDate = lastTransactionBeforeDate.BalanceAfterTransaction.Value;
-                        }
-                        else
-                        {
-                            // No transactions before report date, use current balance
-                            // (This handles accounts with no transactions or accounts created after report date)
-                            accountBalanceAsOfDate = account.CurrentBalance;
-                        }
-
-                        if (accountBalanceAsOfDate > 0)
-                        {
-                            assets.CurrentAssets.Add(new DTOs.BalanceSheetItemDto
-                            {
-                                AccountName = account.AccountName ?? "Unnamed Account",
-                                AccountType = account.AccountType ?? "Bank Account",
-                                Amount = accountBalanceAsOfDate,
-                                Description = $"{account.AccountType} - {account.AccountName}",
-                                ReferenceId = account.Id
-                            });
-                        }
+                            AccountName = account.AccountName ?? "Unnamed Account",
+                            AccountType = account.AccountType ?? "Bank Account",
+                            Amount = account.CurrentBalance,
+                            Description = $"{account.AccountType} - {account.AccountName}",
+                            ReferenceId = account.Id
+                        });
                     }
                 }
 
@@ -912,41 +884,16 @@ namespace UtilityHub360.Services
                     var isCreditCard = accountTypeLower == "credit_card"
                                     || accountTypeLower == "credit card"
                                     || accountTypeLower == "creditcard";
-                    if (isCreditCard)
+                    if (isCreditCard && account.CurrentBalance > 0)
                     {
-                        // Calculate balance as of reportDate
-                        var lastTransactionBeforeDate = await _context.Payments
-                            .Where(p => p.BankAccountId == account.Id && 
-                                       p.IsBankTransaction &&
-                                       p.TransactionDate.HasValue &&
-                                       p.TransactionDate <= reportDate &&
-                                       !p.IsDeleted)
-                            .OrderByDescending(p => p.TransactionDate)
-                            .ThenByDescending(p => p.CreatedAt)
-                            .FirstOrDefaultAsync();
-
-                        decimal creditCardBalanceAsOfDate;
-                        
-                        if (lastTransactionBeforeDate != null && lastTransactionBeforeDate.BalanceAfterTransaction.HasValue)
+                        liabilities.CurrentLiabilities.Add(new DTOs.BalanceSheetItemDto
                         {
-                            creditCardBalanceAsOfDate = lastTransactionBeforeDate.BalanceAfterTransaction.Value;
-                        }
-                        else
-                        {
-                            creditCardBalanceAsOfDate = account.CurrentBalance;
-                        }
-
-                        if (creditCardBalanceAsOfDate > 0)
-                        {
-                            liabilities.CurrentLiabilities.Add(new DTOs.BalanceSheetItemDto
-                            {
-                                AccountName = account.AccountName ?? "Unnamed Credit Card",
-                                AccountType = "Credit Card",
-                                Amount = creditCardBalanceAsOfDate,
-                                Description = $"Credit Card - {account.AccountName} (Outstanding Balance)",
-                                ReferenceId = account.Id
-                            });
-                        }
+                            AccountName = account.AccountName ?? "Unnamed Credit Card",
+                            AccountType = "Credit Card",
+                            Amount = account.CurrentBalance,
+                            Description = $"Credit Card - {account.AccountName} (Outstanding Balance)",
+                            ReferenceId = account.Id
+                        });
                     }
                 }
 
@@ -1017,7 +964,7 @@ namespace UtilityHub360.Services
                              && p.TransactionDate <= reportDate)
                     .SumAsync(p => p.Amount);
 
-                var netIncome = totalIncome - Math.Abs(expenseTransactions);
+                var netIncome = totalIncome - expenseTransactions;
                 equity.RetainedEarnings = netIncome > 0 ? netIncome : 0;
 
                 equity.OwnersCapital = totalAssets - totalLiabilities - equity.RetainedEarnings;
@@ -1736,19 +1683,19 @@ namespace UtilityHub360.Services
                     var (prevStart, prevEnd) = GetPreviousPeriod(periodStart, periodEnd);
                     var prevRevenue = await CalculateTotalIncomeAsync(userId, prevStart, prevEnd);
                     var prevExpenses = await CalculateTotalExpensesAsync(userId, prevStart, prevEnd);
-                    var prevNetIncome = prevRevenue - Math.Abs(prevExpenses);
+                    var prevNetIncome = prevRevenue - prevExpenses;
 
                     comparison = new DTOs.IncomeStatementComparisonDto
                     {
                         PreviousRevenue = prevRevenue,
-                        PreviousExpenses = Math.Abs(prevExpenses),
+                        PreviousExpenses = prevExpenses,
                         PreviousNetIncome = prevNetIncome,
                         RevenueChange = revenue.TotalRevenue - prevRevenue,
                         RevenueChangePercentage = CalculatePercentageChange(prevRevenue, revenue.TotalRevenue),
-                        ExpensesChange = Math.Abs(expenses.TotalExpenses) - Math.Abs(prevExpenses),
-                        ExpensesChangePercentage = CalculatePercentageChange(Math.Abs(prevExpenses), Math.Abs(expenses.TotalExpenses)),
-                        NetIncomeChange = (revenue.TotalRevenue - Math.Abs(expenses.TotalExpenses)) - prevNetIncome,
-                        NetIncomeChangePercentage = CalculatePercentageChange(prevNetIncome, revenue.TotalRevenue - Math.Abs(expenses.TotalExpenses))
+                        ExpensesChange = expenses.TotalExpenses - prevExpenses,
+                        ExpensesChangePercentage = CalculatePercentageChange(prevExpenses, expenses.TotalExpenses),
+                        NetIncomeChange = (revenue.TotalRevenue - expenses.TotalExpenses) - prevNetIncome,
+                        NetIncomeChangePercentage = CalculatePercentageChange(prevNetIncome, revenue.TotalRevenue - expenses.TotalExpenses)
                     };
                 }
 
@@ -2574,12 +2521,13 @@ namespace UtilityHub360.Services
 
         private async Task<decimal> CalculateNetWorthAsync(string userId, DateTime? asOfDate = null)
         {
-            // Calculate total assets (Bank Accounts + Savings)
-            var bankAccounts = await _context.BankAccounts
-                .Where(ba => ba.UserId == userId && ba.IsActive)
+            // Calculate total assets (Bank Accounts + Savings) using stored procedure
+            var totalBalanceParam = new SqlParameter("@UserId", userId);
+            var totalBalanceResult = await _context.Database
+                .SqlQueryRaw<decimal>("EXEC GetTotalBankAccountNetAmount @UserId", totalBalanceParam)
                 .ToListAsync();
-
-            var totalBankBalance = bankAccounts.Sum(ba => ba.CurrentBalance);
+            var totalBankBalance = totalBalanceResult.FirstOrDefault();
+            
             var totalSavings = await CalculateTotalSavingsAsync(userId);
             var totalAssets = totalBankBalance + totalSavings;
 
@@ -3515,8 +3463,8 @@ namespace UtilityHub360.Services
                 report.Summary = new CustomReportSummaryDto
                 {
                     TotalIncome = report.IncomeReport?.TotalIncome ?? 0,
-                    TotalExpenses = Math.Abs(report.ExpenseReport?.TotalExpenses ?? 0),
-                    NetIncome = (report.IncomeReport?.TotalIncome ?? 0) - Math.Abs(report.ExpenseReport?.TotalExpenses ?? 0),
+                    TotalExpenses = report.ExpenseReport?.TotalExpenses ?? 0,
+                    NetIncome = (report.IncomeReport?.TotalIncome ?? 0) - (report.ExpenseReport?.TotalExpenses ?? 0),
                     TotalAssets = report.BalanceSheet?.TotalAssets ?? 0,
                     TotalLiabilities = report.BalanceSheet?.Liabilities.TotalLiabilities ?? 0,
                     NetWorth = report.NetWorthReport?.CurrentNetWorth ?? 0,

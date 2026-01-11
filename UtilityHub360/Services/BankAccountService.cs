@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
 using UtilityHub360.Entities;
@@ -835,15 +836,12 @@ namespace UtilityHub360.Services
                     IsDeleted = false // Set default since we're filtering these out anyway
                 }).ToList();
 
-                // Calculate total balance excluding credit cards (they represent debt, not assets)
-                var totalBalance = bankAccounts
-                    .Where(ba => {
-                        var accountTypeLower = ba.AccountType?.ToLower().Trim() ?? "";
-                        return accountTypeLower != "credit_card" && 
-                               accountTypeLower != "credit card" && 
-                               accountTypeLower != "creditcard";
-                    })
-                    .Sum(ba => ba.CurrentBalance);
+                // Calculate total balance using stored procedure
+                var totalBalanceParam = new SqlParameter("@UserId", userId);
+                var totalBalanceResult = await _context.Database
+                    .SqlQueryRaw<decimal>("EXEC GetTotalBankAccountNetAmount @UserId", totalBalanceParam)
+                    .ToListAsync();
+                var totalBalance = totalBalanceResult.FirstOrDefault();
 
                 // Calculate total remaining credit limit for credit cards
                 // Remaining credit = Credit Limit (InitialBalance) - Current Balance (debt)
@@ -1078,15 +1076,12 @@ namespace UtilityHub360.Services
         {
             try
             {
-                // Exclude credit cards from total balance as they represent debt, not assets
-                // Inline the check so EF Core can translate it to SQL
-                var totalBalance = await _context.BankAccounts
-                    .Where(ba => ba.UserId == userId && 
-                               ba.IsActive && 
-                               ba.AccountType.ToLower() != "credit_card" &&
-                               ba.AccountType.ToLower() != "credit card" &&
-                               ba.AccountType.ToLower() != "creditcard")
-                    .SumAsync(ba => ba.CurrentBalance);
+                // Calculate total balance using stored procedure
+                var totalBalanceParam = new SqlParameter("@UserId", userId);
+                var totalBalanceResult = await _context.Database
+                    .SqlQueryRaw<decimal>("EXEC GetTotalBankAccountNetAmount @UserId", totalBalanceParam)
+                    .ToListAsync();
+                var totalBalance = totalBalanceResult.FirstOrDefault();
 
                 return ApiResponse<decimal>.SuccessResult(totalBalance);
             }
@@ -5147,6 +5142,14 @@ namespace UtilityHub360.Services
         {
             var transactions = bankAccount.Transactions ?? new List<BankTransaction>();
             
+            // Use stored procedure to get current balance
+            var bankAccountIdParam = new SqlParameter("@BankAccountId", bankAccount.Id);
+            var userIdParam = new SqlParameter("@UserId", bankAccount.UserId);
+            var currentBalanceResult = await _context.Database
+                .SqlQueryRaw<decimal>("EXEC GetBankAccountNetAmount @BankAccountId, @UserId", bankAccountIdParam, userIdParam)
+                .ToListAsync();
+            var currentBalance = currentBalanceResult.FirstOrDefault();
+            
             // Use provided stats if available, otherwise calculate from transactions
             int transactionCount;
             decimal totalIncoming;
@@ -5166,108 +5169,108 @@ namespace UtilityHub360.Services
             }
             
             // Load cards if not already loaded (handle case where Cards table doesn't exist)
-            List<CardDto> cards = new List<CardDto>();
-            try
-            {
-                // Try to load Cards collection - use direct query instead of Entry to avoid materializing entity
-                try
-                {
-                    // Check if bankAccount is tracked by EF Core
-                    var entry = _context.ChangeTracker.Entries<BankAccount>()
-                        .FirstOrDefault(e => e.Entity.Id == bankAccount.Id);
+            //List<CardDto> cards = new List<CardDto>();
+            //try
+            //{
+            //    // Try to load Cards collection - use direct query instead of Entry to avoid materializing entity
+            //    try
+            //    {
+            //        // Check if bankAccount is tracked by EF Core
+            //        var entry = _context.ChangeTracker.Entries<BankAccount>()
+            //            .FirstOrDefault(e => e.Entity.Id == bankAccount.Id);
                     
-                    if (entry != null)
-                    {
-                        // Entity is tracked, check if Cards are loaded
-                        var isCardsLoaded = entry.Collection(ba => ba.Cards).IsLoaded;
+            //        if (entry != null)
+            //        {
+            //            // Entity is tracked, check if Cards are loaded
+            //            var isCardsLoaded = entry.Collection(ba => ba.Cards).IsLoaded;
                         
-                        if (!isCardsLoaded)
-                        {
-                            await entry.Collection(ba => ba.Cards).LoadAsync();
-                        }
-                    }
-                    else
-                    {
-                        // Entity is not tracked (manually created), load cards directly
-                        var bankAccountCards = await _context.Cards
-                            .Where(c => c.BankAccountId == bankAccount.Id && !c.IsDeleted)
-                            .ToListAsync();
-                        bankAccount.Cards = bankAccountCards;
-                    }
-                }
-                catch
-                {
-                    // If loading fails, Cards table likely doesn't exist - skip Cards
-                    return new BankAccountDto
-                    {
-                        Id = bankAccount.Id,
-                        UserId = bankAccount.UserId,
-                        AccountName = bankAccount.AccountName,
-                        AccountType = bankAccount.AccountType,
-                        InitialBalance = bankAccount.InitialBalance,
-                        CurrentBalance = bankAccount.CurrentBalance,
-                        Currency = bankAccount.Currency,
-                        Description = bankAccount.Description,
-                        FinancialInstitution = bankAccount.FinancialInstitution,
-                        AccountNumber = bankAccount.AccountNumber,
-                        RoutingNumber = bankAccount.RoutingNumber,
-                        SyncFrequency = bankAccount.SyncFrequency,
-                        IsConnected = bankAccount.IsConnected,
-                        ConnectionId = bankAccount.ConnectionId,
-                        LastSyncedAt = bankAccount.LastSyncedAt,
-                        CreatedAt = bankAccount.CreatedAt,
-                        UpdatedAt = bankAccount.UpdatedAt,
-                        IsActive = bankAccount.IsActive,
-                        Iban = bankAccount.Iban,
-                        SwiftCode = bankAccount.SwiftCode,
-                        TransactionCount = transactionCount,
-                        TotalIncoming = totalIncoming,
-                        TotalOutgoing = totalOutgoing,
-                        Cards = new List<CardDto>()
-                    };
-                }
+            //            if (!isCardsLoaded)
+            //            {
+            //                await entry.Collection(ba => ba.Cards).LoadAsync();
+            //            }
+            //        }
+            //        else
+            //        {
+            //            // Entity is not tracked (manually created), load cards directly
+            //            var bankAccountCards = await _context.Cards
+            //                .Where(c => c.BankAccountId == bankAccount.Id && !c.IsDeleted)
+            //                .ToListAsync();
+            //            bankAccount.Cards = bankAccountCards;
+            //        }
+            //    }
+            //    catch (Exception e)
+            //    {
+            //        // If loading fails, Cards table likely doesn't exist - skip Cards
+            //        return new BankAccountDto
+            //        {
+            //            Id = bankAccount.Id,
+            //            UserId = bankAccount.UserId,
+            //            AccountName = bankAccount.AccountName,
+            //            AccountType = bankAccount.AccountType,
+            //            InitialBalance = bankAccount.InitialBalance,
+            //            CurrentBalance = currentBalance,
+            //            Currency = bankAccount.Currency,
+            //            Description = bankAccount.Description,
+            //            FinancialInstitution = bankAccount.FinancialInstitution,
+            //            AccountNumber = bankAccount.AccountNumber,
+            //            RoutingNumber = bankAccount.RoutingNumber,
+            //            SyncFrequency = bankAccount.SyncFrequency,
+            //            IsConnected = bankAccount.IsConnected,
+            //            ConnectionId = bankAccount.ConnectionId,
+            //            LastSyncedAt = bankAccount.LastSyncedAt,
+            //            CreatedAt = bankAccount.CreatedAt,
+            //            UpdatedAt = bankAccount.UpdatedAt,
+            //            IsActive = bankAccount.IsActive,
+            //            Iban = bankAccount.Iban,
+            //            SwiftCode = bankAccount.SwiftCode,
+            //            TransactionCount = transactionCount,
+            //            TotalIncoming = totalIncoming,
+            //            TotalOutgoing = totalOutgoing,
+            //            Cards = new List<CardDto>()
+            //        };
+            //    }
 
-                // Access Cards property and map to DTOs (this might also trigger a query)
-                try
-                {
-                    var bankAccountCards = bankAccount.Cards;
-                    if (bankAccountCards != null)
-                    {
-                        cards = bankAccountCards
-                            .Where(c => !c.IsDeleted)
-                            .Select(c => new CardDto
-                            {
-                                Id = c.Id,
-                                BankAccountId = c.BankAccountId,
-                                UserId = c.UserId,
-                                CardName = c.CardName,
-                                CardType = c.CardType,
-                                CardBrand = c.CardBrand,
-                                Last4Digits = c.Last4Digits,
-                                CardholderName = c.CardholderName,
-                                ExpiryMonth = c.ExpiryMonth,
-                                ExpiryYear = c.ExpiryYear,
-                                IsPrimary = c.IsPrimary,
-                                IsActive = c.IsActive,
-                                Description = c.Description,
-                                CreatedAt = c.CreatedAt,
-                                UpdatedAt = c.UpdatedAt,
-                                AccountName = bankAccount.AccountName
-                            })
-                            .ToList();
-                    }
-                }
-                catch
-                {
-                    // Accessing Cards property failed - return empty list
-                    cards = new List<CardDto>();
-                }
-            }
-            catch (Exception)
-            {
-                // Cards table doesn't exist or Cards couldn't be accessed - return empty list
-                cards = new List<CardDto>();
-            }
+            //    // Access Cards property and map to DTOs (this might also trigger a query)
+            //    try
+            //    {
+            //        var bankAccountCards = bankAccount.Cards;
+            //        if (bankAccountCards != null)
+            //        {
+            //            cards = bankAccountCards
+            //                .Where(c => !c.IsDeleted)
+            //                .Select(c => new CardDto
+            //                {
+            //                    Id = c.Id,
+            //                    BankAccountId = c.BankAccountId,
+            //                    UserId = c.UserId,
+            //                    CardName = c.CardName,
+            //                    CardType = c.CardType,
+            //                    CardBrand = c.CardBrand,
+            //                    Last4Digits = c.Last4Digits,
+            //                    CardholderName = c.CardholderName,
+            //                    ExpiryMonth = c.ExpiryMonth,
+            //                    ExpiryYear = c.ExpiryYear,
+            //                    IsPrimary = c.IsPrimary,
+            //                    IsActive = c.IsActive,
+            //                    Description = c.Description,
+            //                    CreatedAt = c.CreatedAt,
+            //                    UpdatedAt = c.UpdatedAt,
+            //                    AccountName = bankAccount.AccountName
+            //                })
+            //                .ToList();
+            //        }
+            //    }
+            //    catch
+            //    {
+            //        // Accessing Cards property failed - return empty list
+            //        cards = new List<CardDto>();
+            //    }
+            //}
+            //catch (Exception)
+            //{
+            //    // Cards table doesn't exist or Cards couldn't be accessed - return empty list
+            //    cards = new List<CardDto>();
+            //}
             
             return new BankAccountDto
             {
@@ -5276,7 +5279,7 @@ namespace UtilityHub360.Services
                 AccountName = bankAccount.AccountName,
                 AccountType = bankAccount.AccountType,
                 InitialBalance = bankAccount.InitialBalance,
-                CurrentBalance = bankAccount.CurrentBalance,
+                CurrentBalance = currentBalance,
                 Currency = bankAccount.Currency,
                 Description = bankAccount.Description,
                 FinancialInstitution = bankAccount.FinancialInstitution,
@@ -5293,8 +5296,8 @@ namespace UtilityHub360.Services
                 SwiftCode = bankAccount.SwiftCode,
                 TransactionCount = transactions.Count,
                 TotalIncoming = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount),
-                TotalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount),
-                Cards = cards
+                TotalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount)
+                //Cards = cards
             };
         }
 
@@ -5984,15 +5987,12 @@ namespace UtilityHub360.Services
                     IsDeleted = false
                 }).ToList();
 
-                // Calculate total balance excluding credit cards (they represent debt, not assets)
-                var totalBalance = accounts
-                    .Where(a => {
-                        var accountTypeLower = a.AccountType?.ToLower().Trim() ?? "";
-                        return accountTypeLower != "credit_card" && 
-                               accountTypeLower != "credit card" && 
-                               accountTypeLower != "creditcard";
-                    })
-                    .Sum(a => a.CurrentBalance);
+                // Calculate total balance using stored procedure
+                var totalBalanceParam = new SqlParameter("@UserId", userId);
+                var totalBalanceResult = await _context.Database
+                    .SqlQueryRaw<decimal>("EXEC GetTotalBankAccountNetAmount @UserId", totalBalanceParam)
+                    .ToListAsync();
+                var totalBalance = totalBalanceResult.FirstOrDefault();
 
                 // Calculate total remaining credit limit for credit cards
                 var creditCardAccounts = accounts

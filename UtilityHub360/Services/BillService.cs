@@ -21,21 +21,7 @@ namespace UtilityHub360.Services
         {
             try
             {
-                // ============================================
-                // VALIDATION: Only allow bills for current year
-                // ============================================
-                var currentYear = DateTime.UtcNow.Year;
-                var billYear = createBillDto.DueDate.Year;
-
-                if (billYear != currentYear)
-                {
-                    return ApiResponse<BillDto>.ErrorResult(
-                        $"Bills can only be created for the current year ({currentYear}). " +
-                        $"You tried to create a bill for {createBillDto.DueDate:MMMM yyyy}. " +
-                        $"Please select a date within {currentYear}.");
-                }
-
-                Console.WriteLine($"DEBUG CREATE BILL: Validation passed - Bill year {billYear} matches current year {currentYear}");
+                Console.WriteLine($"DEBUG CREATE BILL: Creating bill for {createBillDto.DueDate:MMMM yyyy}");
 
                 var billId = Guid.NewGuid().ToString();
                 
@@ -83,12 +69,13 @@ namespace UtilityHub360.Services
                 if (createBillDto.AutoGenerateNext && createBillDto.Frequency.ToLower() == "monthly")
                 {
                     var now = DateTime.UtcNow;
-                    // Use the currentYear variable already declared above
+                    var currentYear = DateTime.UtcNow.Year;
                     var baseDueDay = createBillDto.DueDate.Day;
                     var billDueDate = createBillDto.DueDate.Date;
                     var billMonth = billDueDate.Month;
+                    var billYear = billDueDate.Year;
 
-                    Console.WriteLine($"DEBUG AUTO-GEN: Starting auto-generation. Current year: {currentYear}, Bill month: {billMonth}");
+                    Console.WriteLine($"DEBUG AUTO-GEN: Starting auto-generation. Current year: {currentYear}, Bill year: {billYear}, Bill month: {billMonth}");
 
                     int generatedCount = 0;
                     int skippedCount = 0;
@@ -97,9 +84,9 @@ namespace UtilityHub360.Services
                     for (int month = billMonth + 1; month <= 12; month++)
                     {
                         // Calculate due date for this month, handling months with fewer days
-                        var daysInMonth = DateTime.DaysInMonth(currentYear, month);
+                        var daysInMonth = DateTime.DaysInMonth(billYear, month);
                         var dueDay = Math.Min(baseDueDay, daysInMonth);
-                        var monthlyDueDate = new DateTime(currentYear, month, dueDay);
+                        var monthlyDueDate = new DateTime(billYear, month, dueDay);
 
                         // Skip if this date has already passed and is more than 30 days old
                         if (monthlyDueDate < now.Date.AddDays(-30))
@@ -154,7 +141,7 @@ namespace UtilityHub360.Services
 
                 var billDto = MapToBillDto(bill);
                 var message = createBillDto.AutoGenerateNext && createBillDto.Frequency.ToLower() == "monthly" 
-                    ? $"Bill created successfully with auto-generation for remaining months of {DateTime.UtcNow.Year}" 
+                    ? $"Bill created successfully with auto-generation for remaining months of {createBillDto.DueDate.Year}" 
                     : "Bill created successfully";
                 
                 return ApiResponse<BillDto>.SuccessResult(billDto, message);
@@ -210,37 +197,11 @@ namespace UtilityHub360.Services
 
                 if (updateBillDto.DueDate.HasValue)
                 {
-                    // ============================================
-                    // VALIDATION: Only allow due dates for current year
-                    // ============================================
-                    var currentYear = DateTime.UtcNow.Year;
-                    var newDueDateYear = updateBillDto.DueDate.Value.Year;
-
-                    if (newDueDateYear != currentYear)
-                    {
-                        return ApiResponse<BillDto>.ErrorResult(
-                            $"Bill due dates can only be set for the current year ({currentYear}). " +
-                            $"You tried to set a due date for {updateBillDto.DueDate.Value:MMMM yyyy}. " +
-                            $"Please select a date within {currentYear}.");
-                    }
-
                     bill.DueDate = updateBillDto.DueDate.Value;
                 }
 
                 if (updateBillDto.StatementDate.HasValue)
                 {
-                    // Validation: Only allow statement dates for current year
-                    var currentYear = DateTime.UtcNow.Year;
-                    var newStatementDateYear = updateBillDto.StatementDate.Value.Year;
-
-                    if (newStatementDateYear != currentYear)
-                    {
-                        return ApiResponse<BillDto>.ErrorResult(
-                            $"Bill statement dates can only be set for the current year ({currentYear}). " +
-                            $"You tried to set a statement date for {updateBillDto.StatementDate.Value:MMMM yyyy}. " +
-                            $"Please select a date within {currentYear}.");
-                    }
-
                     bill.StatementDate = updateBillDto.StatementDate.Value;
                 }
 

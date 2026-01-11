@@ -2,31 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace UtilityHub360.DTOs
 {
-    /// <summary>
-    /// Custom validation attribute to ensure dates are within the current year only
-    /// </summary>
-    public class CurrentYearOnlyAttribute : ValidationAttribute
-    {
-        public override bool IsValid(object? value)
-        {
-            if (value is DateTime date)
-            {
-                var currentYear = DateTime.UtcNow.Year;
-                return date.Year == currentYear;
-            }
-            return true; // Allow null values to be handled by Required attribute
-        }
-
-        public override string FormatErrorMessage(string name)
-        {
-            var currentYear = DateTime.UtcNow.Year;
-            return $"The {name} must be within the current year ({currentYear}). Please select a date in {currentYear}.";
-        }
-    }
-}
-
-namespace UtilityHub360.DTOs
-{
     public class BillDto
     {
         public string Id { get; set; } = string.Empty;

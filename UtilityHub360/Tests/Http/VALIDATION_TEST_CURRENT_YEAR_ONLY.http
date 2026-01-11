@@ -1,5 +1,6 @@
-### 🛡️ TEST CURRENT YEAR VALIDATION
-### This tests the new validation that only allows bills for the current year
+### 🛡️ TEST MULTI-YEAR BILL SUPPORT
+### This tests the ability to create bills for any year (past, present, or future)
+### Year restriction has been REMOVED as of January 10, 2026
 
 ### Step 1: Login (replace with your actual credentials)
 POST https://localhost:7299/api/auth/login
@@ -10,7 +11,7 @@ Content-Type: application/json
   "password": "your-password"
 }
 
-### Test 1: ✅ SHOULD WORK - Create bill for current year (2024)
+### Test 1: ✅ SHOULD WORK - Create bill for current year (2026)
 POST https://localhost:7299/api/bills
 Authorization: Bearer {{auth_token}}
 Content-Type: application/json
@@ -19,77 +20,115 @@ Content-Type: application/json
   "billName": "Current Year Electric Bill",
   "billType": "utility",
   "amount": 150.00,
-  "dueDate": "2024-12-15T00:00:00Z",
+  "dueDate": "2026-12-15T00:00:00Z",
   "frequency": "monthly",
   "provider": "Electric Company",
-  "referenceNumber": "ELE2024001",
-  "autoGenerateNext": true,
-  "notes": "This should work - current year 2024"
+  "referenceNumber": "ELE2026001",
+  "autoGenerateNext": false,
+  "notes": "Current year 2026"
 }
 
-### Test 2: ❌ SHOULD FAIL - Try to create bill for 2026
+### Test 2: ✅ SHOULD WORK - Create bill for previous year (2025)
 POST https://localhost:7299/api/bills
 Authorization: Bearer {{auth_token}}
 Content-Type: application/json
 
 {
-  "billName": "Future Year Water Bill",
+  "billName": "2025 Water Bill",
   "billType": "utility", 
   "amount": 75.00,
-  "dueDate": "2026-01-15T00:00:00Z",
+  "dueDate": "2025-06-15T00:00:00Z",
   "frequency": "monthly",
   "provider": "Water Company",
-  "referenceNumber": "WAT2026001",
+  "referenceNumber": "WAT2025001",
   "autoGenerateNext": false,
-  "notes": "This should FAIL - future year 2026"
+  "notes": "Previous year 2025 - Historical bill"
 }
 
-### Test 3: ❌ SHOULD FAIL - Try to create bill for 2023
+### Test 3: ✅ SHOULD WORK - Create bill for past year (2024)
 POST https://localhost:7299/api/bills
 Authorization: Bearer {{auth_token}}
 Content-Type: application/json
 
 {
-  "billName": "Past Year Gas Bill",
+  "billName": "2024 Gas Bill",
   "billType": "utility",
   "amount": 100.00,
-  "dueDate": "2023-08-15T00:00:00Z",
+  "dueDate": "2024-08-15T00:00:00Z",
   "frequency": "monthly",
   "provider": "Gas Company", 
-  "referenceNumber": "GAS2023001",
+  "referenceNumber": "GAS2024001",
   "autoGenerateNext": false,
-  "notes": "This should FAIL - past year 2023"
+  "notes": "Past year 2024 - Historical bill"
 }
 
-### Test 4: ✅ SHOULD WORK - Create bill for different month in current year
+### Test 4: ✅ SHOULD WORK - Create bill for future year (2027)
 POST https://localhost:7299/api/bills
 Authorization: Bearer {{auth_token}}
 Content-Type: application/json
 
 {
-  "billName": "August 2024 Internet Bill",
+  "billName": "2027 Internet Bill",
   "billType": "utility",
   "amount": 89.99,
-  "dueDate": "2024-08-20T00:00:00Z",
+  "dueDate": "2027-03-20T00:00:00Z",
   "frequency": "monthly",
   "provider": "Internet Provider",
-  "referenceNumber": "INT2024001", 
-  "autoGenerateNext": true,
-  "notes": "This should work - August 2024 (current year)"
+  "referenceNumber": "INT2027001", 
+  "autoGenerateNext": false,
+  "notes": "Future year 2027"
 }
 
-### Test 5: Get created bills to verify only current year bills exist
-GET https://localhost:7299/api/bills?page=1&limit=20
+### Test 5: ✅ SHOULD WORK - Create 2025 bill with auto-generation
+### Should auto-generate bills for remaining months of 2025 only
+POST https://localhost:7299/api/bills
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "billName": "2025 Phone Bill Auto-Gen",
+  "billType": "utility",
+  "amount": 50.00,
+  "dueDate": "2025-01-10T00:00:00Z",
+  "frequency": "monthly",
+  "provider": "Phone Company",
+  "referenceNumber": "PHN2025001",
+  "autoGenerateNext": true,
+  "notes": "Should auto-generate for Feb-Dec 2025"
+}
+
+### Test 6: Update existing bill to different year
+### First get a bill ID, then update it
+GET https://localhost:7299/api/bills?page=1&limit=5
 Authorization: Bearer {{auth_token}}
 
-### Test 6: Verify auto-generated bills are only for current year
-GET https://localhost:7299/api/bills/auto-generated?confirmed=false
+### Test 7: Update bill date to previous year (use bill ID from Test 6)
+PUT https://localhost:7299/api/bills/{{bill_id}}
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "dueDate": "2025-12-01T00:00:00Z",
+  "notes": "Updated to 2025"
+}
+
+### Test 8: Get all bills to verify multi-year support
+GET https://localhost:7299/api/bills?page=1&limit=50
+Authorization: Bearer {{auth_token}}
+
+### Test 9: Get bills filtered by year and month (2025)
+GET https://localhost:7299/api/bills/by-month?year=2025&month=6
+Authorization: Bearer {{auth_token}}
+
+### Test 10: Get bills filtered by year and month (2024)
+GET https://localhost:7299/api/bills/by-month?year=2024&month=8
 Authorization: Bearer {{auth_token}}
 
 ### Expected Results:
-### Test 1: ✅ SUCCESS - Bill created for December 2024
-### Test 2: ❌ ERROR - "Bills can only be created for the current year (2024)"
-### Test 3: ❌ ERROR - "Bills can only be created for the current year (2024)" 
-### Test 4: ✅ SUCCESS - Bill created for August 2024
-### Test 5: Should only show bills from 2024
-### Test 6: Should only show auto-generated bills from 2024
+### Test 1-5: ✅ ALL SHOULD SUCCEED - Bills created for any year
+### Test 6-7: ✅ SHOULD SUCCEED - Bill date updated to different year
+### Test 8: Should show bills from multiple years (2024, 2025, 2026, 2027)
+### Test 9-10: Should show bills from specific year/month combinations
+
+### Note: Year restriction has been removed as of January 10, 2026
+### Users can now add bills from any year (past, present, or future)
