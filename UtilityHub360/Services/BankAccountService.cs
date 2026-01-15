@@ -7,6 +7,14 @@ using UtilityHub360.Models;
 
 namespace UtilityHub360.Services
 {
+    // Result class for stored procedure GetTotalBankAccountNetAmount
+    public class BankAccountBalanceResult
+    {
+        public decimal NetAmount { get; set; }
+        public decimal TotalCredit { get; set; }
+        public decimal TotalDebit { get; set; }
+    }
+
     public class BankAccountService : IBankAccountService
     {
         private readonly ApplicationDbContext _context;
@@ -5142,30 +5150,29 @@ namespace UtilityHub360.Services
         {
             var transactions = bankAccount.Transactions ?? new List<BankTransaction>();
             
-            // Use stored procedure to get current balance
-            var bankAccountIdParam = new SqlParameter("@BankAccountId", bankAccount.Id);
+            // Use stored procedure to get balance details (NetAmount, TotalCredit, TotalDebit)
             var userIdParam = new SqlParameter("@UserId", bankAccount.UserId);
-            var currentBalanceResult = await _context.Database
-                .SqlQueryRaw<decimal>("EXEC GetBankAccountNetAmount @BankAccountId, @UserId", bankAccountIdParam, userIdParam)
+            var balanceResults = await _context.Database
+                .SqlQueryRaw<BankAccountBalanceResult>("EXEC GetTotalBankAccountNetAmount @UserId", userIdParam)
                 .ToListAsync();
-            var currentBalance = currentBalanceResult.FirstOrDefault();
             
-            // Use provided stats if available, otherwise calculate from transactions
+            var accountBalance = balanceResults.FirstOrDefault();
+            
+            decimal currentBalance = accountBalance?.NetAmount ?? 0m;
+            decimal totalIncoming = accountBalance?.TotalCredit ?? 0m;
+            decimal totalOutgoing = accountBalance?.TotalDebit ?? 0m;
+            
+            // Override with provided stats if available
             int transactionCount;
-            decimal totalIncoming;
-            decimal totalOutgoing;
-            
             if (transactionStats != null)
             {
                 transactionCount = transactionStats.TransactionCount;
-                totalIncoming = transactionStats.TotalIncoming ?? 0m;
-                totalOutgoing = transactionStats.TotalOutgoing ?? 0m;
+                totalIncoming = transactionStats.TotalIncoming ?? totalIncoming;
+                totalOutgoing = transactionStats.TotalOutgoing ?? totalOutgoing;
             }
             else
             {
                 transactionCount = transactions.Count;
-                totalIncoming = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount);
-                totalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount);
             }
             
             // Load cards if not already loaded (handle case where Cards table doesn't exist)
@@ -5294,9 +5301,9 @@ namespace UtilityHub360.Services
                 IsActive = bankAccount.IsActive,
                 Iban = bankAccount.Iban,
                 SwiftCode = bankAccount.SwiftCode,
-                TransactionCount = transactions.Count,
-                TotalIncoming = transactions.Where(t => t.TransactionType == "CREDIT").Sum(t => t.Amount),
-                TotalOutgoing = transactions.Where(t => t.TransactionType == "DEBIT").Sum(t => t.Amount)
+                TransactionCount = transactionCount,
+                TotalIncoming = totalIncoming,
+                TotalOutgoing = totalOutgoing
                 //Cards = cards
             };
         }

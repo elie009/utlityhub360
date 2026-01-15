@@ -293,12 +293,15 @@ namespace UtilityHub360.Controllers
         /// Get balance sheet (Assets, Liabilities, Equity)
         /// </summary>
         [HttpGet("balance-sheet")]
-        public async Task<ActionResult<ApiResponse<BalanceSheetDto>>> GetBalanceSheet([FromQuery] DateTime? asOfDate = null)
+        public async Task<ActionResult<ApiResponse<BalanceSheetDto>>> GetBalanceSheet(
+            [FromQuery] DateTime? asOfDate = null,
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null)
         {
             try
             {
                 var userId = GetUserId();
-                var result = await _reportService.GetBalanceSheetAsync(userId, asOfDate);
+                var result = await _reportService.GetBalanceSheetAsync(userId, asOfDate, startDate, endDate);
 
                 if (!result.Success)
                 {

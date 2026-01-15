@@ -1,10 +1,11 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
+using System.Text;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
-using UtilityHub360.Models;
 using UtilityHub360.Entities;
-using System.Text;
-using Microsoft.Data.SqlClient;
+using UtilityHub360.Models;
 
 namespace UtilityHub360.Services
 {
@@ -120,16 +121,22 @@ namespace UtilityHub360.Services
                 var (prevStartDate, prevEndDate) = GetPreviousPeriod(startDate, endDate);
 
                 // Calculate current period values using the actual date range
-                var currentIncome = await CalculateTotalIncomeAsync(userId, startDate, endDate);
+                var currentIncome = await CalculateTotalIncomeTransactionAsync(userId, startDate, endDate);
                 var currentExpenses = await CalculateTotalExpensesAsync(userId, startDate, endDate);
                 var currentSavings = await CalculateTotalSavingsAsync(userId);
                 var savingsGoal = await GetSavingsGoalAsync(userId);
                 var netWorth = await CalculateNetWorthAsync(userId);
 
+                // Get disposable income from stored procedure for current period
+                var currentDisposableIncome = await CalculateDisposableIncomeAsync(userId, startDate, endDate);
+
                 // Calculate previous period values for comparison
-                var prevIncome = await CalculateTotalIncomeAsync(userId, prevStartDate, prevEndDate);
+                var prevIncome = await CalculateTotalIncomeTransactionAsync(userId, prevStartDate, prevEndDate);
                 var prevExpenses = await CalculateTotalExpensesAsync(userId, prevStartDate, prevEndDate);
                 var prevNetWorth = await CalculateNetWorthAsync(userId, prevEndDate);
+
+                // Get disposable income from stored procedure for previous period
+                var prevDisposableIncome = await CalculateDisposableIncomeAsync(userId, prevStartDate, prevEndDate);
 
                 var summary = new ReportFinancialSummaryDto
                 {
@@ -139,11 +146,8 @@ namespace UtilityHub360.Services
                     TotalExpenses = currentExpenses,
                     ExpenseChange = CalculatePercentageChange(prevExpenses, currentExpenses),
                     
-                    DisposableIncome = currentIncome - currentExpenses,
-                    DisposableChange = CalculatePercentageChange(
-                        prevIncome - prevExpenses,
-                        currentIncome - currentExpenses
-                    ),
+                    DisposableIncome = currentDisposableIncome,
+                    DisposableChange = CalculatePercentageChange(prevDisposableIncome, currentDisposableIncome),
                     
                     TotalSavings = currentSavings,
                     SavingsGoal = savingsGoal,
@@ -762,13 +766,13 @@ namespace UtilityHub360.Services
         // However, if you want to support a range (start/end), you would have to redesign this.
         // For now, only 'asOfDate' is respected.
 
-        public async Task<ApiResponse<DTOs.BalanceSheetDto>> GetBalanceSheetAsync(string userId, DateTime? aOsfDate = null)
+        public async Task<ApiResponse<DTOs.BalanceSheetDto>> GetBalanceSheetAsync(string userId, DateTime? asOfDate = null, DateTime? startDate = null, DateTime? endDate = null)
         {
             try
             {
                 // The balance sheet reflects a snapshot at this moment; 'asOfDate' is the "when".
-                // There is no startDate/endDate for a point-in-time balance sheet.
-                var reportDate = aOsfDate ?? DateTime.UtcNow;
+                // startDate and endDate are optional parameters that can be used for filtering
+                var reportDate = asOfDate ?? DateTime.UtcNow;
 
                 // ASSETS SECTION
                 var assets = new DTOs.AssetsSectionDto();
@@ -784,13 +788,26 @@ namespace UtilityHub360.Services
                     var isCreditCard = accountTypeLower == "credit_card"
                                     || accountTypeLower == "credit card"
                                     || accountTypeLower == "creditcard";
-                    if (!isCreditCard && account.CurrentBalance > 0)
+                    
+                    // Use stored procedure to get the net amount for this bank account
+                    var bankAccountIdParam = new SqlParameter("@BankAccountId", account.Id);
+                    var userIdParam = new SqlParameter("@UserId", userId);
+                    // Use DBNull.Value instead of ""
+                    var startDateParam = new SqlParameter("@StartDate", SqlDbType.DateTime2) { Value = DBNull.Value };
+                    var endDateParam = new SqlParameter("@EndDate", SqlDbType.DateTime2) { Value = DBNull.Value };
+                    var accountBalanceResult = await _context.Database
+                        .SqlQueryRaw<decimal>("EXEC GetBankAccountNetAmount @BankAccountId, @UserId, @StartDate, @EndDate"
+                        , bankAccountIdParam, userIdParam, startDateParam, endDateParam)
+                        .ToListAsync();
+                    var accountBalance = accountBalanceResult.FirstOrDefault();
+                    
+                    if (!isCreditCard && accountBalance > 0)
                     {
                         assets.CurrentAssets.Add(new DTOs.BalanceSheetItemDto
                         {
                             AccountName = account.AccountName ?? "Unnamed Account",
                             AccountType = account.AccountType ?? "Bank Account",
-                            Amount = account.CurrentBalance,
+                            Amount = accountBalance,
                             Description = $"{account.AccountType} - {account.AccountName}",
                             ReferenceId = account.Id
                         });
@@ -884,16 +901,31 @@ namespace UtilityHub360.Services
                     var isCreditCard = accountTypeLower == "credit_card"
                                     || accountTypeLower == "credit card"
                                     || accountTypeLower == "creditcard";
-                    if (isCreditCard && account.CurrentBalance > 0)
+                    
+                    if (isCreditCard)
                     {
-                        liabilities.CurrentLiabilities.Add(new DTOs.BalanceSheetItemDto
+                        // Use stored procedure to get the net amount for this credit card account
+                        var bankAccountIdParam = new SqlParameter("@BankAccountId", account.Id);
+                        var userIdParam = new SqlParameter("@UserId", userId);
+                        var startDateParam = new SqlParameter("@StartDate", startDate.HasValue ? (object)startDate.Value : DBNull.Value);
+                        var endDateParam = new SqlParameter("@EndDate", endDate.HasValue ? (object)endDate.Value : DBNull.Value);
+                        var accountBalanceResult = await _context.Database
+                            .SqlQueryRaw<decimal>("EXEC GetBankAccountNetAmount @BankAccountId, @UserId, @StartDate, @EndDate", 
+                            bankAccountIdParam, userIdParam, startDateParam, endDateParam)
+                            .ToListAsync();
+                        var accountBalance = accountBalanceResult.FirstOrDefault();
+                        
+                        if (accountBalance > 0)
                         {
-                            AccountName = account.AccountName ?? "Unnamed Credit Card",
-                            AccountType = "Credit Card",
-                            Amount = account.CurrentBalance,
-                            Description = $"Credit Card - {account.AccountName} (Outstanding Balance)",
-                            ReferenceId = account.Id
-                        });
+                            liabilities.CurrentLiabilities.Add(new DTOs.BalanceSheetItemDto
+                            {
+                                AccountName = account.AccountName ?? "Unnamed Credit Card",
+                                AccountType = "Credit Card",
+                                Amount = accountBalance,
+                                Description = $"Credit Card - {account.AccountName} (Outstanding Balance)",
+                                ReferenceId = account.Id
+                            });
+                        }
                     }
                 }
 
@@ -1024,29 +1056,50 @@ namespace UtilityHub360.Services
                     .Where(ba => ba.UserId == userId && ba.IsActive)
                     .ToListAsync();
 
-                // Calculate beginning balance by looking at transactions before period start
+                // Calculate beginning balance from BankStatements
                 var beginningBalance = 0m;
                 foreach (var account in bankAccounts)
                 {
-                    // Get balance at period start by calculating from transactions
-                    var transactionsBefore = await _context.Payments
-                        .Where(p => p.BankAccountId == account.Id && 
-                                   p.TransactionDate < periodStart)
-                        .ToListAsync();
+                    // Get bank statements where StatementStartDate falls within the period
+                    var relevantStatement = await _context.BankStatements
+                        .Where(bs => bs.BankAccountId == account.Id &&
+                                    bs.UserId == userId &&
+                                    bs.StatementStartDate >= periodStart &&
+                                    bs.StatementStartDate <= periodEnd)
+                        .OrderBy(bs => bs.StatementStartDate)
+                        .FirstOrDefaultAsync();
                     
-                    var accountBalance = account.CurrentBalance;
-                    // Adjust for transactions during period to get beginning balance
-                    var transactionsDuring = await _context.Payments
-                        .Where(p => p.BankAccountId == account.Id && 
-                                   p.TransactionDate.HasValue &&
-                                   p.TransactionDate >= periodStart && 
-                                   p.TransactionDate <= periodEnd)
-                        .ToListAsync();
-                    
-                    var netDuringPeriod = transactionsDuring.Sum(t => 
-                        t.TransactionType == "CREDIT" ? t.Amount : -t.Amount);
-                    
-                    beginningBalance += accountBalance - netDuringPeriod;
+                    if (relevantStatement != null)
+                    {
+                        // Use the opening balance from the statement that starts in this period
+                        beginningBalance += Math.Abs(relevantStatement.OpeningBalance);
+                    }
+                    else
+                    {
+                        // Fallback: If no bank statement exists, calculate from stored procedure
+                        var bankAccountIdParam = new SqlParameter("@BankAccountId", account.Id);
+                        var userIdParam = new SqlParameter("@UserId", userId);
+                        var startDateParam = new SqlParameter("@StartDate", periodStart);
+                        var endDateParam = new SqlParameter("@EndDate", periodEnd);
+                        var accountBalanceResult = await _context.Database
+                            .SqlQueryRaw<decimal>("EXEC GetBankAccountNetAmount @BankAccountId, @UserId, @StartDate, @EndDate", 
+                            bankAccountIdParam, userIdParam, startDateParam, endDateParam)
+                            .ToListAsync();
+                        var accountBalance = accountBalanceResult.FirstOrDefault();
+                        
+                        // Adjust for transactions during period to get beginning balance
+                        var transactionsDuring = await _context.Payments
+                            .Where(p => p.BankAccountId == account.Id && 
+                                       p.TransactionDate.HasValue &&
+                                       p.TransactionDate >= periodStart && 
+                                       p.TransactionDate <= periodEnd)
+                            .ToListAsync();
+                        
+                        var netDuringPeriod = transactionsDuring.Sum(t => 
+                            t.TransactionType == "CREDIT" ? t.Amount : -t.Amount);
+                        
+                        beginningBalance += Math.Abs(accountBalance - netDuringPeriod);
+                    }
                 }
 
                 // OPERATING ACTIVITIES
@@ -1271,8 +1324,37 @@ namespace UtilityHub360.Services
                     ReferenceType = "LOAN"
                 }));
 
-                // Calculate ending cash balance
-                var endingBalance = bankAccounts.Sum(ba => ba.CurrentBalance);
+                // Calculate ending cash balance from BankStatements
+                var endingBalance = 0m;
+                foreach (var account in bankAccounts)
+                {
+                    // Get sum of closing balances from bank statements where StatementStartDate falls within the period
+                    var closingBalanceSum = await _context.BankStatements
+                        .Where(bs => bs.BankAccountId == account.Id &&
+                                    bs.UserId == userId &&
+                                    bs.StatementStartDate >= periodStart &&
+                                    bs.StatementStartDate <= periodEnd)
+                        .SumAsync(bs => bs.ClosingBalance);
+                    
+                    if (closingBalanceSum != 0)
+                    {
+                        // Use the sum of closing balances from statements
+                        endingBalance += Math.Abs(closingBalanceSum);
+                    }
+                    else
+                    {
+                        // Fallback: If no bank statement exists, calculate from stored procedure
+                        var bankAccountIdParam = new SqlParameter("@BankAccountId", account.Id);
+                        var userIdParam = new SqlParameter("@UserId", userId);
+                        var startDateParam = new SqlParameter("@StartDate", periodStart);
+                        var endDateParam = new SqlParameter("@EndDate", periodEnd);
+                        var accountBalanceResult = await _context.Database
+                            .SqlQueryRaw<decimal>("EXEC GetBankAccountNetAmount @BankAccountId, @UserId, @StartDate, @EndDate",
+                            bankAccountIdParam, userIdParam, startDateParam, endDateParam)
+                            .ToListAsync();
+                        endingBalance += Math.Abs(accountBalanceResult.FirstOrDefault());
+                    }
+                }
 
                 // Build Cash Flow Statement
                 var cashFlowStatement = new DTOs.CashFlowStatementDto
@@ -2473,21 +2555,73 @@ namespace UtilityHub360.Services
             return incomeSources.Sum(i => i.MonthlyAmount);
         }
 
+        private async Task<decimal> CalculateTotalIncomeTransactionAsync(string userId, DateTime startDate, DateTime endDate)
+        {
+            try
+            {
+                // Use stored procedure to calculate total expenses from Payments table
+                var userIdParam = new SqlParameter("@UserId", userId);
+                var startDateParam = new SqlParameter("@StartDate", startDate);
+                var endDateParam = new SqlParameter("@EndDate", endDate);
+
+                var incomeResult = await _context.Database
+                    .SqlQueryRaw<decimal>("EXEC GetTotalIncomesDetailed @UserId, @StartDate, @EndDate",
+                        userIdParam, startDateParam, endDateParam)
+                    .ToListAsync();
+
+                return incomeResult.FirstOrDefault();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[EXPENSE CALC ERROR] Error calculating total expenses: {ex.Message}");
+                return 0;
+            }
+        }
+
         private async Task<decimal> CalculateTotalExpensesAsync(string userId, DateTime startDate, DateTime endDate)
         {
-            // Note: IsDeleted is ignored in DbContext, so we don't filter by it
-            var bills = await _context.Bills
-                .Where(b => b.UserId == userId &&
-                            b.DueDate >= startDate && b.DueDate <= endDate)
-                .SumAsync(b => b.Amount);
+            try
+            {
+                // Use stored procedure to calculate total expenses from Payments table
+                var userIdParam = new SqlParameter("@UserId", userId);
+                var startDateParam = new SqlParameter("@StartDate", startDate);
+                var endDateParam = new SqlParameter("@EndDate", endDate);
 
-            // Note: IsDeleted is ignored in DbContext, so we don't filter by it
-            var variableExpenses = await _context.VariableExpenses
-                .Where(v => v.UserId == userId &&
-                            v.ExpenseDate >= startDate && v.ExpenseDate <= endDate)
-                .SumAsync(v => v.Amount);
+                var expenseResult = await _context.Database
+                    .SqlQueryRaw<decimal>("EXEC GetTotalExpensesDetailed @UserId, @StartDate, @EndDate",
+                        userIdParam, startDateParam, endDateParam)
+                    .ToListAsync();
 
-            return bills + variableExpenses;
+                return expenseResult.FirstOrDefault();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[EXPENSE CALC ERROR] Error calculating total expenses: {ex.Message}");
+                return 0;
+            }
+        }
+
+        private async Task<decimal> CalculateDisposableIncomeAsync(string userId, DateTime startDate, DateTime endDate)
+        {
+            try
+            {
+                // Use stored procedure to calculate disposable income
+                var userIdParam = new SqlParameter("@UserId", userId);
+                var startDateParam = new SqlParameter("@DateFrom", startDate);
+                var endDateParam = new SqlParameter("@DateTo", endDate);
+
+                var disposableResult = await _context.Database
+                    .SqlQueryRaw<decimal>("EXEC GetTotalDisposableIncome @UserId, @DateFrom, @DateTo",
+                        userIdParam, startDateParam, endDateParam)
+                    .ToListAsync();
+
+                return disposableResult.FirstOrDefault();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[DISPOSABLE INCOME CALC ERROR] Error calculating disposable income: {ex.Message}");
+                return 0;
+            }
         }
 
         private async Task<decimal> CalculateBillsAsync(string userId, DateTime startDate, DateTime endDate)

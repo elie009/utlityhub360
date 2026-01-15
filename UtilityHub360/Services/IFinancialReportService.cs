@@ -16,7 +16,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<LoanReportDto>> GetLoanReportAsync(string userId, ReportQueryDto query);
         Task<ApiResponse<SavingsReportDto>> GetSavingsReportAsync(string userId, ReportQueryDto query);
         Task<ApiResponse<NetWorthReportDto>> GetNetWorthReportAsync(string userId, ReportQueryDto query);
-        Task<ApiResponse<BalanceSheetDto>> GetBalanceSheetAsync(string userId, DateTime? asOfDate = null);
+        Task<ApiResponse<BalanceSheetDto>> GetBalanceSheetAsync(string userId, DateTime? asOfDate = null, DateTime? startDate = null, DateTime? endDate = null);
         Task<ApiResponse<CashFlowStatementDto>> GetCashFlowStatementAsync(string userId, DateTime? startDate = null, DateTime? endDate = null, string period = "MONTHLY");
         Task<ApiResponse<IncomeStatementDto>> GetIncomeStatementAsync(string userId, DateTime? startDate = null, DateTime? endDate = null, string period = "MONTHLY", bool includeComparison = false);
         

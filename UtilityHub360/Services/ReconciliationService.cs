@@ -1,14 +1,15 @@
 // FORCE CHANGE
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.Json;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
 using UtilityHub360.Entities;
 using UtilityHub360.Models;
-using System.Text;
-using System.Text.Json;
-using System.Linq;
-using System.Collections.Generic;
-using System.IO;
 
 namespace UtilityHub360.Services
 {
@@ -1114,12 +1115,21 @@ namespace UtilityHub360.Services
                 var bankAccount = await _context.BankAccounts.FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
                 if (bankAccount == null) return ApiResponse<ReconciliationSummaryDto>.ErrorResult("Not found");
 
+                // Use stored procedure to get current balance
+                var userIdParam = new SqlParameter("@UserId", userId);
+                var balanceResults = await _context.Database
+                    .SqlQueryRaw<BankAccountBalanceResult>("EXEC GetTotalBankAccountNetAmount @UserId", userIdParam)
+                    .ToListAsync();
+
+                var accountBalance = balanceResults.FirstOrDefault();
+                decimal bookBalance = accountBalance?.NetAmount ?? 0m;
+
                 return ApiResponse<ReconciliationSummaryDto>.SuccessResult(new ReconciliationSummaryDto
                 {
                     BankAccountId = bankAccountId,
                     BankAccountName = bankAccount.AccountName,
                     ReconciliationDate = reconciliationDate ?? DateTime.UtcNow,
-                    BookBalance = bankAccount.CurrentBalance,
+                    BookBalance = bookBalance,
                     Status = "PENDING"
                 });
             }
