@@ -828,6 +828,22 @@ namespace UtilityHub360.Services
 
                 if (bankAccount == null) return ApiResponse<ReconciliationDto>.ErrorResult("Bank account not found");
 
+                // Get bookBalance from the bank statement
+                decimal bookBalance = 0m;
+                if (!string.IsNullOrEmpty(createDto.BankStatementId))
+                {
+                    // Use stored procedure SP_GetBookBalance to get TotalBalance
+                    var bankStatementIdParam = new SqlParameter("@BankStatementId", createDto.BankStatementId);
+                    var userIdParam = new SqlParameter("@UserId", userId);
+                    var result = await _context.Database
+                        .SqlQueryRaw<decimal>(
+                            "EXEC SP_GetBookBalance  @BankStatementId, @UserId",
+                            bankStatementIdParam, userIdParam)
+                        .ToListAsync();
+
+                    bookBalance = result.FirstOrDefault();
+                }
+
                 var reconciliation = new Reconciliation
                 {
                     UserId = userId,
@@ -835,7 +851,8 @@ namespace UtilityHub360.Services
                     BankStatementId = createDto.BankStatementId,
                     ReconciliationName = createDto.ReconciliationName,
                     ReconciliationDate = createDto.ReconciliationDate,
-                    BookBalance = bankAccount.CurrentBalance,
+                    BookBalance = bookBalance,
+                    StatementBalance = bookBalance,
                     Status = "PENDING",
                     Notes = createDto.Notes,
                     CreatedAt = DateTime.UtcNow,
@@ -1130,6 +1147,7 @@ namespace UtilityHub360.Services
                     BankAccountName = bankAccount.AccountName,
                     ReconciliationDate = reconciliationDate ?? DateTime.UtcNow,
                     BookBalance = bookBalance,
+                    StatementBalance = bookBalance,
                     Status = "PENDING"
                 });
             }

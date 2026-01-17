@@ -14,11 +14,19 @@ namespace UtilityHub360.Controllers
     {
         private readonly IFinancialReportService _reportService;
         private readonly ISubscriptionService _subscriptionService;
+        private readonly IRdlcReportService _rdlcReportService;
+        private readonly ILogger<FinancialReportsController> _logger;
 
-        public FinancialReportsController(IFinancialReportService reportService, ISubscriptionService subscriptionService)
+        public FinancialReportsController(
+            IFinancialReportService reportService, 
+            ISubscriptionService subscriptionService,
+            IRdlcReportService rdlcReportService,
+            ILogger<FinancialReportsController> logger)
         {
             _reportService = reportService;
             _subscriptionService = subscriptionService;
+            _rdlcReportService = rdlcReportService;
+            _logger = logger;
         }
 
         private string GetUserId()
@@ -852,6 +860,159 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete template: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Generate Income Statement RDLC Report
+        /// </summary>
+        /// <param name="startDate">Report period start date</param>
+        /// <param name="endDate">Report period end date</param>
+        /// <param name="format">Output format: PDF, EXCEL, WORD, IMAGE (default: PDF)</param>
+        /// <returns>Binary file of generated report</returns>
+        [HttpGet("income-statement/rdlc")]
+        public async Task<IActionResult> GetIncomeStatementRdlcReport(
+            [FromQuery] DateTime startDate,
+            [FromQuery] DateTime endDate,
+            [FromQuery] string format = "PDF")
+        {
+            try
+            {
+                var userId = GetUserId();
+                
+                _logger.LogInformation($"Generating RDLC Income Statement Report for user {userId}, Period: {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd}, Format: {format}");
+
+                // Validate date range
+                if (startDate > endDate)
+                {
+                    return BadRequest(new { message = "Start date must be before end date" });
+                }
+
+                if (startDate > DateTime.UtcNow)
+                {
+                    return BadRequest(new { message = "Start date cannot be in the future" });
+                }
+
+                // Generate report
+                var reportBytes = await _rdlcReportService.GenerateIncomeStatementReportAsync(
+                    userId,
+                    startDate,
+                    endDate,
+                    format.ToUpper());
+
+                if (reportBytes == null || reportBytes.Length == 0)
+                {
+                    return NotFound(new { message = "No data available for the selected period" });
+                }
+
+                // Determine content type and file extension
+                var (contentType, fileExtension) = format.ToUpper() switch
+                {
+                    "PDF" => ("application/pdf", "pdf"),
+                    "EXCEL" => ("application/vnd.ms-excel", "xls"),
+                    "WORD" => ("application/msword", "doc"),
+                    "IMAGE" => ("image/png", "png"),
+                    _ => ("application/pdf", "pdf")
+                };
+
+                var fileName = $"IncomeStatement_{startDate:yyyyMMdd}_{endDate:yyyyMMdd}.{fileExtension}";
+
+                _logger.LogInformation($"Report generated successfully. Size: {reportBytes.Length} bytes, File: {fileName}");
+
+                return File(reportBytes, contentType, fileName);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access attempt");
+                return Unauthorized(new { message = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                _logger.LogError(ex, "RDLC report file not found");
+                return StatusCode(500, new { message = "Report template not found", error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating RDLC report");
+                return StatusCode(500, new { message = "Error generating report", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Generate Balance Sheet RDLC Report
+        /// </summary>
+        /// <param name="asOfDate">Balance sheet as of date (snapshot date)</param>
+        /// <param name="startDate">Optional start date for filtering</param>
+        /// <param name="endDate">Optional end date for filtering</param>
+        /// <param name="format">Output format: PDF, EXCEL, WORD, IMAGE (default: PDF)</param>
+        /// <returns>Binary file of generated report</returns>
+        [HttpGet("balance-sheet/rdlc")]
+        public async Task<IActionResult> GetBalanceSheetRdlcReport(
+            [FromQuery] DateTime asOfDate,
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null,
+            [FromQuery] string format = "PDF")
+        {
+            try
+            {
+                var userId = GetUserId();
+
+                _logger.LogInformation($"Generating RDLC Balance Sheet Report for user {userId}, AsOfDate: {asOfDate:yyyy-MM-dd}, StartDate: {startDate?.ToString("yyyy-MM-dd") ?? "N/A"}, EndDate: {endDate?.ToString("yyyy-MM-dd") ?? "N/A"}, Format: {format}");
+
+                // Validate dates
+                if (asOfDate > DateTime.UtcNow)
+                {
+                    return BadRequest(new { message = "As of date cannot be in the future" });
+                }
+
+                if (startDate.HasValue && endDate.HasValue && startDate > endDate)
+                {
+                    return BadRequest(new { message = "Start date must be before end date" });
+                }
+
+                // Generate report
+                var reportBytes = await _rdlcReportService.GenerateBalanceSheetReportAsync(
+                    userId,
+                    asOfDate,
+                    startDate,
+                    endDate,
+                    format.ToUpper());
+
+                if (reportBytes == null || reportBytes.Length == 0)
+                {
+                    return NotFound(new { message = "No data available for the selected date" });
+                }
+
+                // Determine content type and file extension
+                var (contentType, fileExtension) = format.ToUpper() switch
+                {
+                    "PDF" => ("application/pdf", "pdf"),
+                    "EXCEL" => ("application/vnd.ms-excel", "xls"),
+                    "WORD" => ("application/msword", "doc"),
+                    "IMAGE" => ("image/png", "png"),
+                    _ => ("application/pdf", "pdf")
+                };
+
+                var fileName = $"BalanceSheet_{asOfDate:yyyyMMdd}.{fileExtension}";
+
+                _logger.LogInformation($"Balance Sheet report generated successfully. Size: {reportBytes.Length} bytes, File: {fileName}");
+
+                return File(reportBytes, contentType, fileName);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access attempt");
+                return Unauthorized(new { message = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                _logger.LogError(ex, "RDLC report file not found");
+                return StatusCode(500, new { message = "Report template not found", error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating RDLC Balance Sheet report");
+                return StatusCode(500, new { message = "Error generating report", error = ex.Message });
             }
         }
     }

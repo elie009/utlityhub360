@@ -178,6 +178,7 @@ builder.Services.AddScoped<IAIAgentService>(sp =>
     return new AIAgentService(context, bankAccountService, logger, openAISettings);
 });
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
+builder.Services.AddScoped<IRdlcReportService, RdlcReportService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<IReconciliationService>(sp =>
 {
