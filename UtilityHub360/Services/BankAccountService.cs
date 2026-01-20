@@ -5152,11 +5152,19 @@ namespace UtilityHub360.Services
             
             // Use stored procedure to get balance details (NetAmount, TotalCredit, TotalDebit)
             var userIdParam = new SqlParameter("@UserId", bankAccount.UserId);
-            var balanceResults = await _context.Database
-                .SqlQueryRaw<BankAccountBalanceResult>("EXEC GetTotalBankAccountNetAmount @UserId", userIdParam)
-                .ToListAsync();
-            
-            var accountBalance = balanceResults.FirstOrDefault();
+            var BankAccountId = new SqlParameter("@BankAccountId", bankAccount.Id);
+
+            //var balanceResults = await _context.Database
+            //    .SqlQueryRaw<BankAccountBalanceResult>("EXEC GetBankAccountNetAmount @BankAccountId, @UserId", bankAccount.Id, userIdParam)
+            //    .ToListAsync();
+
+            var balanceResults = _context.Database
+                .SqlQueryRaw<BankAccountBalanceResult>(
+                    "EXEC GetBankAccountNetAmount @BankAccountId, @UserId",
+                    BankAccountId, userIdParam
+                ).AsEnumerable().FirstOrDefault();
+
+            var accountBalance = balanceResults;
             
             decimal currentBalance = accountBalance?.NetAmount ?? 0m;
             decimal totalIncoming = accountBalance?.TotalCredit ?? 0m;

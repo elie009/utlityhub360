@@ -83,7 +83,7 @@ namespace UtilityHub360.Services
                 {
                     BankStatementId = bankStatement.Id,
                     TransactionDate = item.TransactionDate,
-                    Amount = item.Amount,
+                    Amount = Math.Abs(item.Amount),
                     TransactionType = item.TransactionType.ToUpper(),
                     Description = item.Description,
                     ReferenceNumber = item.ReferenceNumber,
@@ -432,7 +432,7 @@ namespace UtilityHub360.Services
                     Id = Guid.NewGuid().ToString(), // Explicitly set ID
                     UploadId = upload.Id,
                     TransactionDate = item.TransactionDate,
-                    Amount = item.Amount,
+                    Amount = Math.Abs(item.Amount),
                     // Normalize and truncate TransactionType to max 10 characters
                     TransactionType = NormalizeTransactionType(item.TransactionType ?? "DEBIT"),
                     Description = item.Description != null && item.Description.Length > 500 ? item.Description.Substring(0, 500) : item.Description, // Truncate if too long
@@ -560,7 +560,7 @@ namespace UtilityHub360.Services
                             Id = transactionId,
                             UploadId = uploadId,
                             TransactionDate = t.TransactionDate,
-                            Amount = t.Amount,
+                            Amount = Math.Abs(t.Amount),
                             TransactionType = t.TransactionType,
                             Description = t.Description,
                             ReferenceNumber = t.ReferenceNumber,
@@ -626,7 +626,7 @@ namespace UtilityHub360.Services
                         {
                             BankStatementId = statement.Id,
                             TransactionDate = t.TransactionDate,
-                            Amount = t.Amount,
+                            Amount = Math.Abs(t.Amount),
                             TransactionType = t.TransactionType,
                             Description = t.Description,
                             ReferenceNumber = t.ReferenceNumber,
@@ -651,16 +651,16 @@ namespace UtilityHub360.Services
                                     BankAccountId = statement.BankAccountId,
                                     BillId = !string.IsNullOrEmpty(split.BillId) ? split.BillId : null,
                                     UserId = userId,
-                                    Amount = split.Amount,
+                                    Amount = Math.Abs(split.Amount),
                                     Method = "BANK_TRANSFER",
                                     Reference = $"{parentRef}_SPLIT_{split.Id}",
                                     Status = "COMPLETED",
                                     IsBankTransaction = true,
                                     TransactionType = t.TransactionType,
-                                    Description = split.Description ?? t.Description ?? $"Split payment - {split.Amount}",
+                                    Description = split.Description ?? t.Description ?? $"Split payment - {Math.Abs(split.Amount)}",
                                     Category = split.Category ?? t.Category,
                                     ExternalTransactionId = parentRef, // Link all splits to parent transaction
-                                    Notes = $"Split from transaction {t.Id}. Original amount: {t.Amount}",
+                                    Notes = $"Split from transaction {t.Id}. Original amount: {Math.Abs(t.Amount)}",
                                     Merchant = t.Merchant,
                                     Currency = "USD",
                                     ProcessedAt = t.TransactionDate,
@@ -1132,14 +1132,14 @@ namespace UtilityHub360.Services
                 var bankAccount = await _context.BankAccounts.FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
                 if (bankAccount == null) return ApiResponse<ReconciliationSummaryDto>.ErrorResult("Not found");
 
-                // Use stored procedure to get current balance
-                var userIdParam = new SqlParameter("@UserId", userId);
-                var balanceResults = await _context.Database
-                    .SqlQueryRaw<BankAccountBalanceResult>("EXEC GetTotalBankAccountNetAmount @UserId", userIdParam)
-                    .ToListAsync();
+             
 
-                var accountBalance = balanceResults.FirstOrDefault();
-                decimal bookBalance = accountBalance?.NetAmount ?? 0m;
+                // Get most recent closing balance as bookBalance for the bank account
+                decimal bookBalance = await _context.BankStatements
+                    .Where(bs => bs.BankAccountId == bankAccount.Id)
+                    .OrderByDescending(bs => bs.UpdatedAt)
+                    .Select(bs => bs.ClosingBalance)
+                    .FirstOrDefaultAsync();
 
                 return ApiResponse<ReconciliationSummaryDto>.SuccessResult(new ReconciliationSummaryDto
                 {
@@ -1297,7 +1297,7 @@ Bank statement text:
                     result.StatementItems.Add(new BankStatementItemImportDto
                     {
                         TransactionDate = trans.TryGetProperty("transactionDate", out var d) && DateTime.TryParse(d.GetString(), out var dt) ? dt : DateTime.UtcNow,
-                        Amount = trans.TryGetProperty("amount", out var a) ? GetDecimalFromJsonElement(a) ?? 0 : 0,
+                        Amount = Math.Abs(trans.TryGetProperty("amount", out var a) ? GetDecimalFromJsonElement(a) ?? 0 : 0),
                         TransactionType = trans.TryGetProperty("transactionType", out var t) ? t.GetString() ?? "DEBIT" : "DEBIT",
                         Description = trans.TryGetProperty("description", out var desc) ? desc.GetString() : "",
                         ReferenceNumber = trans.TryGetProperty("referenceNumber", out var refNum) ? refNum.GetString() : null,
@@ -1364,7 +1364,7 @@ Bank statement text:
                 try {
                     var res = await _bankAccountService.CreateTransactionAsync(new CreateBankTransactionDto {
                         BankAccountId = statement.BankAccountId, 
-                        Amount = item.Amount, 
+                        Amount = Math.Abs(item.Amount), 
                         TransactionType = item.TransactionType,
                         Description = item.Description ?? "Statement Import", 
                         TransactionDate = item.TransactionDate,
