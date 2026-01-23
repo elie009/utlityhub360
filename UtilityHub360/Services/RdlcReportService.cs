@@ -246,6 +246,40 @@ namespace UtilityHub360.Services
                 {
                     balanceSheetData = dataSet.Tables[0];
                     balanceSheetData.TableName = "BalanceSheetData";
+                    
+                    // Log all data before filtering for debugging
+                    _logger.LogInformation($"Before filtering: {balanceSheetData.Rows.Count} rows");
+                    
+                    // Filter out rows where AccountType or AccountName contains "Bank Account"
+                    var rowsToRemove = new List<DataRow>();
+                    foreach (DataRow row in balanceSheetData.Rows)
+                    {
+                        var accountType = row["AccountType"] != DBNull.Value ? row["AccountType"].ToString()?.Trim() : "";
+                        var accountName = row["AccountName"] != DBNull.Value ? row["AccountName"].ToString()?.Trim() : "";
+                        var category = row["Category"] != DBNull.Value ? row["Category"].ToString()?.Trim() : "";
+                        
+                        // Log each row for debugging
+                        _logger.LogDebug($"Row - AccountType: '{accountType}', AccountName: '{accountName}', Category: '{category}'");
+                        
+                        // Remove if AccountType or AccountName or Category equals "Bank Account" (but keep "Bank Statement")
+                        if ((accountType.Equals("Bank Account", StringComparison.OrdinalIgnoreCase)) ||
+                            (accountName.Equals("Bank Account", StringComparison.OrdinalIgnoreCase)) ||
+                            (category.Equals("Bank Account", StringComparison.OrdinalIgnoreCase)) ||
+                            (accountType.Contains("Bank Account", StringComparison.OrdinalIgnoreCase) && !accountType.Contains("Statement", StringComparison.OrdinalIgnoreCase)) ||
+                            (accountName.Contains("Bank Account", StringComparison.OrdinalIgnoreCase) && !accountName.Contains("Statement", StringComparison.OrdinalIgnoreCase)) ||
+                            (category.Contains("Bank Account", StringComparison.OrdinalIgnoreCase) && !category.Contains("Statement", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            _logger.LogInformation($"Removing row - AccountType: '{accountType}', AccountName: '{accountName}', Category: '{category}'");
+                            rowsToRemove.Add(row);
+                        }
+                    }
+                    
+                    foreach (var row in rowsToRemove)
+                    {
+                        balanceSheetData.Rows.Remove(row);
+                    }
+                    
+                    _logger.LogInformation($"Filtered out {rowsToRemove.Count} rows with 'Bank Account' (keeping 'Bank Statement'). Remaining: {balanceSheetData.Rows.Count} rows");
                 }
 
                 if (dataSet.Tables.Count >= 2)

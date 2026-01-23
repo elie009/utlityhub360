@@ -3394,6 +3394,13 @@ namespace UtilityHub360.Services
                                 e.ExpenseDate <= endDate)
                     .ToListAsync();
 
+                // Load all expense categories upfront to avoid N+1 query problem
+                var categoryIds = expenseBudgets.Select(e => e.CategoryId).Distinct().ToList();
+                var categories = await _context.ExpenseCategories
+                    .Where(c => categoryIds.Contains(c.Id))
+                    .ToListAsync();
+                var categoryDictionary = categories.ToDictionary(c => c.Id, c => c);
+
                 // Group by category
                 var categoryGroups = expenseBudgets
                     .GroupBy(e => e.CategoryId)
@@ -3401,7 +3408,7 @@ namespace UtilityHub360.Services
                     {
                         CategoryId = g.Key,
                         BudgetAmount = g.Sum(e => e.BudgetAmount),
-                        Category = _context.ExpenseCategories.FirstOrDefault(c => c.Id == g.Key)
+                        Category = categoryDictionary.ContainsKey(g.Key) ? categoryDictionary[g.Key] : null
                     })
                     .ToList();
 
