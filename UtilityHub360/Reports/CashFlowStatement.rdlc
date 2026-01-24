@@ -2,18 +2,18 @@
 <Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition" xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner">
   <AutoRefresh>0</AutoRefresh>
   <DataSources>
-    <DataSource Name="IncomeStatementDataSource">
+    <DataSource Name="CashFlowDataSource">
       <ConnectionProperties>
         <DataProvider>System.Data.DataSet</DataProvider>
         <ConnectString>/* Local Connection */</ConnectString>
       </ConnectionProperties>
-      <rd:DataSourceID>01d1ae65-02fe-44af-aaa2-6b566548cf67</rd:DataSourceID>
+      <rd:DataSourceID>a1b2c3d4-e5f6-7890-abcd-ef1234567890</rd:DataSourceID>
     </DataSource>
   </DataSources>
   <DataSets>
-    <DataSet Name="IncomeStatementData">
+    <DataSet Name="CashFlowData">
       <Query>
-        <DataSourceName>IncomeStatementDataSource</DataSourceName>
+        <DataSourceName>CashFlowDataSource</DataSourceName>
         <CommandText>/* Local Query */</CommandText>
       </Query>
       <Fields>
@@ -21,12 +21,12 @@
           <DataField>SectionType</DataField>
           <rd:TypeName>System.String</rd:TypeName>
         </Field>
-        <Field Name="CategoryName">
-          <DataField>CategoryName</DataField>
+        <Field Name="ActivityType">
+          <DataField>ActivityType</DataField>
           <rd:TypeName>System.String</rd:TypeName>
         </Field>
-        <Field Name="CategoryCode">
-          <DataField>CategoryCode</DataField>
+        <Field Name="CategoryName">
+          <DataField>CategoryName</DataField>
           <rd:TypeName>System.String</rd:TypeName>
         </Field>
         <Field Name="Description">
@@ -41,23 +41,11 @@
           <DataField>TransactionDate</DataField>
           <rd:TypeName>System.DateTime</rd:TypeName>
         </Field>
-        <Field Name="PaymentMethod">
-          <DataField>PaymentMethod</DataField>
-          <rd:TypeName>System.String</rd:TypeName>
-        </Field>
-        <Field Name="AccountName">
-          <DataField>AccountName</DataField>
-          <rd:TypeName>System.String</rd:TypeName>
-        </Field>
-        <Field Name="AccountType">
-          <DataField>AccountType</DataField>
-          <rd:TypeName>System.String</rd:TypeName>
-        </Field>
       </Fields>
     </DataSet>
     <DataSet Name="SummaryData">
       <Query>
-        <DataSourceName>IncomeStatementDataSource</DataSourceName>
+        <DataSourceName>CashFlowDataSource</DataSourceName>
         <CommandText>/* Local Query */</CommandText>
       </Query>
       <Fields>
@@ -69,21 +57,33 @@
           <DataField>PeriodEnd</DataField>
           <rd:TypeName>System.DateTime</rd:TypeName>
         </Field>
-        <Field Name="TotalRevenue">
-          <DataField>TotalRevenue</DataField>
+        <Field Name="BeginningCash">
+          <DataField>BeginningCash</DataField>
           <rd:TypeName>System.Decimal</rd:TypeName>
         </Field>
-        <Field Name="TotalExpenses">
-          <DataField>TotalExpenses</DataField>
+        <Field Name="EndingCash">
+          <DataField>EndingCash</DataField>
           <rd:TypeName>System.Decimal</rd:TypeName>
         </Field>
-        <Field Name="NetIncome">
-          <DataField>NetIncome</DataField>
+        <Field Name="NetCashFlow">
+          <DataField>NetCashFlow</DataField>
           <rd:TypeName>System.Decimal</rd:TypeName>
         </Field>
-        <Field Name="Status">
-          <DataField>Status</DataField>
-          <rd:TypeName>System.String</rd:TypeName>
+        <Field Name="OperatingNet">
+          <DataField>OperatingNet</DataField>
+          <rd:TypeName>System.Decimal</rd:TypeName>
+        </Field>
+        <Field Name="InvestingNet">
+          <DataField>InvestingNet</DataField>
+          <rd:TypeName>System.Decimal</rd:TypeName>
+        </Field>
+        <Field Name="FinancingNet">
+          <DataField>FinancingNet</DataField>
+          <rd:TypeName>System.Decimal</rd:TypeName>
+        </Field>
+        <Field Name="IsBalanced">
+          <DataField>IsBalanced</DataField>
+          <rd:TypeName>System.Int32</rd:TypeName>
         </Field>
       </Fields>
     </DataSet>
@@ -112,10 +112,10 @@
               </Paragraph>
             </Paragraphs>
             <rd:DefaultName>Footer</rd:DefaultName>
-            <Top>3.75in</Top>
+            <Top>3.95in</Top>
             <Left>0.25in</Left>
             <Height>0.2in</Height>
-            <Width>6.875in</Width>
+            <Width>7in</Width>
             <Style>
               <Border>
                 <Style>None</Style>
@@ -126,18 +126,18 @@
               <PaddingBottom>2pt</PaddingBottom>
             </Style>
           </Textbox>
-          <Textbox Name="NetIncome">
+          <Textbox Name="EndingCash">
             <CanGrow>true</CanGrow>
             <KeepTogether>true</KeepTogether>
             <Paragraphs>
               <Paragraph>
                 <TextRuns>
                   <TextRun>
-                    <Value>="NET INCOME: " &amp; Format(First(Fields!NetIncome.Value, "SummaryData"), "C2")</Value>
+                    <Value>="Ending Cash: " &amp; Format(First(Fields!EndingCash.Value, "SummaryData"), "C2")</Value>
                     <Style>
-                      <FontSize>14pt</FontSize>
+                      <FontSize>12pt</FontSize>
                       <FontWeight>Bold</FontWeight>
-                      <Color>=IIF(First(Fields!NetIncome.Value, "SummaryData") &gt;= 0, "#2e7d32", "#c62828")</Color>
+                      <Color>#1565c0</Color>
                     </Style>
                   </TextRun>
                 </TextRuns>
@@ -146,37 +146,37 @@
                 </Style>
               </Paragraph>
             </Paragraphs>
-            <rd:DefaultName>NetIncome</rd:DefaultName>
-            <Top>3.3in</Top>
+            <rd:DefaultName>EndingCash</rd:DefaultName>
+            <Top>3.55in</Top>
             <Left>0.25in</Left>
-            <Height>0.35in</Height>
-            <Width>6.875in</Width>
+            <Height>0.32in</Height>
+            <Width>7in</Width>
             <ZIndex>1</ZIndex>
             <Style>
               <Border>
                 <Color>#1976d2</Color>
-                <Style>Double</Style>
-                <Width>3pt</Width>
+                <Style>Solid</Style>
+                <Width>2pt</Width>
               </Border>
-              <BackgroundColor>=IIF(First(Fields!NetIncome.Value, "SummaryData") &gt;= 0, "#e8f5e9", "#ffebee")</BackgroundColor>
+              <BackgroundColor>#e3f2fd</BackgroundColor>
               <PaddingLeft>2pt</PaddingLeft>
-              <PaddingRight>5pt</PaddingRight>
+              <PaddingRight>8pt</PaddingRight>
               <PaddingTop>5pt</PaddingTop>
               <PaddingBottom>5pt</PaddingBottom>
             </Style>
           </Textbox>
-          <Textbox Name="TotalExpenses">
+          <Textbox Name="NetCashFlow">
             <CanGrow>true</CanGrow>
             <KeepTogether>true</KeepTogether>
             <Paragraphs>
               <Paragraph>
                 <TextRuns>
                   <TextRun>
-                    <Value>="Total Expenses: " &amp; Format(First(Fields!TotalExpenses.Value, "SummaryData"), "C2")</Value>
+                    <Value>="Net Cash Flow: " &amp; Format(First(Fields!NetCashFlow.Value, "SummaryData"), "C2")</Value>
                     <Style>
-                      <FontSize>11pt</FontSize>
+                      <FontSize>12pt</FontSize>
                       <FontWeight>Bold</FontWeight>
-                      <Color>#c62828</Color>
+                      <Color>=IIf(First(Fields!NetCashFlow.Value, "SummaryData") &gt;= 0, "#2e7d32", "#c62828")</Color>
                     </Style>
                   </TextRun>
                 </TextRuns>
@@ -185,357 +185,37 @@
                 </Style>
               </Paragraph>
             </Paragraphs>
-            <rd:DefaultName>TotalExpenses</rd:DefaultName>
-            <Top>2.95in</Top>
+            <rd:DefaultName>NetCashFlow</rd:DefaultName>
+            <Top>3.16056in</Top>
             <Left>0.25in</Left>
-            <Height>0.25in</Height>
-            <Width>6.875in</Width>
+            <Height>0.32in</Height>
+            <Width>7in</Width>
             <ZIndex>2</ZIndex>
             <Style>
               <Border>
-                <Color>#c62828</Color>
-                <Style>Solid</Style>
+                <Color>#1976d2</Color>
+                <Style>Double</Style>
                 <Width>2pt</Width>
               </Border>
-              <BackgroundColor>#ffebee</BackgroundColor>
+              <BackgroundColor>=IIf(First(Fields!NetCashFlow.Value, "SummaryData") &gt;= 0, "#e8f5e9", "#ffebee")</BackgroundColor>
               <PaddingLeft>2pt</PaddingLeft>
-              <PaddingRight>5pt</PaddingRight>
+              <PaddingRight>8pt</PaddingRight>
               <PaddingTop>5pt</PaddingTop>
-              <PaddingBottom>2pt</PaddingBottom>
+              <PaddingBottom>5pt</PaddingBottom>
             </Style>
           </Textbox>
-          <Tablix Name="ExpensesTable">
-            <TablixBody>
-              <TablixColumns>
-                <TablixColumn>
-                  <Width>2.5in</Width>
-                </TablixColumn>
-                <TablixColumn>
-                  <Width>2.875in</Width>
-                </TablixColumn>
-                <TablixColumn>
-                  <Width>1.5in</Width>
-                </TablixColumn>
-              </TablixColumns>
-              <TablixRows>
-                <TablixRow>
-                  <Height>0.25in</Height>
-                  <TablixCells>
-                    <TablixCell>
-                      <CellContents>
-                        <Textbox Name="ExpCategoryHeader">
-                          <CanGrow>true</CanGrow>
-                          <KeepTogether>true</KeepTogether>
-                          <Paragraphs>
-                            <Paragraph>
-                              <TextRuns>
-                                <TextRun>
-                                  <Value>Category</Value>
-                                  <Style>
-                                    <FontSize>9pt</FontSize>
-                                    <FontWeight>Bold</FontWeight>
-                                  </Style>
-                                </TextRun>
-                              </TextRuns>
-                              <Style />
-                            </Paragraph>
-                          </Paragraphs>
-                          <rd:DefaultName>ExpCategoryHeader</rd:DefaultName>
-                          <Style>
-                            <Border>
-                              <Color>LightGrey</Color>
-                              <Style>Solid</Style>
-                            </Border>
-                            <BackgroundColor>#f5f5f5</BackgroundColor>
-                            <PaddingLeft>5pt</PaddingLeft>
-                            <PaddingRight>2pt</PaddingRight>
-                            <PaddingTop>2pt</PaddingTop>
-                            <PaddingBottom>2pt</PaddingBottom>
-                          </Style>
-                        </Textbox>
-                      </CellContents>
-                    </TablixCell>
-                    <TablixCell>
-                      <CellContents>
-                        <Textbox Name="ExpDescHeader">
-                          <CanGrow>true</CanGrow>
-                          <KeepTogether>true</KeepTogether>
-                          <Paragraphs>
-                            <Paragraph>
-                              <TextRuns>
-                                <TextRun>
-                                  <Value>Description</Value>
-                                  <Style>
-                                    <FontSize>9pt</FontSize>
-                                    <FontWeight>Bold</FontWeight>
-                                  </Style>
-                                </TextRun>
-                              </TextRuns>
-                              <Style />
-                            </Paragraph>
-                          </Paragraphs>
-                          <rd:DefaultName>ExpDescHeader</rd:DefaultName>
-                          <Style>
-                            <Border>
-                              <Color>LightGrey</Color>
-                              <Style>Solid</Style>
-                            </Border>
-                            <BackgroundColor>#f5f5f5</BackgroundColor>
-                            <PaddingLeft>5pt</PaddingLeft>
-                            <PaddingRight>2pt</PaddingRight>
-                            <PaddingTop>2pt</PaddingTop>
-                            <PaddingBottom>2pt</PaddingBottom>
-                          </Style>
-                        </Textbox>
-                      </CellContents>
-                    </TablixCell>
-                    <TablixCell>
-                      <CellContents>
-                        <Textbox Name="ExpAmountHeader">
-                          <CanGrow>true</CanGrow>
-                          <KeepTogether>true</KeepTogether>
-                          <Paragraphs>
-                            <Paragraph>
-                              <TextRuns>
-                                <TextRun>
-                                  <Value>Amount</Value>
-                                  <Style>
-                                    <FontSize>9pt</FontSize>
-                                    <FontWeight>Bold</FontWeight>
-                                  </Style>
-                                </TextRun>
-                              </TextRuns>
-                              <Style>
-                                <TextAlign>Right</TextAlign>
-                              </Style>
-                            </Paragraph>
-                          </Paragraphs>
-                          <rd:DefaultName>ExpAmountHeader</rd:DefaultName>
-                          <Style>
-                            <Border>
-                              <Color>LightGrey</Color>
-                              <Style>Solid</Style>
-                            </Border>
-                            <BackgroundColor>#f5f5f5</BackgroundColor>
-                            <PaddingLeft>2pt</PaddingLeft>
-                            <PaddingRight>5pt</PaddingRight>
-                            <PaddingTop>2pt</PaddingTop>
-                            <PaddingBottom>2pt</PaddingBottom>
-                          </Style>
-                        </Textbox>
-                      </CellContents>
-                    </TablixCell>
-                  </TablixCells>
-                </TablixRow>
-                <TablixRow>
-                  <Height>0.25in</Height>
-                  <TablixCells>
-                    <TablixCell>
-                      <CellContents>
-                        <Textbox Name="ExpCategory">
-                          <CanGrow>true</CanGrow>
-                          <KeepTogether>true</KeepTogether>
-                          <Paragraphs>
-                            <Paragraph>
-                              <TextRuns>
-                                <TextRun>
-                                  <Value>=Fields!CategoryName.Value</Value>
-                                  <Style>
-                                    <FontSize>9pt</FontSize>
-                                  </Style>
-                                </TextRun>
-                              </TextRuns>
-                              <Style />
-                            </Paragraph>
-                          </Paragraphs>
-                          <rd:DefaultName>ExpCategory</rd:DefaultName>
-                          <Style>
-                            <Border>
-                              <Color>LightGrey</Color>
-                              <Style>Solid</Style>
-                            </Border>
-                            <PaddingLeft>5pt</PaddingLeft>
-                            <PaddingRight>2pt</PaddingRight>
-                            <PaddingTop>2pt</PaddingTop>
-                            <PaddingBottom>2pt</PaddingBottom>
-                          </Style>
-                        </Textbox>
-                      </CellContents>
-                    </TablixCell>
-                    <TablixCell>
-                      <CellContents>
-                        <Textbox Name="ExpDesc">
-                          <CanGrow>true</CanGrow>
-                          <KeepTogether>true</KeepTogether>
-                          <Paragraphs>
-                            <Paragraph>
-                              <TextRuns>
-                                <TextRun>
-                                  <Value>=Fields!Description.Value</Value>
-                                  <Style>
-                                    <FontSize>9pt</FontSize>
-                                  </Style>
-                                </TextRun>
-                              </TextRuns>
-                              <Style />
-                            </Paragraph>
-                          </Paragraphs>
-                          <rd:DefaultName>ExpDesc</rd:DefaultName>
-                          <Style>
-                            <Border>
-                              <Color>LightGrey</Color>
-                              <Style>Solid</Style>
-                            </Border>
-                            <PaddingLeft>5pt</PaddingLeft>
-                            <PaddingRight>2pt</PaddingRight>
-                            <PaddingTop>2pt</PaddingTop>
-                            <PaddingBottom>2pt</PaddingBottom>
-                          </Style>
-                        </Textbox>
-                      </CellContents>
-                    </TablixCell>
-                    <TablixCell>
-                      <CellContents>
-                        <Textbox Name="ExpAmount">
-                          <CanGrow>true</CanGrow>
-                          <KeepTogether>true</KeepTogether>
-                          <Paragraphs>
-                            <Paragraph>
-                              <TextRuns>
-                                <TextRun>
-                                  <Value>=Format(Fields!Amount.Value, "C2")</Value>
-                                  <Style>
-                                    <FontSize>9pt</FontSize>
-                                  </Style>
-                                </TextRun>
-                              </TextRuns>
-                              <Style>
-                                <TextAlign>Right</TextAlign>
-                              </Style>
-                            </Paragraph>
-                          </Paragraphs>
-                          <rd:DefaultName>ExpAmount</rd:DefaultName>
-                          <Style>
-                            <Border>
-                              <Color>LightGrey</Color>
-                              <Style>Solid</Style>
-                            </Border>
-                            <PaddingLeft>2pt</PaddingLeft>
-                            <PaddingRight>5pt</PaddingRight>
-                            <PaddingTop>2pt</PaddingTop>
-                            <PaddingBottom>2pt</PaddingBottom>
-                          </Style>
-                        </Textbox>
-                      </CellContents>
-                    </TablixCell>
-                  </TablixCells>
-                </TablixRow>
-              </TablixRows>
-            </TablixBody>
-            <TablixColumnHierarchy>
-              <TablixMembers>
-                <TablixMember />
-                <TablixMember />
-                <TablixMember />
-              </TablixMembers>
-            </TablixColumnHierarchy>
-            <TablixRowHierarchy>
-              <TablixMembers>
-                <TablixMember>
-                  <KeepWithGroup>After</KeepWithGroup>
-                </TablixMember>
-                <TablixMember>
-                  <Group Name="ExpenseDetails">
-                    <GroupExpressions>
-                      <GroupExpression>=Fields!CategoryName.Value &amp; "|" &amp; Fields!Description.Value &amp; "|" &amp; CStr(Fields!Amount.Value) &amp; "|" &amp; CStr(Fields!TransactionDate.Value)</GroupExpression>
-                    </GroupExpressions>
-                  </Group>
-                  <SortExpressions>
-                    <SortExpression>
-                      <Value>=Fields!CategoryName.Value</Value>
-                    </SortExpression>
-                    <SortExpression>
-                      <Value>=Fields!TransactionDate.Value</Value>
-                    </SortExpression>
-                  </SortExpressions>
-                  <TablixMembers>
-                    <TablixMember />
-                  </TablixMembers>
-                </TablixMember>
-              </TablixMembers>
-            </TablixRowHierarchy>
-            <DataSetName>IncomeStatementData</DataSetName>
-            <Filters>
-              <Filter>
-                <FilterExpression>=Fields!SectionType.Value</FilterExpression>
-                <Operator>Equal</Operator>
-                <FilterValues>
-                  <FilterValue>EXPENSE</FilterValue>
-                </FilterValues>
-              </Filter>
-            </Filters>
-            <Top>2.35in</Top>
-            <Left>0.25in</Left>
-            <Height>0.5in</Height>
-            <Width>6.875in</Width>
-            <ZIndex>3</ZIndex>
-            <Style>
-              <Border>
-                <Style>None</Style>
-              </Border>
-            </Style>
-          </Tablix>
-          <Textbox Name="ExpensesHeader">
+          <Textbox Name="BeginningCash">
             <CanGrow>true</CanGrow>
             <KeepTogether>true</KeepTogether>
             <Paragraphs>
               <Paragraph>
                 <TextRuns>
                   <TextRun>
-                    <Value>EXPENSES</Value>
-                    <Style>
-                      <FontSize>12pt</FontSize>
-                      <FontWeight>Bold</FontWeight>
-                      <Color>#c62828</Color>
-                    </Style>
-                  </TextRun>
-                </TextRuns>
-                <Style>
-                  <TextAlign>Left</TextAlign>
-                </Style>
-              </Paragraph>
-            </Paragraphs>
-            <rd:DefaultName>ExpensesHeader</rd:DefaultName>
-            <Top>2.05in</Top>
-            <Left>0.25in</Left>
-            <Height>0.25in</Height>
-            <Width>6.875in</Width>
-            <ZIndex>4</ZIndex>
-            <Style>
-              <Border>
-                <Color>#c62828</Color>
-                <Style>Solid</Style>
-                <Width>2pt</Width>
-              </Border>
-              <BackgroundColor>#ffebee</BackgroundColor>
-              <PaddingLeft>5pt</PaddingLeft>
-              <PaddingRight>2pt</PaddingRight>
-              <PaddingTop>2pt</PaddingTop>
-              <PaddingBottom>2pt</PaddingBottom>
-            </Style>
-          </Textbox>
-          <Textbox Name="TotalRevenue">
-            <CanGrow>true</CanGrow>
-            <KeepTogether>true</KeepTogether>
-            <Paragraphs>
-              <Paragraph>
-                <TextRuns>
-                  <TextRun>
-                    <Value>="Total Revenue: " &amp; Format(First(Fields!TotalRevenue.Value, "SummaryData"), "C2")</Value>
+                    <Value>="Beginning Cash: " &amp; Format(First(Fields!BeginningCash.Value, "SummaryData"), "C2")</Value>
                     <Style>
                       <FontSize>11pt</FontSize>
                       <FontWeight>Bold</FontWeight>
-                      <Color>#2e7d32</Color>
+                      <Color>#424242</Color>
                     </Style>
                   </TextRun>
                 </TextRuns>
@@ -544,81 +224,121 @@
                 </Style>
               </Paragraph>
             </Paragraphs>
-            <rd:DefaultName>TotalRevenue</rd:DefaultName>
-            <Top>1.7in</Top>
+            <rd:DefaultName>BeginningCash</rd:DefaultName>
+            <Top>2.8in</Top>
             <Left>0.25in</Left>
-            <Height>0.25in</Height>
-            <Width>6.875in</Width>
-            <ZIndex>5</ZIndex>
+            <Height>0.28in</Height>
+            <Width>7in</Width>
+            <ZIndex>3</ZIndex>
             <Style>
               <Border>
-                <Color>#2e7d32</Color>
+                <Color>#757575</Color>
                 <Style>Solid</Style>
-                <Width>2pt</Width>
               </Border>
-              <BackgroundColor>#e8f5e9</BackgroundColor>
+              <BackgroundColor>#fafafa</BackgroundColor>
               <PaddingLeft>2pt</PaddingLeft>
-              <PaddingRight>5pt</PaddingRight>
-              <PaddingTop>5pt</PaddingTop>
-              <PaddingBottom>2pt</PaddingBottom>
+              <PaddingRight>8pt</PaddingRight>
+              <PaddingTop>4pt</PaddingTop>
+              <PaddingBottom>4pt</PaddingBottom>
             </Style>
           </Textbox>
-          <Tablix Name="RevenueTable">
+          <Tablix Name="CashFlowTable">
             <TablixBody>
               <TablixColumns>
                 <TablixColumn>
-                  <Width>2.5in</Width>
+                  <Width>1.06458in</Width>
                 </TablixColumn>
                 <TablixColumn>
-                  <Width>2.875in</Width>
+                  <Width>1.2in</Width>
                 </TablixColumn>
                 <TablixColumn>
-                  <Width>1.5in</Width>
+                  <Width>2.08542in</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>1.25in</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>1.4in</Width>
                 </TablixColumn>
               </TablixColumns>
               <TablixRows>
                 <TablixRow>
-                  <Height>0.25in</Height>
+                  <Height>0.28in</Height>
                   <TablixCells>
                     <TablixCell>
                       <CellContents>
-                        <Textbox Name="CategoryNameHeader">
+                        <Textbox Name="HeaderSection">
                           <CanGrow>true</CanGrow>
-                          <KeepTogether>true</KeepTogether>
                           <Paragraphs>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>Category</Value>
+                                  <Value>Section</Value>
                                   <Style>
                                     <FontSize>9pt</FontSize>
                                     <FontWeight>Bold</FontWeight>
                                   </Style>
                                 </TextRun>
                               </TextRuns>
-                              <Style />
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
                             </Paragraph>
                           </Paragraphs>
-                          <rd:DefaultName>CategoryNameHeader</rd:DefaultName>
+                          <rd:DefaultName>HeaderSection</rd:DefaultName>
                           <Style>
                             <Border>
-                              <Color>LightGrey</Color>
+                              <Color>#e0e0e0</Color>
                               <Style>Solid</Style>
                             </Border>
                             <BackgroundColor>#f5f5f5</BackgroundColor>
                             <PaddingLeft>5pt</PaddingLeft>
                             <PaddingRight>2pt</PaddingRight>
-                            <PaddingTop>2pt</PaddingTop>
-                            <PaddingBottom>2pt</PaddingBottom>
+                            <PaddingTop>4pt</PaddingTop>
+                            <PaddingBottom>4pt</PaddingBottom>
                           </Style>
                         </Textbox>
                       </CellContents>
                     </TablixCell>
                     <TablixCell>
                       <CellContents>
-                        <Textbox Name="DescriptionHeader">
+                        <Textbox Name="HeaderActivity">
                           <CanGrow>true</CanGrow>
-                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Type</Value>
+                                  <Style>
+                                    <FontSize>9pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>HeaderActivity</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>#e0e0e0</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <BackgroundColor>#f5f5f5</BackgroundColor>
+                            <PaddingLeft>5pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>4pt</PaddingTop>
+                            <PaddingBottom>4pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="HeaderDesc">
+                          <CanGrow>true</CanGrow>
                           <Paragraphs>
                             <Paragraph>
                               <TextRuns>
@@ -630,29 +350,65 @@
                                   </Style>
                                 </TextRun>
                               </TextRuns>
-                              <Style />
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
                             </Paragraph>
                           </Paragraphs>
-                          <rd:DefaultName>DescriptionHeader</rd:DefaultName>
+                          <rd:DefaultName>HeaderDesc</rd:DefaultName>
                           <Style>
                             <Border>
-                              <Color>LightGrey</Color>
+                              <Color>#e0e0e0</Color>
                               <Style>Solid</Style>
                             </Border>
                             <BackgroundColor>#f5f5f5</BackgroundColor>
                             <PaddingLeft>5pt</PaddingLeft>
                             <PaddingRight>2pt</PaddingRight>
-                            <PaddingTop>2pt</PaddingTop>
-                            <PaddingBottom>2pt</PaddingBottom>
+                            <PaddingTop>4pt</PaddingTop>
+                            <PaddingBottom>4pt</PaddingBottom>
                           </Style>
                         </Textbox>
                       </CellContents>
                     </TablixCell>
                     <TablixCell>
                       <CellContents>
-                        <Textbox Name="AmountHeader">
+                        <Textbox Name="HeaderDate">
                           <CanGrow>true</CanGrow>
-                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Date</Value>
+                                  <Style>
+                                    <FontSize>9pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>HeaderDate</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>#e0e0e0</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <BackgroundColor>#f5f5f5</BackgroundColor>
+                            <PaddingLeft>5pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>4pt</PaddingTop>
+                            <PaddingBottom>4pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="HeaderAmount">
+                          <CanGrow>true</CanGrow>
                           <Paragraphs>
                             <Paragraph>
                               <TextRuns>
@@ -669,17 +425,17 @@
                               </Style>
                             </Paragraph>
                           </Paragraphs>
-                          <rd:DefaultName>AmountHeader</rd:DefaultName>
+                          <rd:DefaultName>HeaderAmount</rd:DefaultName>
                           <Style>
                             <Border>
-                              <Color>LightGrey</Color>
+                              <Color>#e0e0e0</Color>
                               <Style>Solid</Style>
                             </Border>
                             <BackgroundColor>#f5f5f5</BackgroundColor>
                             <PaddingLeft>2pt</PaddingLeft>
                             <PaddingRight>5pt</PaddingRight>
-                            <PaddingTop>2pt</PaddingTop>
-                            <PaddingBottom>2pt</PaddingBottom>
+                            <PaddingTop>4pt</PaddingTop>
+                            <PaddingBottom>4pt</PaddingBottom>
                           </Style>
                         </Textbox>
                       </CellContents>
@@ -687,27 +443,63 @@
                   </TablixCells>
                 </TablixRow>
                 <TablixRow>
-                  <Height>0.25in</Height>
+                  <Height>0.24in</Height>
                   <TablixCells>
                     <TablixCell>
                       <CellContents>
-                        <Textbox Name="CategoryName">
+                        <Textbox Name="DetailSection">
                           <CanGrow>true</CanGrow>
-                          <KeepTogether>true</KeepTogether>
                           <Paragraphs>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>=Fields!CategoryName.Value</Value>
+                                  <Value>=Fields!SectionType.Value</Value>
                                   <Style>
                                     <FontSize>9pt</FontSize>
+                                    <Color>#424242</Color>
                                   </Style>
                                 </TextRun>
                               </TextRuns>
-                              <Style />
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
                             </Paragraph>
                           </Paragraphs>
-                          <rd:DefaultName>CategoryName</rd:DefaultName>
+                          <rd:DefaultName>DetailSection</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>8pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="DetailActivity">
+                          <CanGrow>true</CanGrow>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!ActivityType.Value</Value>
+                                  <Style>
+                                    <FontSize>9pt</FontSize>
+                                    <Color>#616161</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>DetailActivity</rd:DefaultName>
                           <Style>
                             <Border>
                               <Color>LightGrey</Color>
@@ -723,23 +515,25 @@
                     </TablixCell>
                     <TablixCell>
                       <CellContents>
-                        <Textbox Name="Description">
+                        <Textbox Name="DetailDesc">
                           <CanGrow>true</CanGrow>
-                          <KeepTogether>true</KeepTogether>
                           <Paragraphs>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>=Fields!Description.Value</Value>
+                                  <Value>=Fields!CategoryName.Value &amp; " – " &amp; Fields!Description.Value</Value>
                                   <Style>
                                     <FontSize>9pt</FontSize>
+                                    <Color>#616161</Color>
                                   </Style>
                                 </TextRun>
                               </TextRuns>
-                              <Style />
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
                             </Paragraph>
                           </Paragraphs>
-                          <rd:DefaultName>Description</rd:DefaultName>
+                          <rd:DefaultName>DetailDesc</rd:DefaultName>
                           <Style>
                             <Border>
                               <Color>LightGrey</Color>
@@ -755,9 +549,42 @@
                     </TablixCell>
                     <TablixCell>
                       <CellContents>
-                        <Textbox Name="Amount">
+                        <Textbox Name="DetailDate">
                           <CanGrow>true</CanGrow>
-                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Format(Fields!TransactionDate.Value, "MM/dd/yyyy")</Value>
+                                  <Style>
+                                    <FontSize>9pt</FontSize>
+                                    <Color>#616161</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style>
+                                <TextAlign>Left</TextAlign>
+                              </Style>
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>DetailDate</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>LightGrey</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>5pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="DetailAmount">
+                          <CanGrow>true</CanGrow>
                           <Paragraphs>
                             <Paragraph>
                               <TextRuns>
@@ -765,6 +592,7 @@
                                   <Value>=Format(Fields!Amount.Value, "C2")</Value>
                                   <Style>
                                     <FontSize>9pt</FontSize>
+                                    <Color>=IIf(Fields!ActivityType.Value = "INFLOW", "#2e7d32", "#c62828")</Color>
                                   </Style>
                                 </TextRun>
                               </TextRuns>
@@ -773,14 +601,14 @@
                               </Style>
                             </Paragraph>
                           </Paragraphs>
-                          <rd:DefaultName>Amount</rd:DefaultName>
+                          <rd:DefaultName>DetailAmount</rd:DefaultName>
                           <Style>
                             <Border>
                               <Color>LightGrey</Color>
                               <Style>Solid</Style>
                             </Border>
                             <PaddingLeft>2pt</PaddingLeft>
-                            <PaddingRight>5pt</PaddingRight>
+                            <PaddingRight>8pt</PaddingRight>
                             <PaddingTop>2pt</PaddingTop>
                             <PaddingBottom>2pt</PaddingBottom>
                           </Style>
@@ -796,6 +624,8 @@
                 <TablixMember />
                 <TablixMember />
                 <TablixMember />
+                <TablixMember />
+                <TablixMember />
               </TablixMembers>
             </TablixColumnHierarchy>
             <TablixRowHierarchy>
@@ -804,94 +634,39 @@
                   <KeepWithGroup>After</KeepWithGroup>
                 </TablixMember>
                 <TablixMember>
-                  <Group Name="RevenueDetails">
+                  <Group Name="DetailGroup">
                     <GroupExpressions>
-                      <GroupExpression>=Fields!CategoryName.Value &amp; "|" &amp; Fields!Description.Value &amp; "|" &amp; CStr(Fields!Amount.Value) &amp; "|" &amp; CStr(Fields!TransactionDate.Value)</GroupExpression>
+                      <GroupExpression>=Fields!SectionType.Value &amp; "|" &amp; Fields!CategoryName.Value &amp; "|" &amp; CStr(Fields!Amount.Value) &amp; "|" &amp; CStr(Fields!TransactionDate.Value)</GroupExpression>
                     </GroupExpressions>
                   </Group>
-                  <SortExpressions>
-                    <SortExpression>
-                      <Value>=Fields!CategoryName.Value</Value>
-                    </SortExpression>
-                    <SortExpression>
-                      <Value>=Fields!TransactionDate.Value</Value>
-                    </SortExpression>
-                  </SortExpressions>
                   <TablixMembers>
                     <TablixMember />
                   </TablixMembers>
                 </TablixMember>
               </TablixMembers>
             </TablixRowHierarchy>
-            <DataSetName>IncomeStatementData</DataSetName>
-            <Filters>
-              <Filter>
-                <FilterExpression>=Fields!SectionType.Value</FilterExpression>
-                <Operator>Equal</Operator>
-                <FilterValues>
-                  <FilterValue>REVENUE</FilterValue>
-                </FilterValues>
-              </Filter>
-            </Filters>
-            <Top>1.1in</Top>
+            <DataSetName>CashFlowData</DataSetName>
+            <Top>1.05in</Top>
             <Left>0.25in</Left>
-            <Height>0.5in</Height>
-            <Width>6.875in</Width>
-            <ZIndex>6</ZIndex>
+            <Height>0.52in</Height>
+            <Width>7in</Width>
+            <ZIndex>4</ZIndex>
             <Style>
               <Border>
                 <Style>None</Style>
               </Border>
             </Style>
           </Tablix>
-          <Textbox Name="RevenueHeader">
+          <Textbox Name="PeriodLabel">
             <CanGrow>true</CanGrow>
             <KeepTogether>true</KeepTogether>
             <Paragraphs>
               <Paragraph>
                 <TextRuns>
                   <TextRun>
-                    <Value>REVENUE</Value>
+                    <Value>= "Period: " &amp; Format(First(Fields!PeriodStart.Value, "SummaryData"), "MMMM dd, yyyy") &amp; " – " &amp; Format(First(Fields!PeriodEnd.Value, "SummaryData"), "MMMM dd, yyyy")</Value>
                     <Style>
-                      <FontSize>12pt</FontSize>
-                      <FontWeight>Bold</FontWeight>
-                      <Color>#2e7d32</Color>
-                    </Style>
-                  </TextRun>
-                </TextRuns>
-                <Style>
-                  <TextAlign>Left</TextAlign>
-                </Style>
-              </Paragraph>
-            </Paragraphs>
-            <rd:DefaultName>RevenueHeader</rd:DefaultName>
-            <Top>0.8in</Top>
-            <Left>0.25in</Left>
-            <Height>0.25in</Height>
-            <Width>6.875in</Width>
-            <ZIndex>7</ZIndex>
-            <Style>
-              <Border>
-                <Color>#2e7d32</Color>
-                <Style>Solid</Style>
-                <Width>2pt</Width>
-              </Border>
-              <BackgroundColor>#e8f5e9</BackgroundColor>
-              <PaddingLeft>5pt</PaddingLeft>
-              <PaddingRight>2pt</PaddingRight>
-              <PaddingTop>2pt</PaddingTop>
-              <PaddingBottom>2pt</PaddingBottom>
-            </Style>
-          </Textbox>
-          <Textbox Name="PeriodText">
-            <CanGrow>true</CanGrow>
-            <KeepTogether>true</KeepTogether>
-            <Paragraphs>
-              <Paragraph>
-                <TextRuns>
-                  <TextRun>
-                    <Value>=Format(First(Fields!PeriodStart.Value, "SummaryData"), "MMMM dd, yyyy") &amp; " - " &amp; Format(First(Fields!PeriodEnd.Value, "SummaryData"), "MMMM dd, yyyy")</Value>
-                    <Style>
+                      <FontSize>11pt</FontSize>
                       <Color>#666666</Color>
                     </Style>
                   </TextRun>
@@ -901,12 +676,11 @@
                 </Style>
               </Paragraph>
             </Paragraphs>
-            <rd:DefaultName>PeriodText</rd:DefaultName>
-            <Top>0.5in</Top>
-            <Left>0.25in</Left>
-            <Height>0.2in</Height>
-            <Width>6.875in</Width>
-            <ZIndex>8</ZIndex>
+            <rd:DefaultName>PeriodLabel</rd:DefaultName>
+            <Top>0.65in</Top>
+            <Height>0.3in</Height>
+            <Width>7.25in</Width>
+            <ZIndex>5</ZIndex>
             <Style>
               <Border>
                 <Style>None</Style>
@@ -924,7 +698,7 @@
               <Paragraph>
                 <TextRuns>
                   <TextRun>
-                    <Value>INCOME STATEMENT</Value>
+                    <Value>Cash Flow Statement</Value>
                     <Style>
                       <FontSize>18pt</FontSize>
                       <FontWeight>Bold</FontWeight>
@@ -938,11 +712,10 @@
               </Paragraph>
             </Paragraphs>
             <rd:DefaultName>ReportTitle</rd:DefaultName>
-            <Top>0.1in</Top>
-            <Left>0.25in</Left>
-            <Height>0.35in</Height>
-            <Width>6.875in</Width>
-            <ZIndex>9</ZIndex>
+            <Top>0.25in</Top>
+            <Height>0.4in</Height>
+            <Width>7.25in</Width>
+            <ZIndex>6</ZIndex>
             <Style>
               <Border>
                 <Style>None</Style>
@@ -954,7 +727,7 @@
             </Style>
           </Textbox>
         </ReportItems>
-        <Height>4in</Height>
+        <Height>4.25in</Height>
         <Style />
       </Body>
       <Width>8in</Width>
@@ -997,7 +770,7 @@
               <Top>0.1in</Top>
               <Left>0.25in</Left>
               <Height>0.25in</Height>
-              <Width>6.875in</Width>
+              <Width>7in</Width>
               <Style>
                 <Border>
                   <Style>None</Style>
@@ -1030,6 +803,8 @@
       <NumberOfRows>2</NumberOfRows>
     </GridLayoutDefinition>
   </ReportParametersLayout>
+  <Language>en-US</Language>
+  <ConsumeContainerWhitespace>true</ConsumeContainerWhitespace>
   <rd:ReportUnitType>Inch</rd:ReportUnitType>
-  <rd:ReportID>b336a7ea-b8ce-4cba-87a2-df6a94e5473c</rd:ReportID>
+  <rd:ReportID>a1b2c3d4-e5f6-7890-abcd-ef1234567890</rd:ReportID>
 </Report>

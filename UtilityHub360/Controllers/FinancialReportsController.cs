@@ -1015,6 +1015,78 @@ namespace UtilityHub360.Controllers
                 return StatusCode(500, new { message = "Error generating report", error = ex.Message });
             }
         }
+
+        /// <summary>
+        /// Generate Cash Flow Statement RDLC Report
+        /// </summary>
+        /// <param name="startDate">Report period start date</param>
+        /// <param name="endDate">Report period end date</param>
+        /// <param name="format">Output format: PDF, EXCEL, WORD (default: PDF)</param>
+        /// <returns>Binary file of generated report</returns>
+        [HttpGet("cash-flow/rdlc")]
+        public async Task<IActionResult> GetCashFlowRdlcReport(
+            [FromQuery] DateTime startDate,
+            [FromQuery] DateTime endDate,
+            [FromQuery] string format = "PDF")
+        {
+            try
+            {
+                var userId = GetUserId();
+
+                _logger.LogInformation($"Generating RDLC Cash Flow Report for user {userId}, Period: {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd}, Format: {format}");
+
+                if (startDate > endDate)
+                {
+                    return BadRequest(new { message = "Start date must be before end date" });
+                }
+
+                if (startDate > DateTime.UtcNow)
+                {
+                    return BadRequest(new { message = "Start date cannot be in the future" });
+                }
+
+                var reportBytes = await _rdlcReportService.GenerateCashFlowReportAsync(
+                    userId,
+                    startDate,
+                    endDate,
+                    format.ToUpper());
+
+                if (reportBytes == null || reportBytes.Length == 0)
+                {
+                    return NotFound(new { message = "No data available for the selected period" });
+                }
+
+                var (contentType, fileExtension) = format.ToUpper() switch
+                {
+                    "PDF" => ("application/pdf", "pdf"),
+                    "EXCEL" => ("application/vnd.ms-excel", "xls"),
+                    "WORD" => ("application/msword", "doc"),
+                    "IMAGE" => ("image/png", "png"),
+                    _ => ("application/pdf", "pdf")
+                };
+
+                var fileName = $"CashFlowStatement_{startDate:yyyyMMdd}_{endDate:yyyyMMdd}.{fileExtension}";
+
+                _logger.LogInformation($"Cash Flow report generated successfully. Size: {reportBytes.Length} bytes, File: {fileName}");
+
+                return File(reportBytes, contentType, fileName);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access attempt");
+                return Unauthorized(new { message = ex.Message });
+            }
+            catch (FileNotFoundException ex)
+            {
+                _logger.LogError(ex, "RDLC report file not found");
+                return StatusCode(500, new { message = "Report template not found", error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating RDLC Cash Flow report");
+                return StatusCode(500, new { message = "Error generating report", error = ex.Message });
+            }
+        }
     }
 }
 

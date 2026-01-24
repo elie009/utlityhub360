@@ -10,6 +10,7 @@ namespace UtilityHub360.Services
     {
         Task<byte[]> GenerateIncomeStatementReportAsync(string userId, DateTime startDate, DateTime endDate, string format = "PDF");
         Task<byte[]> GenerateBalanceSheetReportAsync(string userId, DateTime asOfDate, DateTime? startDate, DateTime? endDate, string format = "PDF");
+        Task<byte[]> GenerateCashFlowReportAsync(string userId, DateTime startDate, DateTime endDate, string format = "PDF");
     }
 
     public class RdlcReportService : IRdlcReportService
@@ -292,6 +293,111 @@ namespace UtilityHub360.Services
             _logger.LogInformation($"Retrieved {balanceSheetData.Rows.Count} balance sheet rows and {summaryData.Rows.Count} summary rows");
 
             return (balanceSheetData, summaryData);
+        }
+
+        public async Task<byte[]> GenerateCashFlowReportAsync(
+            string userId,
+            DateTime startDate,
+            DateTime endDate,
+            string format = "PDF")
+        {
+            try
+            {
+                _logger.LogInformation($"Generating Cash Flow Report for user {userId} from {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd}");
+
+                var (cashFlowData, summaryData) = await GetCashFlowDataAsync(userId, startDate, endDate);
+
+                var reportPath = Path.Combine(_webHostEnvironment.ContentRootPath, "Reports", "CashFlowStatement.rdlc");
+
+                if (!File.Exists(reportPath))
+                {
+                    throw new FileNotFoundException($"RDLC report file not found at: {reportPath}");
+                }
+
+                System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+
+                using var localReport = new LocalReport();
+                localReport.ReportPath = reportPath;
+
+                localReport.DataSources.Add(new ReportDataSource("CashFlowData", cashFlowData));
+                localReport.DataSources.Add(new ReportDataSource("SummaryData", summaryData));
+
+                string renderFormat = format.ToUpper() switch
+                {
+                    "PDF" => "PDF",
+                    "EXCEL" => "EXCELOPENXML",
+                    "WORD" => "WORDOPENXML",
+                    _ => "PDF"
+                };
+
+                string mimeType;
+                string encoding;
+                string fileNameExtension;
+                Warning[] warnings;
+                string[] streams;
+
+                var renderedBytes = localReport.Render(
+                    renderFormat,
+                    null,
+                    out mimeType,
+                    out encoding,
+                    out fileNameExtension,
+                    out streams,
+                    out warnings
+                );
+
+                _logger.LogInformation($"Cash Flow report generated successfully. Size: {renderedBytes.Length} bytes");
+
+                return renderedBytes;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error generating Cash Flow Report: {ex.Message}");
+                throw;
+            }
+        }
+
+        private async Task<(DataTable cashFlowData, DataTable summaryData)> GetCashFlowDataAsync(
+            string userId,
+            DateTime startDate,
+            DateTime endDate)
+        {
+            var connectionString = _configuration.GetConnectionString("DefaultConnection");
+
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+
+            var cashFlowData = new DataTable("CashFlowData");
+            var summaryData = new DataTable("SummaryData");
+
+            using (var command = new SqlCommand("SP_GetCashFlowReport", connection))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@UserId", userId);
+                command.Parameters.AddWithValue("@StartDate", startDate);
+                command.Parameters.AddWithValue("@EndDate", endDate);
+                command.CommandTimeout = 120;
+
+                using var adapter = new SqlDataAdapter(command);
+                var dataSet = new DataSet();
+                await Task.Run(() => adapter.Fill(dataSet));
+
+                if (dataSet.Tables.Count >= 1)
+                {
+                    cashFlowData = dataSet.Tables[0];
+                    cashFlowData.TableName = "CashFlowData";
+                }
+
+                if (dataSet.Tables.Count >= 2)
+                {
+                    summaryData = dataSet.Tables[1];
+                    summaryData.TableName = "SummaryData";
+                }
+            }
+
+            _logger.LogInformation($"Retrieved {cashFlowData.Rows.Count} cash flow rows and {summaryData.Rows.Count} summary rows");
+
+            return (cashFlowData, summaryData);
         }
     }
 }
