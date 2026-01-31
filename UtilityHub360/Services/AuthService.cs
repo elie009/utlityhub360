@@ -230,6 +230,54 @@ namespace UtilityHub360.Services
             }
         }
 
+        /// <summary>Setup or update PIN for mobile PIN login (mobile-only).</summary>
+        public async Task<ApiResponse<object>> SetupPinAsync(SetupPinDto dto, string userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+                throw new UnauthorizedAccessException("User not found.");
+            user.PinHash = BCrypt.Net.BCrypt.HashPassword(dto.Pin);
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return ApiResponse<object>.SuccessResult(new { }, "PIN set successfully.");
+        }
+
+        /// <summary>Login with email + PIN (mobile-only). Returns same token payload as email/password login.</summary>
+        public async Task<ApiResponse<AuthResponseDto>> LoginWithPinAsync(LoginWithPinDto dto)
+        {
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == dto.Email.ToLower());
+            if (user == null)
+                throw new UnauthorizedAccessException("Invalid email or PIN.");
+            if (!user.IsActive)
+                throw new UnauthorizedAccessException("Account is inactive.");
+            if (string.IsNullOrEmpty(user.PinHash))
+                throw new UnauthorizedAccessException("PIN not set. Set up PIN in app settings first.");
+            if (!BCrypt.Net.BCrypt.Verify(dto.Pin, user.PinHash))
+                throw new UnauthorizedAccessException("Invalid email or PIN.");
+            string token = GenerateJwtToken(user);
+            var refreshToken = GenerateRefreshToken();
+            return ApiResponse<AuthResponseDto>.SuccessResult(new AuthResponseDto
+            {
+                Token = token,
+                RefreshToken = refreshToken,
+                ExpiresAt = DateTime.UtcNow.AddMinutes(_jwtSettings.ExpirationMinutes),
+                User = new UserDto
+                {
+                    Id = user.Id,
+                    Name = user.Name,
+                    Email = user.Email,
+                    Phone = user.Phone,
+                    Country = user.Country,
+                    Role = user.Role,
+                    IsActive = user.IsActive,
+                    EmailVerified = user.EmailVerified,
+                    CreatedAt = user.CreatedAt,
+                    UpdatedAt = user.UpdatedAt
+                }
+            });
+        }
+
         public async Task<ApiResponse<bool>> VerifyEmailAsync(string email, string token)
         {
             var user = await _context.Users

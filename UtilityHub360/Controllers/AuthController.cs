@@ -108,6 +108,60 @@ namespace UtilityHub360.Controllers
             }
         }
 
+        /// <summary>Setup or update PIN for mobile PIN login (mobile-only). Requires authentication.</summary>
+        [HttpPost("setup-pin")]
+        [Authorize]
+        public async Task<ActionResult<ApiResponse<object>>> SetupPin([FromBody] SetupPinDto dto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<object>.ErrorResult("User not authenticated"));
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<object>.ErrorResult("Validation failed", errors));
+                }
+                var result = await _authService.SetupPinAsync(dto, userId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.ErrorResult(ex.Message));
+            }
+        }
+
+        /// <summary>Login with email + PIN (mobile-only). Returns JWT and refresh token.</summary>
+        [HttpPost("login-pin")]
+        public async Task<ActionResult<ApiResponse<AuthResponseDto>>> LoginWithPin([FromBody] LoginWithPinDto dto)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<AuthResponseDto>.ErrorResult("Validation failed", errors));
+                }
+                var result = await _authService.LoginWithPinAsync(dto);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(401, ApiResponse<AuthResponseDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<AuthResponseDto>.ErrorResult(ex.Message));
+            }
+        }
+
         [HttpPost("refresh")]
         public async Task<ActionResult<ApiResponse<AuthResponseDto>>> RefreshToken([FromBody] RefreshTokenDto refreshTokenDto)
         {

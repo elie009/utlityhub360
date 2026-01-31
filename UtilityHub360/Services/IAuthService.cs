@@ -17,5 +17,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<object>> ClearAllUserDataAsync(ClearAllDataDto clearAllDataDto, string userId);
         Task<ApiResponse<bool>> VerifyEmailAsync(string email, string token);
         Task<ApiResponse<bool>> ResendVerificationEmailAsync(string email);
+        Task<ApiResponse<object>> SetupPinAsync(SetupPinDto dto, string userId);
+        Task<ApiResponse<AuthResponseDto>> LoginWithPinAsync(LoginWithPinDto dto);
     }
 }

@@ -44,6 +44,10 @@ namespace UtilityHub360.Entities
 
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+        /// <summary>BCrypt hash of user's 6-digit PIN for mobile PIN login (optional, mobile-only).</summary>
+        [StringLength(255)]
+        public string? PinHash { get; set; }
+
         // Navigation properties
         public virtual ICollection<Loan> Loans { get; set; } = new List<Loan>();
         public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
