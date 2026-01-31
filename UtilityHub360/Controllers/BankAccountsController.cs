@@ -657,18 +657,16 @@ namespace UtilityHub360.Controllers
                 DateTime? dateFrom = null;
                 DateTime? dateTo = null;
 
-                // Parse startDate if provided
+                // Parse startDate if provided - use calendar date to avoid timezone issues
                 if (!string.IsNullOrEmpty(startDate) && DateTime.TryParse(startDate, out var parsedStartDate))
                 {
-                    // Use only the date part, set time to 00:00:00 UTC
-                    dateFrom = DateTime.SpecifyKind(parsedStartDate.Date, DateTimeKind.Utc);
+                    dateFrom = new DateTime(parsedStartDate.Year, parsedStartDate.Month, parsedStartDate.Day, 0, 0, 0, DateTimeKind.Utc);
                 }
 
-                // Parse endDate if provided
+                // Parse endDate if provided - use calendar date end-of-day UTC so the full last day is included
                 if (!string.IsNullOrEmpty(endDate) && DateTime.TryParse(endDate, out var parsedEndDate))
                 {
-                    // Set to end of day (23:59:59.9999999) UTC for inclusive comparison
-                    dateTo = DateTime.SpecifyKind(parsedEndDate.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+                    dateTo = new DateTime(parsedEndDate.Year, parsedEndDate.Month, parsedEndDate.Day, 23, 59, 59, 999, DateTimeKind.Utc);
                 }
 
                 var result = await _bankAccountService.GetUserTransactionsAsync(userId, bankAccountId, accountType, page, limit, dateFrom, dateTo);
