@@ -382,15 +382,27 @@ namespace UtilityHub360.Services
                 }
 
                 var query = _context.Bills.Where(b => b.UserId == userId);
-
-                if (!string.IsNullOrEmpty(status))
-                {
-                    query = query.Where(b => b.Status == status.ToUpper());
-                }
+                var normalizedStatus = string.IsNullOrEmpty(status) ? null : status.ToUpper();
 
                 if (!string.IsNullOrEmpty(billType))
                 {
                     query = query.Where(b => b.BillType == billType.ToLower());
+                }
+
+                if (!string.IsNullOrEmpty(normalizedStatus))
+                {
+                    if (normalizedStatus == "PAID")
+                    {
+                        query = query.Where(b => _context.Payments.Any(p => p.BillId == b.Id));
+                    }
+                    else if (normalizedStatus == "PENDING")
+                    {
+                        query = query.Where(b => !_context.Payments.Any(p => p.BillId == b.Id));
+                    }
+                    else
+                    {
+                        query = query.Where(b => b.Status == normalizedStatus);
+                    }
                 }
 
                 var totalCount = await query.CountAsync();
@@ -403,12 +415,22 @@ namespace UtilityHub360.Services
                 }
 
                 var bills = await query
-                    .OrderByDescending(b => b.CreatedAt)
+                    .Select(b => new
+                    {
+                        Bill = b,
+                        HasPayment = _context.Payments.Any(p => p.BillId == b.Id)
+                    })
+                    .OrderByDescending(x => x.Bill.CreatedAt)
                     .Skip(skip)
                     .Take(limit)
                     .ToListAsync();
 
-                var billDtos = bills.Select(MapToBillDto).ToList();
+                var billDtos = bills.Select(x =>
+                {
+                    var dto = MapToBillDto(x.Bill);
+                    dto.Status = x.HasPayment ? "PAID" : "PENDING";
+                    return dto;
+                }).ToList();
 
                 var paginatedResponse = new PaginatedResponse<BillDto>
                 {
@@ -863,25 +885,47 @@ namespace UtilityHub360.Services
             try
             {
                 var query = _context.Bills.AsQueryable();
-
-                if (!string.IsNullOrEmpty(status))
-                {
-                    query = query.Where(b => b.Status == status.ToUpper());
-                }
+                var normalizedStatus = string.IsNullOrEmpty(status) ? null : status.ToUpper();
 
                 if (!string.IsNullOrEmpty(billType))
                 {
                     query = query.Where(b => b.BillType == billType.ToLower());
                 }
 
+                if (!string.IsNullOrEmpty(normalizedStatus))
+                {
+                    if (normalizedStatus == "PAID")
+                    {
+                        query = query.Where(b => _context.Payments.Any(p => p.BillId == b.Id));
+                    }
+                    else if (normalizedStatus == "PENDING")
+                    {
+                        query = query.Where(b => !_context.Payments.Any(p => p.BillId == b.Id));
+                    }
+                    else
+                    {
+                        query = query.Where(b => b.Status == normalizedStatus);
+                    }
+                }
+
                 var totalCount = await query.CountAsync();
                 var bills = await query
-                    .OrderByDescending(b => b.CreatedAt)
+                    .Select(b => new
+                    {
+                        Bill = b,
+                        HasPayment = _context.Payments.Any(p => p.BillId == b.Id)
+                    })
+                    .OrderByDescending(x => x.Bill.CreatedAt)
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToListAsync();
 
-                var billDtos = bills.Select(MapToBillDto).ToList();
+                var billDtos = bills.Select(x =>
+                {
+                    var dto = MapToBillDto(x.Bill);
+                    dto.Status = x.HasPayment ? "PAID" : "PENDING";
+                    return dto;
+                }).ToList();
 
                 var paginatedResponse = new PaginatedResponse<BillDto>
                 {

@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
@@ -25,8 +25,8 @@ namespace UtilityHub360.Services
         private readonly ISmartCategorizationService? _smartCategorizationService;
 
         public BankAccountService(
-            ApplicationDbContext context, 
-            IServiceProvider serviceProvider, 
+            ApplicationDbContext context,
+            IServiceProvider serviceProvider,
             AccountingService accountingService,
             ITransactionRulesService? transactionRulesService = null,
             IDuplicateDetectionService? duplicateDetectionService = null,
@@ -47,7 +47,7 @@ namespace UtilityHub360.Services
                 // Check for duplicate account name
                 var existingAccountByName = await _context.BankAccounts
                     .FirstOrDefaultAsync(ba => ba.UserId == userId && ba.AccountName == createBankAccountDto.AccountName);
-                
+
                 if (existingAccountByName != null)
                 {
                     return ApiResponse<BankAccountDto>.ErrorResult($"An account with the name '{createBankAccountDto.AccountName}' already exists. Please use a different account name.");
@@ -58,7 +58,7 @@ namespace UtilityHub360.Services
                 {
                     var existingAccountByNumber = await _context.BankAccounts
                         .FirstOrDefaultAsync(ba => ba.UserId == userId && ba.AccountNumber == createBankAccountDto.AccountNumber);
-                    
+
                     if (existingAccountByNumber != null)
                     {
                         return ApiResponse<BankAccountDto>.ErrorResult($"An account with this account number already exists.");
@@ -105,17 +105,17 @@ namespace UtilityHub360.Services
             {
                 // Handle database constraint violations
                 var innerException = dbEx.InnerException?.Message ?? dbEx.Message;
-                
+
                 if (innerException.Contains("IX_BankAccounts_UserId_AccountName") || innerException.Contains("duplicate key"))
                 {
                     return ApiResponse<BankAccountDto>.ErrorResult($"An account with the name '{createBankAccountDto.AccountName}' already exists. Please use a different account name.");
                 }
-                
+
                 if (innerException.Contains("IX_BankAccounts_UserId_AccountNumber") || innerException.Contains("duplicate key"))
                 {
                     return ApiResponse<BankAccountDto>.ErrorResult($"An account with this account number already exists.");
                 }
-                
+
                 return ApiResponse<BankAccountDto>.ErrorResult($"Failed to create bank account: {innerException}");
             }
             catch (Exception ex)
@@ -161,7 +161,7 @@ namespace UtilityHub360.Services
                 {
                     return ApiResponse<BankAccountDto>.ErrorResult("Bank account not found");
                 }
-                
+
                 // Convert to BankAccount entity
                 var bankAccount = new BankAccount
                 {
@@ -215,7 +215,7 @@ namespace UtilityHub360.Services
                         t.BalanceAfterTransaction
                     })
                     .ToListAsync();
-                
+
                 // Convert to BankTransaction entities (filter out soft-deleted in memory)
                 var transactions = transactionsData.Select(t => new BankTransaction
                 {
@@ -264,14 +264,14 @@ namespace UtilityHub360.Services
                 }
 
                 // Check for duplicate account name (excluding current account)
-                if (!string.IsNullOrEmpty(updateBankAccountDto.AccountName) && 
+                if (!string.IsNullOrEmpty(updateBankAccountDto.AccountName) &&
                     updateBankAccountDto.AccountName != bankAccount.AccountName)
                 {
                     var existingAccountByName = await _context.BankAccounts
-                        .FirstOrDefaultAsync(ba => ba.UserId == userId && 
+                        .FirstOrDefaultAsync(ba => ba.UserId == userId &&
                                                   ba.AccountName == updateBankAccountDto.AccountName &&
                                                   ba.Id != bankAccountId);
-                    
+
                     if (existingAccountByName != null)
                     {
                         return ApiResponse<BankAccountDto>.ErrorResult($"An account with the name '{updateBankAccountDto.AccountName}' already exists. Please use a different account name.");
@@ -289,10 +289,10 @@ namespace UtilityHub360.Services
                 if (accountNumber != null && accountNumber != bankAccount.AccountNumber)
                 {
                     var existingAccountByNumber = await _context.BankAccounts
-                        .FirstOrDefaultAsync(ba => ba.UserId == userId && 
+                        .FirstOrDefaultAsync(ba => ba.UserId == userId &&
                                                   ba.AccountNumber == accountNumber &&
                                                   ba.Id != bankAccountId);
-                    
+
                     if (existingAccountByNumber != null)
                     {
                         return ApiResponse<BankAccountDto>.ErrorResult($"An account with this account number already exists.");
@@ -348,17 +348,17 @@ namespace UtilityHub360.Services
             {
                 // Handle database constraint violations
                 var innerException = dbEx.InnerException?.Message ?? dbEx.Message;
-                
+
                 if (innerException.Contains("IX_BankAccounts_UserId_AccountName") || innerException.Contains("duplicate key"))
                 {
                     return ApiResponse<BankAccountDto>.ErrorResult($"An account with the name '{updateBankAccountDto.AccountName}' already exists. Please use a different account name.");
                 }
-                
+
                 if (innerException.Contains("IX_BankAccounts_UserId_AccountNumber") || innerException.Contains("duplicate key"))
                 {
                     return ApiResponse<BankAccountDto>.ErrorResult($"An account with this account number already exists.");
                 }
-                
+
                 return ApiResponse<BankAccountDto>.ErrorResult($"Failed to update bank account: {innerException}");
             }
             catch (Exception ex)
@@ -386,12 +386,12 @@ namespace UtilityHub360.Services
 
                 // Handle foreign key constraints by setting related foreign keys to NULL
                 // These entities have DeleteBehavior.NoAction, so we need to handle them manually
-                
+
                 // 1. Set BankAccountId to NULL in Payments
                 var payments = await _context.Payments
                     .Where(p => p.BankAccountId == bankAccountId)
                     .ToListAsync();
-                
+
                 foreach (var payment in payments)
                 {
                     payment.BankAccountId = null;
@@ -401,7 +401,7 @@ namespace UtilityHub360.Services
                 var receivablePayments = await _context.ReceivablePayments
                     .Where(rp => rp.BankAccountId == bankAccountId)
                     .ToListAsync();
-                
+
                 foreach (var receivablePayment in receivablePayments)
                 {
                     receivablePayment.BankAccountId = null;
@@ -411,7 +411,7 @@ namespace UtilityHub360.Services
                 var savingsTransactions = await _context.SavingsTransactions
                     .Where(st => st.SourceBankAccountId == bankAccountId)
                     .ToListAsync();
-                
+
                 foreach (var savingsTransaction in savingsTransactions)
                 {
                     savingsTransaction.SourceBankAccountId = null;
@@ -498,7 +498,7 @@ namespace UtilityHub360.Services
                         // The stored procedure should return a single row with NetAmount column
                         var netAmountResult = _context.Database
                             .SqlQueryRaw<BankAccountNetAmountResult>(
-                                "EXEC GetBankAccountNetAmount @BankAccountId, @UserId", 
+                                "EXEC GetBankAccountNetAmount @BankAccountId, @UserId",
                                 bankAccountIdParam, userIdParam
                             ).AsEnumerable().FirstOrDefault();
 
@@ -566,7 +566,7 @@ namespace UtilityHub360.Services
                         t.BalanceAfterTransaction
                     })
                     .ToListAsync();
-                
+
                 // Convert to BankTransaction entities (without soft delete properties)
                 var transactions = transactionsData.Select(t => new BankTransaction
                 {
@@ -591,7 +591,7 @@ namespace UtilityHub360.Services
                     BalanceAfterTransaction = t.BalanceAfterTransaction,
                     IsDeleted = false // Set default since we're filtering these out anyway
                 }).ToList();
-                
+
                 // Attach transactions to bank accounts in memory
                 foreach (var account in bankAccounts)
                 {
@@ -672,7 +672,7 @@ namespace UtilityHub360.Services
                     SwiftCode = ba.SwiftCode,
                     Transactions = new List<BankTransaction>()
                 }).ToList();
-                
+
                 // Load transactions separately using projection to avoid soft delete columns
                 var bankAccountIds = bankAccounts.Select(ba => ba.Id).ToList();
                 var transactionsData = await _context.BankTransactions
@@ -701,7 +701,7 @@ namespace UtilityHub360.Services
                         t.BalanceAfterTransaction
                     })
                     .ToListAsync();
-                
+
                 // Convert to BankTransaction entities (without soft delete properties)
                 var transactions = transactionsData.Select(t => new BankTransaction
                 {
@@ -726,7 +726,7 @@ namespace UtilityHub360.Services
                     BalanceAfterTransaction = t.BalanceAfterTransaction,
                     IsDeleted = false // Set default since we're filtering these out anyway
                 }).ToList();
-                
+
                 // Attach transactions to bank accounts in memory
                 foreach (var account in bankAccounts)
                 {
@@ -770,7 +770,7 @@ namespace UtilityHub360.Services
                 // Get all transactions for the period (now from Payments table) using projection
                 var allTransactionsData = await _context.Payments
                     .AsNoTracking()
-                    .Where(p => p.UserId == userId && p.IsBankTransaction && 
+                    .Where(p => p.UserId == userId && p.IsBankTransaction &&
                                !p.IsDeleted &&
                                p.TransactionDate.HasValue &&
                                p.TransactionDate >= periodStart && p.TransactionDate <= periodEnd)
@@ -810,7 +810,7 @@ namespace UtilityHub360.Services
                 var currentMonthEnd = currentMonthStart.AddMonths(1).AddDays(-1);
                 var currentMonthTransactionsData = await _context.Payments
                     .AsNoTracking()
-                    .Where(p => p.UserId == userId && p.IsBankTransaction && 
+                    .Where(p => p.UserId == userId && p.IsBankTransaction &&
                                !p.IsDeleted &&
                                p.TransactionDate >= currentMonthStart && p.TransactionDate <= currentMonthEnd)
                     .Select(p => new
@@ -856,8 +856,8 @@ namespace UtilityHub360.Services
                 var creditCardAccounts = bankAccounts
                     .Where(ba => {
                         var accountTypeLower = ba.AccountType?.ToLower().Trim() ?? "";
-                        return accountTypeLower == "credit_card" || 
-                               accountTypeLower == "credit card" || 
+                        return accountTypeLower == "credit_card" ||
+                               accountTypeLower == "credit card" ||
                                accountTypeLower == "creditcard";
                     })
                     .ToList();
@@ -951,7 +951,7 @@ namespace UtilityHub360.Services
                         ba.SwiftCode
                     })
                     .ToListAsync();
-                
+
                 // Convert to BankAccount entities
                 var bankAccounts = bankAccountsData.Select(ba => new BankAccount
                 {
@@ -977,14 +977,14 @@ namespace UtilityHub360.Services
                     SwiftCode = ba.SwiftCode,
                     Transactions = new List<BankTransaction>()
                 }).ToList();
-                
+
                 // Load transactions separately using projection
                 var bankAccountIds = bankAccounts.Select(ba => ba.Id).ToList();
                 var allTransactionsData = await _context.BankTransactions
                     .AsNoTracking()
-                    .Where(t => bankAccountIds.Contains(t.BankAccountId) && 
+                    .Where(t => bankAccountIds.Contains(t.BankAccountId) &&
                                !t.IsDeleted &&
-                               t.TransactionDate >= startDate && 
+                               t.TransactionDate >= startDate &&
                                t.TransactionDate <= endDate)
                     .Select(t => new
                     {
@@ -1009,7 +1009,7 @@ namespace UtilityHub360.Services
                         t.BalanceAfterTransaction
                     })
                     .ToListAsync();
-                
+
                 // Convert to BankTransaction entities
                 var filteredTransactions = allTransactionsData.Select(t => new BankTransaction
                 {
@@ -1106,8 +1106,8 @@ namespace UtilityHub360.Services
                 // Calculate total debt from credit card accounts
                 // Inline the check so EF Core can translate it to SQL
                 var creditCardDebt = await _context.BankAccounts
-                    .Where(ba => ba.UserId == userId && 
-                               ba.IsActive && 
+                    .Where(ba => ba.UserId == userId &&
+                               ba.IsActive &&
                                (ba.AccountType.ToLower() == "credit_card" ||
                                 ba.AccountType.ToLower() == "credit card" ||
                                 ba.AccountType.ToLower() == "creditcard"))
@@ -1132,13 +1132,13 @@ namespace UtilityHub360.Services
                     .OrderByDescending(ba => ba.CurrentBalance)
                     .Take(limit)
                     .ToListAsync();
-                
+
                 // Load transactions separately
                 var bankAccountIds = bankAccounts.Select(ba => ba.Id).ToList();
                 var transactions = await _context.BankTransactions
                     .Where(t => bankAccountIds.Contains(t.BankAccountId) && !t.IsDeleted)
                     .ToListAsync();
-                
+
                 // Attach transactions to bank accounts in memory
                 foreach (var account in bankAccounts)
                 {
@@ -1233,13 +1233,13 @@ namespace UtilityHub360.Services
                     .Where(ba => ba.UserId == userId && ba.IsConnected && ba.IsActive)
                     .OrderByDescending(ba => ba.CurrentBalance)
                     .ToListAsync();
-                
+
                 // Load transactions separately
                 var bankAccountIds = bankAccounts.Select(ba => ba.Id).ToList();
                 var transactions = await _context.BankTransactions
                     .Where(t => bankAccountIds.Contains(t.BankAccountId))
                     .ToListAsync();
-                
+
                 // Attach transactions to bank accounts in memory (filter out soft-deleted)
                 foreach (var account in bankAccounts)
                 {
@@ -1321,8 +1321,8 @@ namespace UtilityHub360.Services
                 // ==================== CATEGORY VALIDATION ====================
                 // Validate category if provided (skip validation for special categories like [SAVINGS-...] or [LOAN-...])
                 // Also skip validation if billId, loanId, or savingsAccountId is provided (these are valid categorizations)
-                if (!string.IsNullOrEmpty(createTransactionDto.Category) && 
-                    !createTransactionDto.Category.StartsWith("[") && 
+                if (!string.IsNullOrEmpty(createTransactionDto.Category) &&
+                    !createTransactionDto.Category.StartsWith("[") &&
                     createTransactionDto.TransactionType?.ToUpper() != "CREDIT" &&
                     string.IsNullOrEmpty(createTransactionDto.BillId) &&  // Skip if bill is linked
                     string.IsNullOrEmpty(createTransactionDto.LoanId) &&  // Skip if loan is linked
@@ -1330,17 +1330,17 @@ namespace UtilityHub360.Services
                 {
                     // Check if category exists in TransactionCategories table
                     var categoryExists = await _context.TransactionCategories
-                        .AnyAsync(c => c.UserId == userId && 
-                                     c.Name.ToUpper() == createTransactionDto.Category.ToUpper() && 
-                                     c.IsActive && 
+                        .AnyAsync(c => c.UserId == userId &&
+                                     c.Name.ToUpper() == createTransactionDto.Category.ToUpper() &&
+                                     c.IsActive &&
                                      !c.IsDeleted);
 
                     if (!categoryExists)
                     {
                         // Try to find a similar category (case-insensitive)
                         var similarCategory = await _context.TransactionCategories
-                            .FirstOrDefaultAsync(c => c.UserId == userId && 
-                                                     c.Name.ToUpper() == createTransactionDto.Category.ToUpper() && 
+                            .FirstOrDefaultAsync(c => c.UserId == userId &&
+                                                     c.Name.ToUpper() == createTransactionDto.Category.ToUpper() &&
                                                      !c.IsDeleted);
 
                         if (similarCategory != null && !similarCategory.IsActive)
@@ -1409,9 +1409,9 @@ namespace UtilityHub360.Services
 
                     // Validate category type matches transaction type
                     var category = await _context.TransactionCategories
-                        .FirstOrDefaultAsync(c => c.UserId == userId && 
-                                                 c.Name.ToUpper() == createTransactionDto.Category.ToUpper() && 
-                                                 c.IsActive && 
+                        .FirstOrDefaultAsync(c => c.UserId == userId &&
+                                                 c.Name.ToUpper() == createTransactionDto.Category.ToUpper() &&
+                                                 c.IsActive &&
                                                  !c.IsDeleted);
 
                     if (category != null)
@@ -1478,7 +1478,7 @@ namespace UtilityHub360.Services
                     if (createTransactionDto.TransactionType?.ToUpper() == "DEBIT")
                     {
                         bool isSourceCreditCard = bankAccount.AccountType?.ToLower() == "credit_card";
-                        
+
                         // For credit cards, check available credit (balance can be negative)
                         // For regular accounts, check if balance is sufficient
                         if (!isSourceCreditCard && bankAccount.CurrentBalance < createTransactionDto.Amount)
@@ -1516,7 +1516,7 @@ namespace UtilityHub360.Services
                 }
 
                 // 2. Apply smart categorization if category not provided
-                if (string.IsNullOrEmpty(createTransactionDto.Category) && 
+                if (string.IsNullOrEmpty(createTransactionDto.Category) &&
                     createTransactionDto.TransactionType?.ToUpper() != "CREDIT" &&
                     _smartCategorizationService != null)
                 {
@@ -1572,71 +1572,71 @@ namespace UtilityHub360.Services
                         enhancedDescription = $"Bill Payment - {createTransactionDto.Description}";
                     }
                 }
-                
+
                 if (!string.IsNullOrEmpty(createTransactionDto.SavingsAccountId))
                 {
                     savingsAccountId = createTransactionDto.SavingsAccountId;
-                    
+
                     // Fetch the savings account to get its AccountName for the category
                     var savingsAccount = await _context.SavingsAccounts
                         .FirstOrDefaultAsync(sa => sa.Id == savingsAccountId && sa.UserId == userId);
-                    
+
                     if (savingsAccount != null)
                     {
                         // Set category to [SAVINGS-{AccountName}]
                         createTransactionDto.Category = $"[SAVINGS-{savingsAccount.AccountName}]";
                     }
-                    
+
                     if (string.IsNullOrEmpty(enhancedDescription) || enhancedDescription == createTransactionDto.Description)
                     {
                         enhancedDescription = $"Savings - {createTransactionDto.Description}";
                     }
                 }
-                
+
                 if (!string.IsNullOrEmpty(createTransactionDto.LoanId))
                 {
                     loanId = createTransactionDto.LoanId;
-                    
+
                     // Fetch the loan to get its Purpose for the category
                     var loan = await _context.Loans
                         .FirstOrDefaultAsync(l => l.Id == loanId && l.UserId == userId);
-                    
+
                     if (loan != null)
                     {
                         // Set category to [LOAN-{Purpose}]
                         createTransactionDto.Category = $"[LOAN-{loan.Purpose}]";
                     }
-                    
+
                     if (string.IsNullOrEmpty(enhancedDescription) || enhancedDescription == createTransactionDto.Description)
                     {
                         enhancedDescription = $"Loan Payment - {createTransactionDto.Description}";
                     }
                 }
-                
+
                 // Handle investment-related transactions
                 string? investmentId = null;
                 if (!string.IsNullOrEmpty(createTransactionDto.InvestmentId))
                 {
                     investmentId = createTransactionDto.InvestmentId;
-                    
+
                     // Validate investment exists and is active
                     var investment = await _context.Investments
                         .FirstOrDefaultAsync(i => i.Id == investmentId && i.UserId == userId && !i.IsDeleted && i.IsActive);
-                    
+
                     if (investment == null)
                     {
                         return ApiResponse<BankTransactionDto>.ErrorResult(
                             "Invalid investment account. Please select a valid investment account.");
                     }
-                    
+
                     // Set category to [INVESTMENT-{AccountName}]
                     createTransactionDto.Category = $"[INVESTMENT-{investment.AccountName}]";
-                    
+
                     if (string.IsNullOrEmpty(enhancedDescription) || enhancedDescription == createTransactionDto.Description)
                     {
                         enhancedDescription = $"Investment - {createTransactionDto.Description}";
                     }
-                    
+
                     // Create InvestmentTransaction automatically
                     var investmentTransaction = new InvestmentTransaction
                     {
@@ -1652,9 +1652,9 @@ namespace UtilityHub360.Services
                         TransactionDate = createTransactionDto.TransactionDate,
                         CreatedAt = DateTime.UtcNow
                     };
-                    
+
                     _context.InvestmentTransactions.Add(investmentTransaction);
-                    
+
                     // Update investment account current value
                     if (createTransactionDto.TransactionType?.ToUpper() == "CREDIT")
                     {
@@ -1665,17 +1665,17 @@ namespace UtilityHub360.Services
                     {
                         investment.CurrentValue = Math.Max(0, investment.CurrentValue - createTransactionDto.Amount);
                     }
-                    
+
                     investment.UpdatedAt = DateTime.UtcNow;
                 }
-                
+
                 // Fallback to category-based detection if no direct IDs provided
                 if (string.IsNullOrEmpty(billId) && string.IsNullOrEmpty(savingsAccountId) && string.IsNullOrEmpty(loanId) && string.IsNullOrEmpty(investmentId) && !string.IsNullOrEmpty(createTransactionDto.Category))
                 {
                     var categoryLowerFallback = createTransactionDto.Category.ToLower();
-                    
+
                     // Bill-related categories
-                    if (categoryLowerFallback.Contains("bill") || categoryLowerFallback.Contains("utility") || 
+                    if (categoryLowerFallback.Contains("bill") || categoryLowerFallback.Contains("utility") ||
                         categoryLowerFallback.Contains("rent") || categoryLowerFallback.Contains("insurance") ||
                         categoryLowerFallback.Contains("subscription") || categoryLowerFallback.Contains("payment"))
                     {
@@ -1693,7 +1693,7 @@ namespace UtilityHub360.Services
                         enhancedDescription = $"Investment - {createTransactionDto.Description}";
                     }
                     // Savings-related categories (excluding investment keywords)
-                    else if ((categoryLowerFallback.Contains("savings") || categoryLowerFallback.Contains("deposit") || 
+                    else if ((categoryLowerFallback.Contains("savings") || categoryLowerFallback.Contains("deposit") ||
                              categoryLowerFallback.Contains("goal")) &&
                              !categoryLowerFallback.Contains("investment") &&
                              !string.IsNullOrEmpty(createTransactionDto.SavingsAccountId) &&
@@ -1703,7 +1703,7 @@ namespace UtilityHub360.Services
                         enhancedDescription = $"Savings - {createTransactionDto.Description}";
                     }
                     // Loan-related categories
-                    else if (categoryLowerFallback.Contains("loan") || categoryLowerFallback.Contains("repayment") || 
+                    else if (categoryLowerFallback.Contains("loan") || categoryLowerFallback.Contains("repayment") ||
                              categoryLowerFallback.Contains("debt") || categoryLowerFallback.Contains("installment"))
                     {
                         if (!string.IsNullOrEmpty(createTransactionDto.LoanId))
@@ -1718,11 +1718,11 @@ namespace UtilityHub360.Services
                 var splitPayments = new List<Entities.Payment>();
                 var parentReference = createTransactionDto.ReferenceNumber ?? $"BANK_TXN_{Guid.NewGuid()}";
                 // Generate a shorter parent reference for splits to avoid exceeding 50 char limit
-                var shortParentRef = parentReference.Length > 20 
-                    ? parentReference.Substring(0, 20) 
+                var shortParentRef = parentReference.Length > 20
+                    ? parentReference.Substring(0, 20)
                     : parentReference;
                 var splitIndex = 0;
-                
+
                 if (createTransactionDto.IsSplit && createTransactionDto.Splits != null && createTransactionDto.Splits.Count > 0)
                 {
                     // Validate split amounts sum to transaction amount
@@ -1749,16 +1749,16 @@ namespace UtilityHub360.Services
                         }
 
                         // Validate Category if provided (skip validation for special categories like [SAVINGS-...] or [LOAN-...])
-                        if (!string.IsNullOrEmpty(split.Category) && 
-                            !split.Category.StartsWith("[") && 
+                        if (!string.IsNullOrEmpty(split.Category) &&
+                            !split.Category.StartsWith("[") &&
                             createTransactionDto.TransactionType?.ToUpper() != "CREDIT")
                         {
                             var categoryExists = await _context.TransactionCategories
-                                .AnyAsync(c => c.UserId == userId && 
-                                             c.Name.ToUpper() == split.Category.ToUpper() && 
-                                             c.IsActive && 
+                                .AnyAsync(c => c.UserId == userId &&
+                                             c.Name.ToUpper() == split.Category.ToUpper() &&
+                                             c.IsActive &&
                                              !c.IsDeleted);
-                            
+
                             if (!categoryExists)
                             {
                                 // Auto-create default categories if they don't exist (similar to main transaction)
@@ -1827,8 +1827,8 @@ namespace UtilityHub360.Services
                         splitIndex++;
                         // Generate a shorter reference to fit within 50 character limit
                         // Format: SPLIT_{index}_{shortGuid} where shortGuid is first 8 chars of parent ref
-                        var shortGuid = parentReference.Length > 8 
-                            ? parentReference.Substring(Math.Max(0, parentReference.Length - 8)) 
+                        var shortGuid = parentReference.Length > 8
+                            ? parentReference.Substring(Math.Max(0, parentReference.Length - 8))
                             : parentReference;
                         var splitReference = $"SPLIT_{splitIndex}_{shortGuid}";
                         // Ensure it doesn't exceed 50 characters
@@ -1836,7 +1836,7 @@ namespace UtilityHub360.Services
                         {
                             splitReference = splitReference.Substring(0, 50);
                         }
-                        
+
                         var splitPayment = new Entities.Payment
                         {
                             Id = Guid.NewGuid().ToString(),
@@ -1903,7 +1903,7 @@ namespace UtilityHub360.Services
                 // Update account balance for all payments (splits or single)
                 bool isCreditCard = bankAccount.AccountType?.ToLower() == "credit_card";
                 decimal totalAmount = splitPayments.Sum(p => p.Amount);
-                
+
                 foreach (var payment in splitPayments)
                 {
                     if (payment.TransactionType == "CREDIT")
@@ -1932,13 +1932,13 @@ namespace UtilityHub360.Services
                 {
                     var bill = await _context.Bills
                         .FirstOrDefaultAsync(b => b.Id == splitPayment.BillId && b.UserId == userId);
-                    
+
                     if (bill != null && bill.Status == "PENDING" && splitPayment.TransactionType == "DEBIT")
                     {
                         bill.Status = "PAID";
                         bill.PaidAt = DateTime.UtcNow;
                         bill.UpdatedAt = DateTime.UtcNow;
-                        
+
                         // Explicitly mark the bill as modified to ensure EF tracks the changes
                         _context.Entry(bill).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
                     }
@@ -1994,19 +1994,19 @@ namespace UtilityHub360.Services
                 {
                     var bill = await _context.Bills
                         .FirstOrDefaultAsync(b => b.Id == createTransactionDto.BillId && b.UserId == userId);
-                    
+
                     if (bill == null)
                     {
                         return ApiResponse<BankTransactionDto>.ErrorResult(
                             $"Bill not found. BillId: {createTransactionDto.BillId}");
                     }
-                    
+
                     // Auto-set purpose if not provided and columns exist
                     if (hasLinkingColumns && string.IsNullOrEmpty(bankTransaction.TransactionPurpose))
                     {
                         bankTransaction.TransactionPurpose = bill.BillType.ToUpper() == "UTILITY" ? "UTILITY" : "BILL";
                     }
-                    
+
                     // Update bill status if payment is for a bill (DEBIT transaction)
                     // Note: firstPayment is declared in outer scope, but we need to check here for non-split transactions
                     if (!createTransactionDto.IsSplit)
@@ -2025,13 +2025,13 @@ namespace UtilityHub360.Services
                 {
                     var loan = await _context.Loans
                         .FirstOrDefaultAsync(l => l.Id == createTransactionDto.LoanId && l.UserId == userId);
-                    
+
                     if (loan == null)
                     {
                         return ApiResponse<BankTransactionDto>.ErrorResult(
                             $"Loan not found. LoanId: {createTransactionDto.LoanId}");
                     }
-                    
+
                     // Auto-set purpose if not provided and columns exist
                     if (hasLinkingColumns && string.IsNullOrEmpty(bankTransaction.TransactionPurpose))
                     {
@@ -2143,131 +2143,131 @@ namespace UtilityHub360.Services
                         }
                         else if (firstPayment.TransactionType == "DEBIT")
                         {
-                        // Check if this is a bank transfer (has toBankAccountId or category is TRANSFER)
-                        // Reuse the isBankTransfer variable from outer scope (already validated above)
-                        if (isBankTransfer && !string.IsNullOrEmpty(createTransactionDto.ToBankAccountId))
-                        {
-                            // Bank transfer: Debit Destination Account, Credit Source Account
-                            var destinationAccount = await _context.BankAccounts
-                                .FirstOrDefaultAsync(ba => ba.Id == createTransactionDto.ToBankAccountId && ba.UserId == userId);
-                            
-                            if (destinationAccount == null)
+                            // Check if this is a bank transfer (has toBankAccountId or category is TRANSFER)
+                            // Reuse the isBankTransfer variable from outer scope (already validated above)
+                            if (isBankTransfer && !string.IsNullOrEmpty(createTransactionDto.ToBankAccountId))
                             {
-                                await transaction.RollbackAsync();
-                                return ApiResponse<BankTransactionDto>.ErrorResult("Destination bank account not found for transfer");
-                            }
+                                // Bank transfer: Debit Destination Account, Credit Source Account
+                                var destinationAccount = await _context.BankAccounts
+                                    .FirstOrDefaultAsync(ba => ba.Id == createTransactionDto.ToBankAccountId && ba.UserId == userId);
 
-                            // Update destination account balance
-                            destinationAccount.CurrentBalance += firstPayment.Amount;
-                            destinationAccount.UpdatedAt = DateTime.UtcNow;
+                                if (destinationAccount == null)
+                                {
+                                    await transaction.RollbackAsync();
+                                    return ApiResponse<BankTransactionDto>.ErrorResult("Destination bank account not found for transfer");
+                                }
 
-                            // Create a corresponding CREDIT transaction for the destination bank account
-                            var destinationPayment = new Payment
-                            {
-                                Id = Guid.NewGuid().ToString(),
-                                UserId = userId,
-                                BankAccountId = destinationAccount.Id,
-                                Amount = firstPayment.Amount,
-                                TransactionType = "CREDIT",
-                                Description = $"Received from {bankAccount.AccountName}",
-                                Category = "TRANSFER",
-                                TransactionDate = firstPayment.TransactionDate ?? DateTime.UtcNow,
-                                Currency = firstPayment.Currency,
-                                IsBankTransaction = true,
-                                Status = "COMPLETED",
-                                Method = "BANK_TRANSFER",
-                                Reference = reference,
-                                ProcessedAt = DateTime.UtcNow,
-                                CreatedAt = DateTime.UtcNow,
-                                UpdatedAt = DateTime.UtcNow,
-                                Notes = $"Bank transfer from {bankAccount.AccountName}. Reference: {reference}"
-                            };
+                                // Update destination account balance
+                                destinationAccount.CurrentBalance += firstPayment.Amount;
+                                destinationAccount.UpdatedAt = DateTime.UtcNow;
 
-                            _context.Payments.Add(destinationPayment);
+                                // Create a corresponding CREDIT transaction for the destination bank account
+                                var destinationPayment = new Payment
+                                {
+                                    Id = Guid.NewGuid().ToString(),
+                                    UserId = userId,
+                                    BankAccountId = destinationAccount.Id,
+                                    Amount = firstPayment.Amount,
+                                    TransactionType = "CREDIT",
+                                    Description = $"Received from {bankAccount.AccountName}",
+                                    Category = "TRANSFER",
+                                    TransactionDate = firstPayment.TransactionDate ?? DateTime.UtcNow,
+                                    Currency = firstPayment.Currency,
+                                    IsBankTransaction = true,
+                                    Status = "COMPLETED",
+                                    Method = "BANK_TRANSFER",
+                                    Reference = reference,
+                                    ProcessedAt = DateTime.UtcNow,
+                                    CreatedAt = DateTime.UtcNow,
+                                    UpdatedAt = DateTime.UtcNow,
+                                    Notes = $"Bank transfer from {bankAccount.AccountName}. Reference: {reference}"
+                                };
 
-                            // Update source transaction description to indicate transfer
-                            if (string.IsNullOrEmpty(firstPayment.Description) || firstPayment.Description == "Transfer to Bank Account")
-                            {
-                                firstPayment.Description = $"Transfer to {destinationAccount.AccountName}";
-                            }
+                                _context.Payments.Add(destinationPayment);
 
-                            journalEntry = await _accountingService.CreateBankTransferEntryAsync(
-                                userId: userId,
-                                amount: firstPayment.Amount,
-                                sourceAccountName: bankAccount.AccountName,
-                                destinationAccountName: destinationAccount.AccountName,
-                                reference: reference,
-                                description: firstPayment.Description,
-                                entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
-                            );
-                        }
-                        else if (!string.IsNullOrEmpty(billId))
-                        {
-                            // Bill payment: Debit Expense, Credit Bank Account
-                            var bill = await _context.Bills.FirstOrDefaultAsync(b => b.Id == billId);
-                            var billType = bill?.BillType ?? "Other";
-                            var billName = bill?.Provider ?? "Bill";
-                            journalEntry = await _accountingService.CreateBillPaymentEntryAsync(
-                                billId: billId,
-                                userId: userId,
-                                amount: firstPayment.Amount,
-                                billName: billName,
-                                billType: billType,
-                                bankAccountName: bankAccount.AccountName,
-                                reference: reference,
-                                description: firstPayment.Description,
-                                entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
-                            );
-                        }
-                        else if (!string.IsNullOrEmpty(savingsAccountId))
-                        {
-                            // Savings deposit: Debit Savings Account, Credit Bank Account
-                            var savingsAccount = await _context.SavingsAccounts
-                                .FirstOrDefaultAsync(sa => sa.Id == savingsAccountId);
-                            if (savingsAccount != null)
-                            {
-                                journalEntry = await _accountingService.CreateSavingsDepositEntryAsync(
-                                    savingsAccountId: savingsAccountId,
+                                // Update source transaction description to indicate transfer
+                                if (string.IsNullOrEmpty(firstPayment.Description) || firstPayment.Description == "Transfer to Bank Account")
+                                {
+                                    firstPayment.Description = $"Transfer to {destinationAccount.AccountName}";
+                                }
+
+                                journalEntry = await _accountingService.CreateBankTransferEntryAsync(
                                     userId: userId,
                                     amount: firstPayment.Amount,
-                                    savingsAccountName: savingsAccount.AccountName,
+                                    sourceAccountName: bankAccount.AccountName,
+                                    destinationAccountName: destinationAccount.AccountName,
+                                    reference: reference,
+                                    description: firstPayment.Description,
+                                    entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
+                                );
+                            }
+                            else if (!string.IsNullOrEmpty(billId))
+                            {
+                                // Bill payment: Debit Expense, Credit Bank Account
+                                var bill = await _context.Bills.FirstOrDefaultAsync(b => b.Id == billId);
+                                var billType = bill?.BillType ?? "Other";
+                                var billName = bill?.Provider ?? "Bill";
+                                journalEntry = await _accountingService.CreateBillPaymentEntryAsync(
+                                    billId: billId,
+                                    userId: userId,
+                                    amount: firstPayment.Amount,
+                                    billName: billName,
+                                    billType: billType,
                                     bankAccountName: bankAccount.AccountName,
                                     reference: reference,
                                     description: firstPayment.Description,
                                     entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
                                 );
                             }
-                        }
-                        else if (!string.IsNullOrEmpty(loanId))
-                        {
-                            // Loan payment: This should be handled by LoanService, but we can create expense entry
-                            // Note: Loan payments typically have principal and interest split, which is handled in LoanService
-                            // For now, create a general expense entry
-                            var category = firstPayment.Category ?? "Loan Payment";
-                            journalEntry = await _accountingService.CreateExpenseEntryAsync(
-                                userId: userId,
-                                amount: firstPayment.Amount,
-                                category: category,
-                                bankAccountName: bankAccount.AccountName,
-                                reference: reference,
-                                description: firstPayment.Description,
-                                entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
-                            );
-                        }
-                        else
-                        {
-                            // Regular expense: Debit Expense, Credit Bank Account
-                            var category = firstPayment.Category ?? "General Expense";
-                            journalEntry = await _accountingService.CreateExpenseEntryAsync(
-                                userId: userId,
-                                amount: firstPayment.Amount,
-                                category: category,
-                                bankAccountName: bankAccount.AccountName,
-                                reference: reference,
-                                description: firstPayment.Description,
-                                entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
-                            );
-                        }
+                            else if (!string.IsNullOrEmpty(savingsAccountId))
+                            {
+                                // Savings deposit: Debit Savings Account, Credit Bank Account
+                                var savingsAccount = await _context.SavingsAccounts
+                                    .FirstOrDefaultAsync(sa => sa.Id == savingsAccountId);
+                                if (savingsAccount != null)
+                                {
+                                    journalEntry = await _accountingService.CreateSavingsDepositEntryAsync(
+                                        savingsAccountId: savingsAccountId,
+                                        userId: userId,
+                                        amount: firstPayment.Amount,
+                                        savingsAccountName: savingsAccount.AccountName,
+                                        bankAccountName: bankAccount.AccountName,
+                                        reference: reference,
+                                        description: firstPayment.Description,
+                                        entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
+                                    );
+                                }
+                            }
+                            else if (!string.IsNullOrEmpty(loanId))
+                            {
+                                // Loan payment: This should be handled by LoanService, but we can create expense entry
+                                // Note: Loan payments typically have principal and interest split, which is handled in LoanService
+                                // For now, create a general expense entry
+                                var category = firstPayment.Category ?? "Loan Payment";
+                                journalEntry = await _accountingService.CreateExpenseEntryAsync(
+                                    userId: userId,
+                                    amount: firstPayment.Amount,
+                                    category: category,
+                                    bankAccountName: bankAccount.AccountName,
+                                    reference: reference,
+                                    description: firstPayment.Description,
+                                    entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
+                                );
+                            }
+                            else
+                            {
+                                // Regular expense: Debit Expense, Credit Bank Account
+                                var category = firstPayment.Category ?? "General Expense";
+                                journalEntry = await _accountingService.CreateExpenseEntryAsync(
+                                    userId: userId,
+                                    amount: firstPayment.Amount,
+                                    category: category,
+                                    bankAccountName: bankAccount.AccountName,
+                                    reference: reference,
+                                    description: firstPayment.Description,
+                                    entryDate: firstPayment.TransactionDate ?? DateTime.UtcNow
+                                );
+                            }
                         }
 
                         // Save all changes including journal entry
@@ -2299,7 +2299,7 @@ namespace UtilityHub360.Services
                         // Handle database constraint violations for split transactions
                         var innerException = dbEx.InnerException?.Message ?? dbEx.Message;
                         var errorMessage = $"Failed to create split transaction: {innerException}";
-                        
+
                         // Check for common constraint violations
                         if (innerException.Contains("FOREIGN KEY") || innerException.Contains("constraint"))
                         {
@@ -2318,16 +2318,16 @@ namespace UtilityHub360.Services
                                 errorMessage = $"Database constraint violation: {innerException}";
                             }
                         }
-                        
+
                         return ApiResponse<BankTransactionDto>.ErrorResult(errorMessage);
                     }
                 }
 
                 // Return the first payment as the transaction DTO
                 var transactionDto = MapPaymentToBankTransactionDto(firstPayment);
-                return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto, 
-                    createTransactionDto.IsSplit 
-                        ? $"Transaction split into {splitPayments.Count} payments created successfully" 
+                return ApiResponse<BankTransactionDto>.SuccessResult(transactionDto,
+                    createTransactionDto.IsSplit
+                        ? $"Transaction split into {splitPayments.Count} payments created successfully"
                         : "Transaction created successfully with double-entry validation");
             }
             catch (DbUpdateException dbEx)
@@ -2335,7 +2335,7 @@ namespace UtilityHub360.Services
                 // Handle database constraint violations
                 var innerException = dbEx.InnerException?.Message ?? dbEx.Message;
                 var errorMessage = $"Failed to create transaction: {innerException}";
-                
+
                 // Check for common constraint violations
                 if (innerException.Contains("FOREIGN KEY") || innerException.Contains("constraint"))
                 {
@@ -2348,7 +2348,7 @@ namespace UtilityHub360.Services
                         errorMessage = "The category referenced in this transaction does not exist. Please verify the category selection.";
                     }
                 }
-                
+
                 return ApiResponse<BankTransactionDto>.ErrorResult(errorMessage);
             }
             catch (Exception ex)
@@ -2386,7 +2386,7 @@ namespace UtilityHub360.Services
                         bankAccount = await _context.BankAccounts
                             .FirstOrDefaultAsync(ba => ba.Id == payment.BankAccountId);
                     }
-                    
+
                     if (bankAccount == null)
                     {
                         return ApiResponse<BankTransactionDto>.ErrorResult("Bank account not found for this transaction");
@@ -2395,28 +2395,28 @@ namespace UtilityHub360.Services
 
                 // Handle BankAccountId change (moving transaction to different account)
                 BankAccount? newBankAccount = null;
-                if (!string.IsNullOrEmpty(updateTransactionDto.BankAccountId) && 
+                if (!string.IsNullOrEmpty(updateTransactionDto.BankAccountId) &&
                     updateTransactionDto.BankAccountId != payment.BankAccountId)
                 {
                     // Verify the new bank account exists and belongs to the user
                     newBankAccount = await _context.BankAccounts
-                        .FirstOrDefaultAsync(ba => ba.Id == updateTransactionDto.BankAccountId && 
-                                                   ba.UserId == userId && 
+                        .FirstOrDefaultAsync(ba => ba.Id == updateTransactionDto.BankAccountId &&
+                                                   ba.UserId == userId &&
                                                    ba.IsActive);
-                    
+
                     if (newBankAccount == null)
                     {
                         return ApiResponse<BankTransactionDto>.ErrorResult(
                             "New bank account not found, inactive, or does not belong to user");
                     }
-                    
+
                     // Check if the new account's month is closed for the transaction date
                     var transactionDateForCheck = updateTransactionDto.TransactionDate ?? payment.TransactionDate ?? DateTime.UtcNow;
                     var isNewAccountMonthClosed = await _context.ClosedMonths
                         .AnyAsync(cm => cm.BankAccountId == newBankAccount.Id &&
                                        cm.Year == transactionDateForCheck.Year &&
                                        cm.Month == transactionDateForCheck.Month);
-                    
+
                     if (isNewAccountMonthClosed)
                     {
                         var monthName = new[] { "", "January", "February", "March", "April", "May", "June",
@@ -2446,7 +2446,7 @@ namespace UtilityHub360.Services
                 }
 
                 // Check if the new transaction month is closed (if date changed)
-                if (updateTransactionDto.TransactionDate.HasValue && 
+                if (updateTransactionDto.TransactionDate.HasValue &&
                     (oldTransactionDate.Year != transactionDate.Year || oldTransactionDate.Month != transactionDate.Month))
                 {
                     var isNewMonthClosed = await _context.ClosedMonths
@@ -2485,7 +2485,7 @@ namespace UtilityHub360.Services
                 {
                     // Update old account's updated timestamp
                     bankAccount.UpdatedAt = DateTime.UtcNow;
-                    
+
                     // Switch to new bank account for applying new balance
                     payment.BankAccountId = newBankAccount.Id;
                     payment.BankAccount = newBankAccount;
@@ -2613,7 +2613,7 @@ namespace UtilityHub360.Services
                 {
                     // Check if linking columns exist in database before trying to update them
                     var hasLinkingColumns = await CheckIfLinkingColumnsExistAsync();
-                    
+
                     // Load the entity for update
                     var bankTransaction = await _context.BankTransactions
                         .FirstOrDefaultAsync(bt => bt.Id == transactionId && bt.UserId == userId);
@@ -2723,20 +2723,20 @@ namespace UtilityHub360.Services
                     if (!string.IsNullOrEmpty(payment.ExternalTransactionId))
                     {
                         existingSplits = await _context.Payments
-                            .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId && 
-                                       p.UserId == userId && 
+                            .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId &&
+                                       p.UserId == userId &&
                                        p.IsBankTransaction &&
                                        !p.IsDeleted)
                             .ToListAsync();
                     }
-                    
+
                     // If this is a new split transaction or updating splits
                     if (existingSplits.Count <= 1)
                     {
                         // This is a new split - create split payments
                         var parentReference = payment.Reference ?? $"BANK_TXN_{Guid.NewGuid()}";
                         payment.ExternalTransactionId = parentReference;
-                        
+
                         // Validate split amounts sum to transaction amount
                         var totalSplitAmount = updateTransactionDto.Splits.Sum(s => s.Amount);
                         if (Math.Abs(totalSplitAmount - payment.Amount) > 0.01m)
@@ -2744,22 +2744,22 @@ namespace UtilityHub360.Services
                             return ApiResponse<BankTransactionDto>.ErrorResult(
                                 $"Split amounts ({totalSplitAmount}) must equal transaction amount ({payment.Amount})");
                         }
-                        
+
                         // Create split payments
                         var splitPayments = new List<Entities.Payment>();
                         var splitIndex = 0;
                         foreach (var split in updateTransactionDto.Splits)
                         {
                             splitIndex++;
-                            var shortGuid = parentReference.Length > 8 
-                                ? parentReference.Substring(Math.Max(0, parentReference.Length - 8)) 
+                            var shortGuid = parentReference.Length > 8
+                                ? parentReference.Substring(Math.Max(0, parentReference.Length - 8))
                                 : parentReference;
                             var splitReference = $"SPLIT_{splitIndex}_{shortGuid}";
                             if (splitReference.Length > 50)
                             {
                                 splitReference = splitReference.Substring(0, 50);
                             }
-                            
+
                             var splitPayment = new Entities.Payment
                             {
                                 Id = Guid.NewGuid().ToString(),
@@ -2787,15 +2787,15 @@ namespace UtilityHub360.Services
                             };
                             splitPayments.Add(splitPayment);
                         }
-                        
+
                         _context.Payments.AddRange(splitPayments);
-                        
+
                         // Update bill status for splits linked to bills
                         foreach (var splitPayment in splitPayments.Where(sp => !string.IsNullOrEmpty(sp.BillId)))
                         {
                             var bill = await _context.Bills
                                 .FirstOrDefaultAsync(b => b.Id == splitPayment.BillId && b.UserId == userId);
-                            
+
                             if (bill != null && bill.Status == "PENDING" && splitPayment.TransactionType == "DEBIT")
                             {
                                 bill.Status = "PAID";
@@ -2814,22 +2814,27 @@ namespace UtilityHub360.Services
                             .Select(s => s.BillId!)
                             .Distinct()
                             .ToList();
-                        
+
                         var newBillIds = updateTransactionDto.Splits
                             .Where(s => !string.IsNullOrEmpty(s.BillId))
                             .Select(s => s.BillId!)
                             .Distinct()
                             .ToList();
-                        
+
                         // Find bill IDs that are being removed (in existing but not in new)
                         var removedBillIds = existingBillIds.Except(newBillIds).ToList();
-                        
+
+                        // Splits to remove: exclude those with ExternalTransactionId containing "BANK_TXN"
+                        var splitsToRemove = existingSplits
+                            .Where(s => string.IsNullOrEmpty(s.ExternalTransactionId) || !s.Reference.Contains("BANK_TXN"))
+                            .ToList();
+
                         // REVERSE BALANCE IMPACT OF EXISTING SPLITS BEFORE DELETING THEM
                         // This is critical - if splits were affecting balance separately, we need to reverse them
                         // Note: In split transactions, typically only the main payment affects balance,
                         // but we reverse here to be safe in case splits were created incorrectly
                         decimal totalSplitAmountToReverse = 0;
-                        foreach (var existingSplit in existingSplits)
+                        foreach (var existingSplit in splitsToRemove)
                         {
                             if (existingSplit.TransactionType == "CREDIT")
                             {
@@ -2840,7 +2845,7 @@ namespace UtilityHub360.Services
                                 totalSplitAmountToReverse += existingSplit.Amount; // Reverse debit = add back
                             }
                         }
-                        
+
                         // Apply the reversal to the bank account balance
                         // Only reverse if the splits were actually affecting balance (which they shouldn't in normal cases)
                         // But we do this to fix any existing data issues
@@ -2849,25 +2854,25 @@ namespace UtilityHub360.Services
                             bankAccount.CurrentBalance += totalSplitAmountToReverse;
                             bankAccount.UpdatedAt = DateTime.UtcNow;
                         }
-                        
-                        // Delete all existing splits (we'll recreate them)
-                        _context.Payments.RemoveRange(existingSplits);
-                        
+
+                        // Delete existing splits (excluding those with ExternalTransactionId containing "BANK_TXN")
+                        _context.Payments.RemoveRange(splitsToRemove);
+
                         // Revert bills that are no longer referenced by any splits
                         foreach (var billId in removedBillIds)
                         {
                             var bill = await _context.Bills
                                 .FirstOrDefaultAsync(b => b.Id == billId && b.UserId == userId);
-                            
+
                             if (bill != null)
                             {
                                 // Check if there are any remaining payments for this bill
                                 var hasRemainingPayments = await _context.Payments
-                                    .AnyAsync(p => p.BillId == billId && 
-                                                 p.UserId == userId && 
-                                                 p.Status == "COMPLETED" && 
+                                    .AnyAsync(p => p.BillId == billId &&
+                                                 p.UserId == userId &&
+                                                 p.Status == "COMPLETED" &&
                                                  !p.IsDeleted);
-                                
+
                                 // If no payments remain, mark bill as PENDING
                                 if (!hasRemainingPayments && bill.Status == "PAID")
                                 {
@@ -2878,7 +2883,7 @@ namespace UtilityHub360.Services
                                 }
                             }
                         }
-                        
+
                         // Validate split amounts sum to transaction amount
                         var totalSplitAmount = updateTransactionDto.Splits.Sum(s => s.Amount);
                         if (Math.Abs(totalSplitAmount - payment.Amount) > 0.01m)
@@ -2886,25 +2891,25 @@ namespace UtilityHub360.Services
                             return ApiResponse<BankTransactionDto>.ErrorResult(
                                 $"Split amounts ({totalSplitAmount}) must equal transaction amount ({payment.Amount})");
                         }
-                        
+
                         // Create new split payments
                         var parentReference = payment.ExternalTransactionId ?? payment.Reference ?? $"BANK_TXN_{Guid.NewGuid()}";
                         payment.ExternalTransactionId = parentReference;
                         var splitPayments = new List<Entities.Payment>();
                         var splitIndex = 0;
-                        
+
                         foreach (var split in updateTransactionDto.Splits)
                         {
                             splitIndex++;
-                            var shortGuid = parentReference.Length > 8 
-                                ? parentReference.Substring(Math.Max(0, parentReference.Length - 8)) 
+                            var shortGuid = parentReference.Length > 8
+                                ? parentReference.Substring(Math.Max(0, parentReference.Length - 8))
                                 : parentReference;
                             var splitReference = $"SPLIT_{splitIndex}_{shortGuid}";
                             if (splitReference.Length > 50)
                             {
                                 splitReference = splitReference.Substring(0, 50);
                             }
-                            
+
                             var splitPayment = new Entities.Payment
                             {
                                 Id = Guid.NewGuid().ToString(),
@@ -2932,15 +2937,15 @@ namespace UtilityHub360.Services
                             };
                             splitPayments.Add(splitPayment);
                         }
-                        
+
                         _context.Payments.AddRange(splitPayments);
-                        
+
                         // Update bill status for new splits linked to bills
                         foreach (var splitPayment in splitPayments.Where(sp => !string.IsNullOrEmpty(sp.BillId)))
                         {
                             var bill = await _context.Bills
                                 .FirstOrDefaultAsync(b => b.Id == splitPayment.BillId && b.UserId == userId);
-                            
+
                             if (bill != null && bill.Status == "PENDING" && splitPayment.TransactionType == "DEBIT")
                             {
                                 bill.Status = "PAID";
@@ -2959,13 +2964,13 @@ namespace UtilityHub360.Services
                     if (!string.IsNullOrEmpty(payment.ExternalTransactionId))
                     {
                         existingSplits = await _context.Payments
-                            .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId && 
-                                       p.UserId == userId && 
+                            .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId &&
+                                       p.UserId == userId &&
                                        p.IsBankTransaction &&
                                        !p.IsDeleted)
                             .ToListAsync();
                     }
-                    
+
                     if (existingSplits.Count > 1)
                     {
                         // Get all bill IDs from existing splits that will be removed
@@ -2974,7 +2979,7 @@ namespace UtilityHub360.Services
                             .Select(s => s.BillId!)
                             .Distinct()
                             .ToList();
-                        
+
                         // REVERSE BALANCE IMPACT OF EXISTING SPLITS BEFORE DELETING THEM
                         // This prevents double-counting when converting from split to regular transaction
                         decimal totalSplitAmountToReverse = 0;
@@ -2989,32 +2994,32 @@ namespace UtilityHub360.Services
                                 totalSplitAmountToReverse += existingSplit.Amount; // Reverse debit = add back
                             }
                         }
-                        
+
                         // Apply the reversal to the bank account balance
                         if (bankAccount != null && totalSplitAmountToReverse != 0)
                         {
                             bankAccount.CurrentBalance += totalSplitAmountToReverse;
                             bankAccount.UpdatedAt = DateTime.UtcNow;
                         }
-                        
+
                         // Delete all split payments
                         _context.Payments.RemoveRange(existingSplits);
-                        
+
                         // Revert bills that are no longer referenced
                         foreach (var billId in billIdsToCheck)
                         {
                             var bill = await _context.Bills
                                 .FirstOrDefaultAsync(b => b.Id == billId && b.UserId == userId);
-                            
+
                             if (bill != null)
                             {
                                 // Check if there are any remaining payments for this bill
                                 var hasRemainingPayments = await _context.Payments
-                                    .AnyAsync(p => p.BillId == billId && 
-                                                 p.UserId == userId && 
-                                                 p.Status == "COMPLETED" && 
+                                    .AnyAsync(p => p.BillId == billId &&
+                                                 p.UserId == userId &&
+                                                 p.Status == "COMPLETED" &&
                                                  !p.IsDeleted);
-                                
+
                                 // If no payments remain, mark bill as PENDING
                                 if (!hasRemainingPayments && bill.Status == "PAID")
                                 {
@@ -3025,7 +3030,7 @@ namespace UtilityHub360.Services
                                 }
                             }
                         }
-                        
+
                         // Clear ExternalTransactionId to convert back to regular transaction
                         payment.ExternalTransactionId = null;
                     }
@@ -3035,7 +3040,7 @@ namespace UtilityHub360.Services
                     // Single bill payment - mark bill as paid
                     var bill = await _context.Bills
                         .FirstOrDefaultAsync(b => b.Id == updateTransactionDto.BillId && b.UserId == userId);
-                    
+
                     if (bill != null && bill.Status == "PENDING" && payment.TransactionType == "DEBIT")
                     {
                         bill.Status = "PAID";
@@ -3105,7 +3110,7 @@ namespace UtilityHub360.Services
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToListAsync();
-                
+
                 // Convert to Payment entities
                 var payments = paymentsData.Select(p => new Payment
                 {
@@ -3377,12 +3382,12 @@ namespace UtilityHub360.Services
                         } : null
                     })
                     .FirstOrDefaultAsync();
-                
+
                 if (transactionData == null)
                 {
                     return ApiResponse<BankTransactionDto>.ErrorResult("Transaction not found");
                 }
-                
+
                 // Convert to BankTransaction entity
                 var transaction = new BankTransaction
                 {
@@ -3433,11 +3438,11 @@ namespace UtilityHub360.Services
                 // This ensures analytics count matches the actual transactions displayed
                 var allTransactionsData = await _context.Payments
                     .AsNoTracking()
-                    .Where(p => p.UserId == userId && 
+                    .Where(p => p.UserId == userId &&
                                p.IsBankTransaction &&
                                !p.IsDeleted &&
                                p.TransactionDate.HasValue &&
-                               p.TransactionDate >= startDate && 
+                               p.TransactionDate >= startDate &&
                                p.TransactionDate <= endDate)
                     .Select(p => new
                     {
@@ -3469,7 +3474,7 @@ namespace UtilityHub360.Services
                         } : null
                     })
                     .ToListAsync();
-                
+
                 // Convert to anonymous type for analytics calculation (matching transaction structure)
                 var transactions = allTransactionsData.Select(t => new
                 {
@@ -3521,7 +3526,7 @@ namespace UtilityHub360.Services
                         ba.SwiftCode
                     })
                     .ToListAsync();
-                
+
                 // Convert to BankAccount entities
                 var bankAccounts = bankAccountsData.Select(ba => new BankAccount
                 {
@@ -3553,7 +3558,7 @@ namespace UtilityHub360.Services
                 // This ensures the count matches what's actually displayed and properly decreases when transactions are deleted
                 var totalTransactionsCount = await _context.Payments
                     .AsNoTracking()
-                    .Where(p => p.UserId == userId && 
+                    .Where(p => p.UserId == userId &&
                                p.IsBankTransaction &&
                                !p.IsDeleted)  // Exclude soft-deleted transactions
                     .CountAsync();
@@ -3631,9 +3636,9 @@ namespace UtilityHub360.Services
                 // Use projection to avoid reading soft delete columns
                 var allTransactionsData = await _context.BankTransactions
                     .AsNoTracking()
-                    .Where(t => t.UserId == userId && 
-                               t.TransactionType == "DEBIT" && 
-                               t.TransactionDate >= startDate && 
+                    .Where(t => t.UserId == userId &&
+                               t.TransactionType == "DEBIT" &&
+                               t.TransactionDate >= startDate &&
                                t.TransactionDate <= endDate &&
                                !string.IsNullOrEmpty(t.Category))
                     .Select(t => new
@@ -3723,8 +3728,8 @@ namespace UtilityHub360.Services
                 // Get total credits and debits from Payments table (COMPLETED transactions only)
                 var paymentCredits = await _context.Payments
                     .AsNoTracking()
-                    .Where(p => p.BankAccountId == bankAccountId && 
-                               p.UserId == userId && 
+                    .Where(p => p.BankAccountId == bankAccountId &&
+                               p.UserId == userId &&
                                p.IsBankTransaction &&
                                p.Status == "COMPLETED" &&
                                p.TransactionType == "CREDIT" &&
@@ -3733,8 +3738,8 @@ namespace UtilityHub360.Services
 
                 var paymentDebits = await _context.Payments
                     .AsNoTracking()
-                    .Where(p => p.BankAccountId == bankAccountId && 
-                               p.UserId == userId && 
+                    .Where(p => p.BankAccountId == bankAccountId &&
+                               p.UserId == userId &&
                                p.IsBankTransaction &&
                                p.Status == "COMPLETED" &&
                                p.TransactionType == "DEBIT" &&
@@ -3745,7 +3750,7 @@ namespace UtilityHub360.Services
                 // Exclude transactions that have a PaymentId (they're already counted in Payments)
                 var bankTransactionCredits = await _context.BankTransactions
                     .AsNoTracking()
-                    .Where(bt => bt.BankAccountId == bankAccountId && 
+                    .Where(bt => bt.BankAccountId == bankAccountId &&
                                bt.UserId == userId &&
                                bt.TransactionType == "CREDIT" &&
                                !bt.IsDeleted &&
@@ -3754,7 +3759,7 @@ namespace UtilityHub360.Services
 
                 var bankTransactionDebits = await _context.BankTransactions
                     .AsNoTracking()
-                    .Where(bt => bt.BankAccountId == bankAccountId && 
+                    .Where(bt => bt.BankAccountId == bankAccountId &&
                                bt.UserId == userId &&
                                bt.TransactionType == "DEBIT" &&
                                !bt.IsDeleted &&
@@ -3843,7 +3848,7 @@ namespace UtilityHub360.Services
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToListAsync();
-                
+
                 // Convert to BankAccount entities
                 var bankAccounts = bankAccountsData.Select(ba => new BankAccount
                 {
@@ -3869,7 +3874,7 @@ namespace UtilityHub360.Services
                     SwiftCode = ba.SwiftCode,
                     Transactions = new List<BankTransaction>()
                 }).ToList();
-                
+
                 // Load transactions separately using projection
                 var bankAccountIds = bankAccounts.Select(ba => ba.Id).ToList();
                 var transactionsData = await _context.BankTransactions
@@ -3898,7 +3903,7 @@ namespace UtilityHub360.Services
                         t.BalanceAfterTransaction
                     })
                     .ToListAsync();
-                
+
                 // Convert to BankTransaction entities
                 var transactions = transactionsData.Select(t => new BankTransaction
                 {
@@ -3923,7 +3928,7 @@ namespace UtilityHub360.Services
                     BalanceAfterTransaction = t.BalanceAfterTransaction,
                     IsDeleted = false
                 }).ToList();
-                
+
                 // Attach transactions to bank accounts in memory
                 foreach (var account in bankAccounts)
                 {
@@ -4027,9 +4032,9 @@ namespace UtilityHub360.Services
                 var (startDate, endDate) = GetPeriodDates(period);
 
                 var allExpenses = await _context.BankTransactions
-                    .Where(t => t.UserId == userId && 
-                               t.TransactionType == "DEBIT" && 
-                               t.TransactionDate >= startDate && 
+                    .Where(t => t.UserId == userId &&
+                               t.TransactionType == "DEBIT" &&
+                               t.TransactionDate >= startDate &&
                                t.TransactionDate <= endDate)
                     .ToListAsync();
 
@@ -4138,8 +4143,8 @@ namespace UtilityHub360.Services
             try
             {
                 var allExpenses = await _context.BankTransactions
-                    .Where(t => t.UserId == userId && 
-                               t.TransactionType == "DEBIT" && 
+                    .Where(t => t.UserId == userId &&
+                               t.TransactionType == "DEBIT" &&
                                t.Category == category)
                     .ToListAsync();
 
@@ -4165,8 +4170,8 @@ namespace UtilityHub360.Services
             try
             {
                 var allTransactions = await _context.BankTransactions
-                    .Where(t => t.UserId == userId && 
-                               t.TransactionType == "DEBIT" && 
+                    .Where(t => t.UserId == userId &&
+                               t.TransactionType == "DEBIT" &&
                                !string.IsNullOrEmpty(t.Category))
                     .ToListAsync();
 
@@ -4224,7 +4229,7 @@ namespace UtilityHub360.Services
 
                     // Check if transaction can be deleted based on business rules
                     var hoursSinceCreation = (DateTime.UtcNow - payment.CreatedAt).TotalHours;
-                    
+
                     // If transaction is > 24 hours old, use soft delete instead
                     if (hoursSinceCreation > 24)
                     {
@@ -4240,15 +4245,15 @@ namespace UtilityHub360.Services
                     {
                         // Check if there are multiple payments with the same ExternalTransactionId (split transaction)
                         var splitCount = await _context.Payments
-                            .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId && 
-                                       p.UserId == userId && 
+                            .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId &&
+                                       p.UserId == userId &&
                                        p.IsBankTransaction &&
                                        !p.IsDeleted)
                             .CountAsync();
-                        
+
                         isSplitTransaction = splitCount > 1;
                     }
-                    else if (!string.IsNullOrEmpty(payment.Reference) && 
+                    else if (!string.IsNullOrEmpty(payment.Reference) &&
                              payment.Reference.StartsWith("SPLIT_", StringComparison.OrdinalIgnoreCase))
                     {
                         // Fallback: check Reference field if ExternalTransactionId is empty
@@ -4260,14 +4265,14 @@ namespace UtilityHub360.Services
                         // For split transactions, find ALL payments with the same ExternalTransactionId
                         var allSplitPayments = await _context.Payments
                             .Include(p => p.BankAccount)
-                            .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId && 
-                                       p.UserId == userId && 
+                            .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId &&
+                                       p.UserId == userId &&
                                        p.IsBankTransaction &&
                                        !p.IsDeleted)
                             .ToListAsync();
 
                         // If ExternalTransactionId is empty but Reference starts with SPLIT_, use Reference instead
-                        if (!allSplitPayments.Any() && !string.IsNullOrEmpty(payment.Reference) && 
+                        if (!allSplitPayments.Any() && !string.IsNullOrEmpty(payment.Reference) &&
                             payment.Reference.StartsWith("SPLIT_", StringComparison.OrdinalIgnoreCase))
                         {
                             // Extract the parent reference from the split reference (format: SPLIT_{index}_{parentRef})
@@ -4279,7 +4284,7 @@ namespace UtilityHub360.Services
                                     .Include(p => p.BankAccount)
                                     .Where(p => p.Reference.StartsWith("SPLIT_", StringComparison.OrdinalIgnoreCase) &&
                                                p.Reference.Contains(parentRefFromSplit) &&
-                                               p.UserId == userId && 
+                                               p.UserId == userId &&
                                                p.IsBankTransaction &&
                                                !p.IsDeleted)
                                     .ToListAsync();
@@ -4301,7 +4306,7 @@ namespace UtilityHub360.Services
                                     totalAmountToReverse += splitPayment.Amount; // Reverse debit = add back
                                 }
                             }
-                            
+
                             payment.BankAccount.CurrentBalance += totalAmountToReverse;
                             payment.BankAccount.UpdatedAt = DateTime.UtcNow;
                         }
@@ -4315,21 +4320,21 @@ namespace UtilityHub360.Services
                                 .Select(p => p.BillId!)
                                 .Distinct()
                                 .ToList();
-                            
+
                             var loanIdsToCheck = allSplitPayments
                                 .Where(p => !string.IsNullOrEmpty(p.LoanId))
                                 .Select(p => p.LoanId!)
                                 .Distinct()
                                 .ToList();
-                            
+
                             var savingsAccountIdsToCheck = allSplitPayments
                                 .Where(p => !string.IsNullOrEmpty(p.SavingsAccountId))
                                 .Select(p => p.SavingsAccountId!)
                                 .Distinct()
                                 .ToList();
-                            
+
                             _context.Payments.RemoveRange(allSplitPayments);
-                            
+
                             // Update bills: Check if there are remaining payments, if not, revert to PENDING
                             if (billIdsToCheck.Any())
                             {
@@ -4337,16 +4342,16 @@ namespace UtilityHub360.Services
                                 {
                                     var bill = await _context.Bills
                                         .FirstOrDefaultAsync(b => b.Id == billId && b.UserId == userId);
-                                    
+
                                     if (bill != null)
                                     {
                                         // Check if there are any remaining payments for this bill
                                         var hasRemainingPayments = await _context.Payments
-                                            .AnyAsync(p => p.BillId == billId && 
-                                                         p.UserId == userId && 
-                                                         p.Status == "COMPLETED" && 
+                                            .AnyAsync(p => p.BillId == billId &&
+                                                         p.UserId == userId &&
+                                                         p.Status == "COMPLETED" &&
                                                          !p.IsDeleted);
-                                        
+
                                         // If no payments remain, mark bill as PENDING
                                         if (!hasRemainingPayments && bill.Status == "PAID")
                                         {
@@ -4357,7 +4362,7 @@ namespace UtilityHub360.Services
                                     }
                                 }
                             }
-                            
+
                             // Update loans: Reverse balance and update repayment schedules
                             if (loanIdsToCheck.Any())
                             {
@@ -4365,55 +4370,55 @@ namespace UtilityHub360.Services
                                 {
                                     var loan = await _context.Loans
                                         .FirstOrDefaultAsync(l => l.Id == loanId && l.UserId == userId);
-                                    
+
                                     if (loan != null)
                                     {
                                         // Calculate total amount to reverse from deleted payments
                                         var deletedLoanPayments = allSplitPayments
                                             .Where(p => p.LoanId == loanId)
                                             .ToList();
-                                        
+
                                         var totalAmountToReverse = deletedLoanPayments.Sum(p => p.Amount);
-                                        
+
                                         // Reverse the loan balance
                                         loan.RemainingBalance += totalAmountToReverse;
-                                        
+
                                         // Check if there are any remaining payments for this loan
                                         var hasRemainingPayments = await _context.Payments
-                                            .AnyAsync(p => p.LoanId == loanId && 
-                                                         p.UserId == userId && 
-                                                         p.Status == "COMPLETED" && 
+                                            .AnyAsync(p => p.LoanId == loanId &&
+                                                         p.UserId == userId &&
+                                                         p.Status == "COMPLETED" &&
                                                          !p.IsDeleted);
-                                        
+
                                         // If no payments remain and loan was completed, reopen it
                                         if (!hasRemainingPayments && loan.Status == "COMPLETED")
                                         {
                                             var hasPendingInstallments = await _context.RepaymentSchedules
                                                 .AnyAsync(rs => rs.LoanId == loanId && rs.Status == "PENDING");
-                                            
+
                                             if (hasPendingInstallments)
                                             {
                                                 loan.Status = "ACTIVE";
                                                 loan.CompletedAt = null;
                                             }
                                         }
-                                        
+
                                         // Update repayment schedules: Find installments that were marked as PAID by these payments
                                         // Note: This is a simplified approach. You may need to track which installment each payment was for
                                         var paidInstallments = await _context.RepaymentSchedules
-                                            .Where(rs => rs.LoanId == loanId && 
-                                                       rs.Status == "PAID" && 
+                                            .Where(rs => rs.LoanId == loanId &&
+                                                       rs.Status == "PAID" &&
                                                        rs.PaidAt.HasValue)
                                             .OrderByDescending(rs => rs.PaidAt)
                                             .ToListAsync();
-                                        
+
                                         // Reverse the most recent paid installments up to the deleted payment amount
                                         decimal reversedAmount = 0;
                                         foreach (var installment in paidInstallments)
                                         {
                                             if (reversedAmount >= totalAmountToReverse)
                                                 break;
-                                            
+
                                             if (installment.TotalAmount <= (totalAmountToReverse - reversedAmount))
                                             {
                                                 installment.Status = "PENDING";
@@ -4421,13 +4426,13 @@ namespace UtilityHub360.Services
                                                 reversedAmount += installment.TotalAmount;
                                             }
                                         }
-                                        
+
                                         // Loan entity doesn't have UpdatedAt property
                                         // No update needed for timestamp
                                     }
                                 }
                             }
-                            
+
                             // Update savings accounts: Reverse balance changes
                             if (savingsAccountIdsToCheck.Any())
                             {
@@ -4435,14 +4440,14 @@ namespace UtilityHub360.Services
                                 {
                                     var savingsAccount = await _context.SavingsAccounts
                                         .FirstOrDefaultAsync(sa => sa.Id == savingsAccountId && sa.UserId == userId);
-                                    
+
                                     if (savingsAccount != null)
                                     {
                                         // Calculate total amount to reverse from deleted payments
                                         var deletedSavingsPayments = allSplitPayments
                                             .Where(p => p.SavingsAccountId == savingsAccountId)
                                             .ToList();
-                                        
+
                                         foreach (var savingsPayment in deletedSavingsPayments)
                                         {
                                             // Reverse the transaction based on type
@@ -4459,7 +4464,7 @@ namespace UtilityHub360.Services
                                                 savingsAccount.CurrentBalance += savingsPayment.Amount;
                                             }
                                         }
-                                        
+
                                         savingsAccount.UpdatedAt = DateTime.UtcNow;
                                     }
                                 }
@@ -4492,17 +4497,17 @@ namespace UtilityHub360.Services
                         {
                             var bill = await _context.Bills
                                 .FirstOrDefaultAsync(b => b.Id == payment.BillId && b.UserId == userId);
-                            
+
                             if (bill != null)
                             {
                                 // Check if there are any remaining payments for this bill
                                 var hasRemainingPayments = await _context.Payments
-                                    .AnyAsync(p => p.BillId == payment.BillId && 
-                                                 p.UserId == userId && 
-                                                 p.Status == "COMPLETED" && 
+                                    .AnyAsync(p => p.BillId == payment.BillId &&
+                                                 p.UserId == userId &&
+                                                 p.Status == "COMPLETED" &&
                                                  !p.IsDeleted &&
                                                  p.Id != payment.Id); // Exclude the current payment being deleted
-                                
+
                                 // If no payments remain, mark bill as PENDING
                                 if (!hasRemainingPayments && bill.Status == "PAID")
                                 {
@@ -4518,48 +4523,48 @@ namespace UtilityHub360.Services
                         {
                             var loan = await _context.Loans
                                 .FirstOrDefaultAsync(l => l.Id == payment.LoanId && l.UserId == userId);
-                            
+
                             if (loan != null)
                             {
                                 // Reverse the loan balance
                                 loan.RemainingBalance += payment.Amount;
-                                
+
                                 // Check if there are any remaining payments
                                 var hasRemainingPayments = await _context.Payments
-                                    .AnyAsync(p => p.LoanId == payment.LoanId && 
-                                                 p.UserId == userId && 
-                                                 p.Status == "COMPLETED" && 
+                                    .AnyAsync(p => p.LoanId == payment.LoanId &&
+                                                 p.UserId == userId &&
+                                                 p.Status == "COMPLETED" &&
                                                  !p.IsDeleted &&
                                                  p.Id != payment.Id);
-                                
+
                                 // If no payments remain and loan was completed, reopen it
                                 if (!hasRemainingPayments && loan.Status == "COMPLETED")
                                 {
                                     var hasPendingInstallments = await _context.RepaymentSchedules
                                         .AnyAsync(rs => rs.LoanId == payment.LoanId && rs.Status == "PENDING");
-                                    
+
                                     if (hasPendingInstallments)
                                     {
                                         loan.Status = "ACTIVE";
                                         loan.CompletedAt = null;
                                     }
                                 }
-                                
+
                                 // Update repayment schedules: Find the most recent paid installment
                                 var paidInstallment = await _context.RepaymentSchedules
-                                    .Where(rs => rs.LoanId == payment.LoanId && 
-                                               rs.Status == "PAID" && 
+                                    .Where(rs => rs.LoanId == payment.LoanId &&
+                                               rs.Status == "PAID" &&
                                                rs.PaidAt.HasValue)
                                     .OrderByDescending(rs => rs.PaidAt)
                                     .FirstOrDefaultAsync();
-                                
+
                                 // Reverse the installment if it matches the payment amount
                                 if (paidInstallment != null && paidInstallment.TotalAmount == payment.Amount)
                                 {
                                     paidInstallment.Status = "PENDING";
                                     paidInstallment.PaidAt = null;
                                 }
-                                
+
                                 // Loan entity doesn't have UpdatedAt property
                                 // No update needed for timestamp
                             }
@@ -4570,7 +4575,7 @@ namespace UtilityHub360.Services
                         {
                             var savingsAccount = await _context.SavingsAccounts
                                 .FirstOrDefaultAsync(sa => sa.Id == payment.SavingsAccountId && sa.UserId == userId);
-                            
+
                             if (savingsAccount != null)
                             {
                                 // Reverse the transaction based on type
@@ -4584,7 +4589,7 @@ namespace UtilityHub360.Services
                                     // Was a withdrawal from savings, reverse by adding back
                                     savingsAccount.CurrentBalance += payment.Amount;
                                 }
-                                
+
                                 savingsAccount.UpdatedAt = DateTime.UtcNow;
                             }
                         }
@@ -4603,9 +4608,9 @@ namespace UtilityHub360.Services
                 {
                     // If this was a split transaction, we've already handled the balance reversal above
                     // Only process BankTransaction if it's NOT a split transaction
-                    var isSplitFromBankTransaction = !string.IsNullOrEmpty(bankTransaction.ExternalTransactionId) && 
+                    var isSplitFromBankTransaction = !string.IsNullOrEmpty(bankTransaction.ExternalTransactionId) &&
                                                      bankTransaction.ExternalTransactionId.StartsWith("SPLIT_", StringComparison.OrdinalIgnoreCase);
-                    
+
                     if (!isSplitFromBankTransaction)
                     {
                         // Check if already deleted
@@ -4722,7 +4727,7 @@ namespace UtilityHub360.Services
             }
 
             var message = result.Failed > 0
-                ? (result.Successful > 0 
+                ? (result.Successful > 0
                     ? $"Successfully deleted {result.Successful} transaction(s), {result.Failed} failed."
                     : $"Failed to delete all {result.Failed} transaction(s).")
                 : $"Successfully deleted {result.Successful} transaction(s).";
@@ -5149,7 +5154,7 @@ namespace UtilityHub360.Services
         private async Task<BankAccountDto> MapToBankAccountDtoAsync(BankAccount bankAccount, dynamic? transactionStats = null)
         {
             var transactions = bankAccount.Transactions ?? new List<BankTransaction>();
-            
+
             // Use stored procedure to get balance details (NetAmount, TotalCredit, TotalDebit)
             var userIdParam = new SqlParameter("@UserId", bankAccount.UserId);
             var BankAccountId = new SqlParameter("@BankAccountId", bankAccount.Id);
@@ -5165,11 +5170,11 @@ namespace UtilityHub360.Services
                 ).AsEnumerable().FirstOrDefault();
 
             var accountBalance = balanceResults;
-            
+
             decimal currentBalance = accountBalance?.NetAmount ?? 0m;
             decimal totalIncoming = accountBalance?.TotalCredit ?? 0m;
             decimal totalOutgoing = accountBalance?.TotalDebit ?? 0m;
-            
+
             // Override with provided stats if available
             int transactionCount;
             if (transactionStats != null)
@@ -5182,7 +5187,7 @@ namespace UtilityHub360.Services
             {
                 transactionCount = transactions.Count;
             }
-            
+
             // Load cards if not already loaded (handle case where Cards table doesn't exist)
             //List<CardDto> cards = new List<CardDto>();
             //try
@@ -5193,12 +5198,12 @@ namespace UtilityHub360.Services
             //        // Check if bankAccount is tracked by EF Core
             //        var entry = _context.ChangeTracker.Entries<BankAccount>()
             //            .FirstOrDefault(e => e.Entity.Id == bankAccount.Id);
-                    
+
             //        if (entry != null)
             //        {
             //            // Entity is tracked, check if Cards are loaded
             //            var isCardsLoaded = entry.Collection(ba => ba.Cards).IsLoaded;
-                        
+
             //            if (!isCardsLoaded)
             //            {
             //                await entry.Collection(ba => ba.Cards).LoadAsync();
@@ -5286,7 +5291,7 @@ namespace UtilityHub360.Services
             //    // Cards table doesn't exist or Cards couldn't be accessed - return empty list
             //    cards = new List<CardDto>();
             //}
-            
+
             return new BankAccountDto
             {
                 Id = bankAccount.Id,
@@ -5381,7 +5386,7 @@ namespace UtilityHub360.Services
                 LoanId = payment.LoanId,
                 SavingsAccountId = payment.SavingsAccountId,
                 // TransactionPurpose can be derived from linked entities
-                TransactionPurpose = payment.BillId != null 
+                TransactionPurpose = payment.BillId != null
                     ? (payment.Bill?.BillType.ToUpper() == "UTILITY" ? "UTILITY" : "BILL")
                     : payment.LoanId != null ? "LOAN"
                     : payment.SavingsAccountId != null ? "SAVINGS"
@@ -5391,14 +5396,14 @@ namespace UtilityHub360.Services
                 LoanPurpose = payment.Loan?.Purpose,
                 SavingsAccountName = payment.SavingsAccount?.AccountName
             };
-            
+
             // Load split information if this transaction has an ExternalTransactionId
             if (!string.IsNullOrEmpty(payment.ExternalTransactionId))
             {
                 var splits = await _context.Payments
                     .AsNoTracking()
-                    .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId && 
-                               p.UserId == payment.UserId && 
+                    .Where(p => p.ExternalTransactionId == payment.ExternalTransactionId &&
+                               p.UserId == payment.UserId &&
                                p.IsBankTransaction)
                     .OrderBy(p => p.CreatedAt)
                     .Select(p => new TransactionSplitDto
@@ -5410,7 +5415,7 @@ namespace UtilityHub360.Services
                         Description = p.Description ?? ""
                     })
                     .ToListAsync();
-                
+
                 if (splits.Count > 1)
                 {
                     dto.IsSplit = true;
@@ -5418,10 +5423,10 @@ namespace UtilityHub360.Services
                     dto.Splits = splits;
                 }
             }
-            
+
             return dto;
         }
-        
+
         // Keep the static version for backward compatibility where context is not available
         private static BankTransactionDto MapPaymentToBankTransactionDto(Entities.Payment payment)
         {
@@ -5452,7 +5457,7 @@ namespace UtilityHub360.Services
                 LoanId = payment.LoanId,
                 SavingsAccountId = payment.SavingsAccountId,
                 // TransactionPurpose can be derived from linked entities
-                TransactionPurpose = payment.BillId != null 
+                TransactionPurpose = payment.BillId != null
                     ? (payment.Bill?.BillType.ToUpper() == "UTILITY" ? "UTILITY" : "BILL")
                     : payment.LoanId != null ? "LOAN"
                     : payment.SavingsAccountId != null ? "SAVINGS"
@@ -5467,13 +5472,13 @@ namespace UtilityHub360.Services
         private static (DateTime startDate, DateTime endDate) GetPeriodDates(string period)
         {
             var now = DateTime.UtcNow;
-            
+
             // Set endDate to end of today (23:59:59.9999999) to include all transactions on the current day
             var endOfToday = now.Date.AddDays(1).AddTicks(-1);
-            
+
             // Start of current month (1st day of month at 00:00:00)
             var startOfCurrentMonth = new DateTime(now.Year, now.Month, 1);
-            
+
             // Check if period is in format "YYYY-MM" for specific month selection
             if (System.Text.RegularExpressions.Regex.IsMatch(period, @"^\d{4}-\d{2}$"))
             {
@@ -5493,7 +5498,7 @@ namespace UtilityHub360.Services
                     }
                 }
             }
-            
+
             return period.ToLower() switch
             {
                 "weekly" or "week" => (now.AddDays(-7).Date, endOfToday),
@@ -5513,8 +5518,8 @@ namespace UtilityHub360.Services
                 return false;
 
             var accountTypeLower = accountType.ToLower().Trim();
-            return accountTypeLower == "credit_card" || 
-                   accountTypeLower == "credit card" || 
+            return accountTypeLower == "credit_card" ||
+                   accountTypeLower == "credit card" ||
                    accountTypeLower == "creditcard";
         }
 
@@ -5585,7 +5590,7 @@ namespace UtilityHub360.Services
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToListAsync();
-                
+
                 // Convert to Payment entities with BankAccount
                 var transactions = transactionsData.Select(p => new Payment
                 {
@@ -5656,9 +5661,9 @@ namespace UtilityHub360.Services
                     var dateFromYear = dateFrom.Value.Year;
                     var dateFromMonth = dateFrom.Value.Month;
                     var dateFromDay = dateFrom.Value.Day;
-                    
+
                     // Filter: TransactionDate >= dateFrom (comparing date parts only)
-                    query = query.Where(p => p.TransactionDate.HasValue && 
+                    query = query.Where(p => p.TransactionDate.HasValue &&
                                            (p.TransactionDate.Value.Year > dateFromYear ||
                                             (p.TransactionDate.Value.Year == dateFromYear && p.TransactionDate.Value.Month > dateFromMonth) ||
                                             (p.TransactionDate.Value.Year == dateFromYear && p.TransactionDate.Value.Month == dateFromMonth && p.TransactionDate.Value.Day >= dateFromDay)));
@@ -5670,9 +5675,9 @@ namespace UtilityHub360.Services
                     var dateToYear = dateTo.Value.Year;
                     var dateToMonth = dateTo.Value.Month;
                     var dateToDay = dateTo.Value.Day;
-                    
+
                     // Filter: TransactionDate <= dateTo (comparing date parts only)
-                    query = query.Where(p => p.TransactionDate.HasValue && 
+                    query = query.Where(p => p.TransactionDate.HasValue &&
                                            (p.TransactionDate.Value.Year < dateToYear ||
                                             (p.TransactionDate.Value.Year == dateToYear && p.TransactionDate.Value.Month < dateToMonth) ||
                                             (p.TransactionDate.Value.Year == dateToYear && p.TransactionDate.Value.Month == dateToMonth && p.TransactionDate.Value.Day <= dateToDay)));
@@ -5772,17 +5777,17 @@ namespace UtilityHub360.Services
                 foreach (var splitGroup in transactionsWithSplits)
                 {
                     var groupList = splitGroup.ToList();
-                    
+
                     // Get the first transaction as the parent (ordered by creation time)
                     var parentTransaction = groupList.OrderBy(t => t.CreatedAt).First();
                     var parentId = parentTransaction.Id;
-                    
+
                     // Identify split transactions (exclude the parent)
                     var splitTransactions = groupList
                         .Where(t => t.Id != parentId) // Exclude parent from splits
                         .OrderBy(t => t.CreatedAt)
                         .ToList();
-                    
+
                     // Load only the split transactions (not the parent) with their bill information
                     var splitIds = splitTransactions.Select(p => p.Id).ToList();
                     var splitsWithBills = await _context.Payments
@@ -5791,7 +5796,7 @@ namespace UtilityHub360.Services
                         .Where(p => splitIds.Contains(p.Id))
                         .OrderBy(p => p.CreatedAt)
                         .ToListAsync();
-                    
+
                     var splitDtos = splitsWithBills.Select(p => new TransactionSplitDto
                     {
                         Id = p.Id,
@@ -5807,7 +5812,7 @@ namespace UtilityHub360.Services
                     parentDto.SplitCount = splitTransactions.Count;
                     parentDto.Splits = splitDtos; // Only actual splits, not the parent
                     parentDto.Amount = splitTransactions.Sum(p => p.Amount); // Total amount of splits only, excluding parent
-                    
+
                     transactionDtos.Add(parentDto);
                 }
 
@@ -5840,7 +5845,7 @@ namespace UtilityHub360.Services
             try
             {
                 var (startDate, endDate) = GetPeriodDates(frequency);
-                
+
                 if (year.HasValue && month.HasValue)
                 {
                     startDate = new DateTime(year.Value, month.Value, 1);
@@ -5875,21 +5880,21 @@ namespace UtilityHub360.Services
                         ba.SwiftCode
                     })
                     .ToListAsync();
-                
+
                 // Get bank account IDs for transaction lookup
                 var bankAccountIds = accountsData.Select(ba => ba.Id).ToList();
-                
+
                 // Get total count of ALL transactions (not filtered by period) for TransactionCount
                 var totalTransactionCount = await _context.Payments
                     .AsNoTracking()
                     .Where(p => p.UserId == userId && p.IsBankTransaction && !p.IsDeleted)
                     .CountAsync();
-                
+
                 // Get aggregated transaction statistics from Payments table grouped by BankAccountId (ALL transactions, not just period)
                 var transactionStats = await _context.Payments
                     .AsNoTracking()
-                    .Where(p => bankAccountIds.Contains(p.BankAccountId) && 
-                               p.IsBankTransaction && 
+                    .Where(p => bankAccountIds.Contains(p.BankAccountId) &&
+                               p.IsBankTransaction &&
                                !p.IsDeleted &&
                                p.BankAccountId != null)
                     .GroupBy(p => p.BankAccountId!)
@@ -5901,7 +5906,7 @@ namespace UtilityHub360.Services
                         TotalOutgoing = g.Where(p => p.TransactionType == "DEBIT").Sum(p => p.Amount)
                     })
                     .ToListAsync();
-                
+
                 // Create dictionary for efficient lookup
                 var transactionStatsByAccountId = transactionStats
                     .ToDictionary(ts => ts.BankAccountId, ts => new
@@ -5910,7 +5915,7 @@ namespace UtilityHub360.Services
                         ts.TotalIncoming,
                         ts.TotalOutgoing
                     });
-                
+
                 // Convert to BankAccount entities
                 var accounts = accountsData.Select(ba => new BankAccount
                 {
@@ -5940,11 +5945,11 @@ namespace UtilityHub360.Services
                 // Use projection to avoid reading soft delete columns (period transactions for summary calculations)
                 var transactionsData = await _context.Payments
                     .AsNoTracking()
-                    .Where(p => p.UserId == userId && 
-                               p.IsBankTransaction && 
+                    .Where(p => p.UserId == userId &&
+                               p.IsBankTransaction &&
                                !p.IsDeleted &&
                                p.TransactionDate.HasValue &&
-                               p.TransactionDate >= startDate && 
+                               p.TransactionDate >= startDate &&
                                p.TransactionDate <= endDate)
                     .Select(p => new
                     {
@@ -5972,7 +5977,7 @@ namespace UtilityHub360.Services
                         p.ExternalTransactionId
                     })
                     .ToListAsync();
-                
+
                 // Convert to Payment entities
                 var transactions = transactionsData.Select(p => new Payment
                 {
@@ -6013,8 +6018,8 @@ namespace UtilityHub360.Services
                 var creditCardAccounts = accounts
                     .Where(a => {
                         var accountTypeLower = a.AccountType?.ToLower().Trim() ?? "";
-                        return accountTypeLower == "credit_card" || 
-                               accountTypeLower == "credit card" || 
+                        return accountTypeLower == "credit_card" ||
+                               accountTypeLower == "credit card" ||
                                accountTypeLower == "creditcard";
                     })
                     .ToList();
@@ -6054,8 +6059,8 @@ namespace UtilityHub360.Services
                 foreach (var account in accounts)
                 {
                     // Pass transaction stats if available
-                    var stats = transactionStatsByAccountId.TryGetValue(account.Id, out var accountStats) 
-                        ? accountStats 
+                    var stats = transactionStatsByAccountId.TryGetValue(account.Id, out var accountStats)
+                        ? accountStats
                         : null;
                     summary.Accounts.Add(await MapToBankAccountDtoAsync(account, stats));
                 }
@@ -6076,7 +6081,7 @@ namespace UtilityHub360.Services
             {
                 return await aiAgentService.AnalyzeAndCreateTransactionWithAgentAsync(analyzeDto, userId);
             }
-            
+
             return ApiResponse<BankTransactionDto>.ErrorResult("AI Agent service is not available");
         }
 
@@ -6102,8 +6107,8 @@ namespace UtilityHub360.Services
 
                 // Check if month is already closed
                 var existingClosedMonth = await _context.ClosedMonths
-                    .FirstOrDefaultAsync(cm => cm.BankAccountId == bankAccountId && 
-                                              cm.Year == closeMonthDto.Year && 
+                    .FirstOrDefaultAsync(cm => cm.BankAccountId == bankAccountId &&
+                                              cm.Year == closeMonthDto.Year &&
                                               cm.Month == closeMonthDto.Month);
 
                 if (existingClosedMonth != null)
@@ -6203,8 +6208,8 @@ namespace UtilityHub360.Services
                 }
 
                 var isClosed = await _context.ClosedMonths
-                    .AnyAsync(cm => cm.BankAccountId == bankAccountId && 
-                                   cm.Year == year && 
+                    .AnyAsync(cm => cm.BankAccountId == bankAccountId &&
+                                   cm.Year == year &&
                                    cm.Month == month);
 
                 return ApiResponse<bool>.SuccessResult(isClosed);
@@ -6219,11 +6224,11 @@ namespace UtilityHub360.Services
         {
             var bankAccount = await _context.BankAccounts
                 .FirstOrDefaultAsync(ba => ba.Id == closedMonth.BankAccountId);
-            
+
             var user = await _context.Users
                 .FirstOrDefaultAsync(u => u.Id == closedMonth.ClosedBy);
 
-            var monthNames = new[] { "", "January", "February", "March", "April", "May", "June", 
+            var monthNames = new[] { "", "January", "February", "March", "April", "May", "June",
                                     "July", "August", "September", "October", "November", "December" };
 
             return new ClosedMonthDto
@@ -6255,13 +6260,13 @@ namespace UtilityHub360.Services
                     FROM INFORMATION_SCHEMA.COLUMNS 
                     WHERE TABLE_NAME = 'BankTransactions' 
                     AND COLUMN_NAME IN ('BillId', 'LoanId', 'SavingsAccountId', 'TransactionPurpose')";
-                
+
                 var result = await _context.Database
                     .SqlQueryRaw<int>(sql)
                     .ToListAsync();
-                
+
                 var columnCount = result.FirstOrDefault();
-                
+
                 // All 4 columns should exist
                 return columnCount == 4;
             }
@@ -6280,36 +6285,36 @@ namespace UtilityHub360.Services
         {
             if (string.IsNullOrEmpty(externalTransactionId))
                 return false;
-            
+
             // System-generated ExternalTransactionIds have specific prefixes
             // These are always deletable (bill payments, loan payments, savings, etc.)
             var systemPrefixes = new[] { "BILL_PAY_", "LOAN_PAY_", "SAVINGS_", "SAVINGS_PAID_", "SPLIT_" };
-            
+
             if (systemPrefixes.Any(prefix => externalTransactionId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
                 return false; // System-generated, not bank-synced
-            
+
             // If no bank account ID provided, can't determine - allow deletion to be safe
             if (string.IsNullOrEmpty(bankAccountId))
                 return false;
-            
+
             // Only consider it bank-synced if the bank account is actually connected (Plaid)
             // Bank statement uploads don't have connected accounts, so they should be deletable
             var bankAccount = await _context.BankAccounts
                 .AsNoTracking()
                 .FirstOrDefaultAsync(ba => ba.Id == bankAccountId);
-            
+
             if (bankAccount == null)
                 return false; // Account not found - allow deletion to be safe
-            
+
             // CRITICAL: Only prevent deletion if account is BOTH connected AND has a connection ID
             // If either condition is false, allow deletion
             // This ensures bank statement uploads (IsConnected = false) are always deletable
             if (!bankAccount.IsConnected)
                 return false; // Not connected - definitely deletable
-            
+
             if (string.IsNullOrEmpty(bankAccount.ConnectionId))
                 return false; // No connection ID - allow deletion to be safe
-            
+
             // Only block deletion if BOTH conditions are true: IsConnected AND has ConnectionId
             return true;
         }
