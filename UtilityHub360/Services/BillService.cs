@@ -418,9 +418,9 @@ namespace UtilityHub360.Services
                     .Select(b => new
                     {
                         Bill = b,
-                        HasPayment = _context.Payments.Any(p => p.BillId == b.Id)
+                        HasPayment = _context.Payments.Any(p => p.BillId == b.Id && !p.IsDeleted)
                     })
-                    .OrderByDescending(x => x.Bill.CreatedAt)
+                    .OrderBy(x => x.Bill.DueDate) // Order by DueDate ascending
                     .Skip(skip)
                     .Take(limit)
                     .ToListAsync();

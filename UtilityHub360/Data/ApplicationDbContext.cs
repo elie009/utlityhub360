@@ -320,8 +320,9 @@ namespace UtilityHub360.Data
                     .HasForeignKey(d => d.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
 
-                entity.HasIndex(e => new { e.UserId, e.AccountName }).IsUnique();
-                entity.HasIndex(e => new { e.UserId, e.AccountNumber }).IsUnique();
+                // Unique per user only among non-deleted accounts (allow reusing name/number when existing account is soft-deleted)
+                entity.HasIndex(e => new { e.UserId, e.AccountName }).IsUnique().HasFilter("[IsDeleted] = 0");
+                entity.HasIndex(e => new { e.UserId, e.AccountNumber }).IsUnique().HasFilter("[IsDeleted] = 0");
 
                 // Soft delete properties - columns now exist in database
                 entity.HasIndex(e => e.IsDeleted);

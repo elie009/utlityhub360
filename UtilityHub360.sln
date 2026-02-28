@@ -5,6 +5,8 @@ VisualStudioVersion = 17.9.34622.214
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UtilityHub360", "UtilityHub360\UtilityHub360.csproj", "{4A81C7AA-1CAA-41A0-A8D2-C62A1D1C09A2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "APP_UTILS", "..\APP_UTILS\APP_UTILS.csproj", "{A02692A0-FCC0-4E30-885B-640E2883D0C9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{4A81C7AA-1CAA-41A0-A8D2-C62A1D1C09A2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4A81C7AA-1CAA-41A0-A8D2-C62A1D1C09A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4A81C7AA-1CAA-41A0-A8D2-C62A1D1C09A2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A02692A0-FCC0-4E30-885B-640E2883D0C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A02692A0-FCC0-4E30-885B-640E2883D0C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A02692A0-FCC0-4E30-885B-640E2883D0C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A02692A0-FCC0-4E30-885B-640E2883D0C9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

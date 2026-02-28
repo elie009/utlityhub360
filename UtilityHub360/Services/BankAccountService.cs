@@ -44,20 +44,20 @@ namespace UtilityHub360.Services
         {
             try
             {
-                // Check for duplicate account name
+                // Check for duplicate account name (only among non-deleted accounts; allow reusing name if existing account is soft-deleted)
                 var existingAccountByName = await _context.BankAccounts
-                    .FirstOrDefaultAsync(ba => ba.UserId == userId && ba.AccountName == createBankAccountDto.AccountName);
+                    .FirstOrDefaultAsync(ba => ba.UserId == userId && ba.AccountName == createBankAccountDto.AccountName && !ba.IsDeleted);
 
                 if (existingAccountByName != null)
                 {
-                    return ApiResponse<BankAccountDto>.ErrorResult($"An account with the name '{createBankAccountDto.AccountName}' already exists. Please use a different account name.");
+                    return ApiResponse<BankAccountDto>.ErrorResult($"An account with the name '{createBankAccountDto.AccountName}' already exists. Please use a different account name. Try using a different account name or check if you already have an account with this name.");
                 }
 
-                // Check for duplicate account number (if provided and not empty)
+                // Check for duplicate account number (if provided and not empty; only among non-deleted accounts)
                 if (!string.IsNullOrWhiteSpace(createBankAccountDto.AccountNumber))
                 {
                     var existingAccountByNumber = await _context.BankAccounts
-                        .FirstOrDefaultAsync(ba => ba.UserId == userId && ba.AccountNumber == createBankAccountDto.AccountNumber);
+                        .FirstOrDefaultAsync(ba => ba.UserId == userId && ba.AccountNumber == createBankAccountDto.AccountNumber && !ba.IsDeleted);
 
                     if (existingAccountByNumber != null)
                     {
@@ -97,6 +97,57 @@ namespace UtilityHub360.Services
 
                 _context.BankAccounts.Add(bankAccount);
                 await _context.SaveChangesAsync();
+
+                // When user sets Initial Balance, create one transaction [CREDIT or DEBIT] as opening balance so it appears in transaction history.
+                // Do not insert opening balance into BankTransactions or Payments for credit card accounts.
+                if (createBankAccountDto.InitialBalance != 0 && bankAccount.AccountType?.ToLower() != "credit_card")
+                {
+                    var isCredit = createBankAccountDto.InitialBalance > 0;
+                    var openingRef = $"OPENING_{bankAccount.Id}";
+                    var openingTransaction = new BankTransaction
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        BankAccountId = bankAccount.Id,
+                        UserId = userId,
+                        Amount = Math.Abs(createBankAccountDto.InitialBalance),
+                        TransactionType = isCredit ? "CREDIT" : "DEBIT",
+                        Description = "Opening balance",
+                        Category = "OPENING_BALANCE",
+                        ReferenceNumber = openingRef,
+                        TransactionDate = bankAccount.CreatedAt,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow,
+                        Currency = bankAccount.Currency,
+                        BalanceAfterTransaction = createBankAccountDto.InitialBalance,
+                        IsDeleted = false
+                    };
+                    _context.BankTransactions.Add(openingTransaction);
+
+                    var openingPayment = new Entities.Payment
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        BankAccountId = bankAccount.Id,
+                        UserId = userId,
+                        Amount = Math.Abs(createBankAccountDto.InitialBalance),
+                        Method = "BANK_TRANSFER",
+                        Reference = openingRef,
+                        Status = "COMPLETED",
+                        IsBankTransaction = true,
+                        TransactionType = isCredit ? "CREDIT" : "DEBIT",
+                        Description = "Opening balance",
+                        Category = "OPENING_BALANCE",
+                        Currency = bankAccount.Currency,
+                        BalanceAfterTransaction = createBankAccountDto.InitialBalance,
+                        ProcessedAt = bankAccount.CreatedAt,
+                        TransactionDate = bankAccount.CreatedAt,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow,
+                        IsDeleted = false
+                    };
+                    _context.Payments.Add(openingPayment);
+
+                    await _context.SaveChangesAsync();
+                }
 
                 var bankAccountDto = await MapToBankAccountDtoAsync(bankAccount);
                 return ApiResponse<BankAccountDto>.SuccessResult(bankAccountDto, "Bank account created successfully");
@@ -339,6 +390,52 @@ namespace UtilityHub360.Services
 
                 bankAccount.UpdatedAt = DateTime.UtcNow;
 
+                // Sync opening balance payment (Reference = OPENING_{id}) when bank account is updated. Skip for credit card accounts.
+                if (bankAccount.AccountType?.ToLower() != "credit_card")
+                {
+                    var openingRef = $"OPENING_{bankAccountId}";
+                    var openingPayment = await _context.Payments
+                        .FirstOrDefaultAsync(p => p.BankAccountId == bankAccountId &&
+                            p.Reference == openingRef &&
+                            p.IsBankTransaction &&
+                            !p.IsDeleted);
+                    if (openingPayment != null)
+                    {
+                        openingPayment.Amount = Math.Abs(bankAccount.CurrentBalance);
+                        openingPayment.TransactionType = bankAccount.CurrentBalance >= 0 ? "CREDIT" : "DEBIT";
+                        openingPayment.Currency = bankAccount.Currency;
+                        openingPayment.BalanceAfterTransaction = bankAccount.CurrentBalance;
+                        openingPayment.UpdatedAt = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        // No opening payment exists (e.g. account created before we added Payment for opening); insert one.
+                        var isCredit = bankAccount.CurrentBalance >= 0;
+                        var newOpeningPayment = new Entities.Payment
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            BankAccountId = bankAccount.Id,
+                            UserId = userId,
+                            Amount = Math.Abs(bankAccount.CurrentBalance),
+                            Method = "BANK_TRANSFER",
+                            Reference = openingRef,
+                            Status = "COMPLETED",
+                            IsBankTransaction = true,
+                            TransactionType = isCredit ? "CREDIT" : "DEBIT",
+                            Description = "Opening balance",
+                            Category = "OPENING_BALANCE",
+                            Currency = bankAccount.Currency,
+                            BalanceAfterTransaction = bankAccount.CurrentBalance,
+                            ProcessedAt = bankAccount.CreatedAt,
+                            TransactionDate = bankAccount.CreatedAt,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow,
+                            IsDeleted = false
+                        };
+                        _context.Payments.Add(newOpeningPayment);
+                    }
+                }
+
                 await _context.SaveChangesAsync();
 
                 var bankAccountDto = await MapToBankAccountDtoAsync(bankAccount);
@@ -387,7 +484,13 @@ namespace UtilityHub360.Services
                 // Handle foreign key constraints by setting related foreign keys to NULL
                 // These entities have DeleteBehavior.NoAction, so we need to handle them manually
 
-                // 1. Set BankAccountId to NULL in Payments
+                // 1. Delete opening balance payments (Reference = OPENING_{bankAccountId}), then set BankAccountId to NULL for the rest
+                var openingRef = $"OPENING_{bankAccountId}";
+                var openingPayments = await _context.Payments
+                    .Where(p => p.BankAccountId == bankAccountId && p.Reference == openingRef)
+                    .ToListAsync();
+                _context.Payments.RemoveRange(openingPayments);
+
                 var payments = await _context.Payments
                     .Where(p => p.BankAccountId == bankAccountId)
                     .ToListAsync();
@@ -5163,15 +5266,22 @@ namespace UtilityHub360.Services
             //    .SqlQueryRaw<BankAccountBalanceResult>("EXEC GetBankAccountNetAmount @BankAccountId, @UserId", bankAccount.Id, userIdParam)
             //    .ToListAsync();
 
-            var balanceResults = _context.Database
-                .SqlQueryRaw<BankAccountBalanceResult>(
-                    "EXEC GetBankAccountNetAmount @BankAccountId, @UserId",
-                    BankAccountId, userIdParam
-                ).AsEnumerable().FirstOrDefault();
+            BankAccountBalanceResult? accountBalance = null;
+            try
+            {
+                accountBalance = _context.Database
+                    .SqlQueryRaw<BankAccountBalanceResult>(
+                        "EXEC GetBankAccountNetAmount @BankAccountId, @UserId",
+                        BankAccountId, userIdParam
+                    ).AsEnumerable().FirstOrDefault();
+            }
+            catch
+            {
+                // Stored procedure may not exist or may fail; use entity's CurrentBalance (includes InitialBalance)
+            }
 
-            var accountBalance = balanceResults;
-
-            decimal currentBalance = accountBalance?.NetAmount ?? 0m;
+            // Use SP result when available; otherwise use entity's CurrentBalance so Initial Balance is shown for new accounts
+            decimal currentBalance = accountBalance?.NetAmount ?? bankAccount.CurrentBalance;
             decimal totalIncoming = accountBalance?.TotalCredit ?? 0m;
             decimal totalOutgoing = accountBalance?.TotalDebit ?? 0m;
 
