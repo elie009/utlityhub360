@@ -133,6 +133,7 @@ namespace UtilityHub360.Controllers
         /// Update a bank account
         /// </summary>
         [HttpPut("{bankAccountId}")]
+        [HttpPost("{bankAccountId}/update")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<BankAccountDto>>> UpdateBankAccount(string bankAccountId, [FromBody] UpdateBankAccountDto updateBankAccountDto)
         {
             try
@@ -162,6 +163,7 @@ namespace UtilityHub360.Controllers
         /// Delete a bank account
         /// </summary>
         [HttpDelete("{bankAccountId}")]
+        [HttpPost("{bankAccountId}/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeleteBankAccount(string bankAccountId)
         {
             try
@@ -517,6 +519,7 @@ namespace UtilityHub360.Controllers
         /// Update account balance
         /// </summary>
         [HttpPut("{bankAccountId}/balance")]
+        [HttpPost("{bankAccountId}/balance")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<bool>>> UpdateAccountBalance(string bankAccountId, [FromBody] decimal newBalance)
         {
             try
@@ -539,6 +542,35 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to update account balance: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Recalculate account balance from transactions
+        /// </summary>
+        [HttpPost("{bankAccountId}/recalculate-balance")]
+        public async Task<ActionResult<ApiResponse<decimal>>> RecalculateBalance(string bankAccountId)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<decimal>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _bankAccountService.RecalculateBalanceFromTransactionsAsync(bankAccountId, userId);
+                
+                if (!result.Success)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<decimal>.ErrorResult($"Failed to recalculate balance: {ex.Message}"));
             }
         }
 
@@ -625,18 +657,16 @@ namespace UtilityHub360.Controllers
                 DateTime? dateFrom = null;
                 DateTime? dateTo = null;
 
-                // Parse startDate if provided
+                // Parse startDate if provided - use calendar date to avoid timezone issues
                 if (!string.IsNullOrEmpty(startDate) && DateTime.TryParse(startDate, out var parsedStartDate))
                 {
-                    // Use only the date part, set time to 00:00:00 UTC
-                    dateFrom = DateTime.SpecifyKind(parsedStartDate.Date, DateTimeKind.Utc);
+                    dateFrom = new DateTime(parsedStartDate.Year, parsedStartDate.Month, parsedStartDate.Day, 0, 0, 0, DateTimeKind.Utc);
                 }
 
-                // Parse endDate if provided
+                // Parse endDate if provided - use calendar date end-of-day UTC so the full last day is included
                 if (!string.IsNullOrEmpty(endDate) && DateTime.TryParse(endDate, out var parsedEndDate))
                 {
-                    // Set to end of day (23:59:59.9999999) UTC for inclusive comparison
-                    dateTo = DateTime.SpecifyKind(parsedEndDate.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+                    dateTo = new DateTime(parsedEndDate.Year, parsedEndDate.Month, parsedEndDate.Day, 23, 59, 59, 999, DateTimeKind.Utc);
                 }
 
                 var result = await _bankAccountService.GetUserTransactionsAsync(userId, bankAccountId, accountType, page, limit, dateFrom, dateTo);
@@ -658,6 +688,7 @@ namespace UtilityHub360.Controllers
         /// Update a bank transaction
         /// </summary>
         [HttpPut("transactions/{transactionId}")]
+        [HttpPost("transactions/{transactionId}/update")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<BankTransactionDto>>> UpdateTransaction(
             string transactionId,
             [FromBody] UpdateBankTransactionDto updateTransactionDto)
@@ -689,6 +720,7 @@ namespace UtilityHub360.Controllers
         /// Hide (soft delete) a bank transaction
         /// </summary>
         [HttpPut("transactions/{transactionId}/hide")]
+        [HttpPost("transactions/{transactionId}/hide")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<bool>>> HideTransaction(
             string transactionId,
             [FromBody] HideTransactionDto? hideDto = null)
@@ -721,6 +753,7 @@ namespace UtilityHub360.Controllers
         /// Restore a hidden (soft-deleted) bank transaction
         /// </summary>
         [HttpPut("transactions/{transactionId}/restore")]
+        [HttpPost("transactions/{transactionId}/restore")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<BankTransactionDto>>> RestoreTransaction(string transactionId)
         {
             try
@@ -779,6 +812,7 @@ namespace UtilityHub360.Controllers
         /// Delete a bank transaction
         /// </summary>
         [HttpDelete("transactions/{transactionId}")]
+        [HttpPost("transactions/{transactionId}/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeleteTransaction(string transactionId)
         {
             try
@@ -801,6 +835,40 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to delete transaction: {ex.Message}"));
+            }
+        }
+
+        /// <summary>
+        /// Bulk delete multiple bank transactions
+        /// </summary>
+        [HttpPost("transactions/bulk-delete")]
+        public async Task<ActionResult<ApiResponse<BulkDeleteTransactionsResultDto>>> BulkDeleteTransactions([FromBody] BulkDeleteTransactionsDto bulkDeleteDto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<BulkDeleteTransactionsResultDto>.ErrorResult("User not authenticated"));
+                }
+
+                if (bulkDeleteDto?.TransactionIds == null || bulkDeleteDto.TransactionIds.Count == 0)
+                {
+                    return BadRequest(ApiResponse<BulkDeleteTransactionsResultDto>.ErrorResult("No transaction IDs provided"));
+                }
+
+                var result = await _bankAccountService.BulkDeleteTransactionsAsync(bulkDeleteDto.TransactionIds, userId);
+                
+                if (!result.Success && result.Data?.Successful == 0)
+                {
+                    return BadRequest(result);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<BulkDeleteTransactionsResultDto>.ErrorResult($"Failed to delete transactions: {ex.Message}"));
             }
         }
 

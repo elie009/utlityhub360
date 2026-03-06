@@ -5,6 +5,7 @@ using System.Security.Claims;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
 using UtilityHub360.Models;
+using BCrypt.Net;
 
 namespace UtilityHub360.Controllers
 {
@@ -18,6 +19,60 @@ namespace UtilityHub360.Controllers
         public UsersController(ApplicationDbContext context)
         {
             _context = context;
+        }
+
+        [HttpGet("{userId}/password")]
+        [Authorize(Roles = "ADMIN")]
+        public async Task<ActionResult<ApiResponse<object>>> GetUserPassword(string userId)
+        {
+            try
+            {
+                var user = await _context.Users.FindAsync(userId);
+                if (user == null)
+                {
+                    return NotFound(ApiResponse<object>.ErrorResult("User not found"));
+                }
+
+                return Ok(ApiResponse<object>.SuccessResult(new { passwordHash = user.PasswordHash }));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.ErrorResult($"Failed to get user password: {ex.Message}"));
+            }
+        }
+
+        [HttpPost("{userId}/set-password")]
+        [Authorize(Roles = "ADMIN")]
+        public async Task<ActionResult<ApiResponse<object>>> SetUserPassword(string userId, [FromBody] AdminSetPasswordDto setPasswordDto)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(setPasswordDto.NewPassword))
+                {
+                    return BadRequest(ApiResponse<object>.ErrorResult("Password cannot be empty"));
+                }
+
+                var user = await _context.Users.FindAsync(userId);
+                if (user == null)
+                {
+                    return NotFound(ApiResponse<object>.ErrorResult("User not found"));
+                }
+
+                // Hash the new password
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(setPasswordDto.NewPassword);
+                user.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+                // Return the plain text password so admin can use it for login
+                return Ok(ApiResponse<object>.SuccessResult(new { 
+                    password = setPasswordDto.NewPassword,
+                    message = "Password has been set successfully. Use the password below to login."
+                }));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.ErrorResult($"Failed to set user password: {ex.Message}"));
+            }
         }
 
         [HttpGet("{userId}")]

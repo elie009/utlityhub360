@@ -339,17 +339,17 @@ namespace UtilityHub360.DTOs
         // Cash Inflows
         public decimal IncomeReceived { get; set; }
         public decimal OtherOperatingInflows { get; set; }
-        public decimal TotalOperatingInflows => IncomeReceived + OtherOperatingInflows;
+        public decimal TotalOperatingInflows => Math.Abs(IncomeReceived) + Math.Abs(OtherOperatingInflows);
         
-        // Cash Outflows
+        // Cash Outflows - use absolute values to ignore negative signs
         public decimal ExpensesPaid { get; set; }
         public decimal BillsPaid { get; set; }
         public decimal InterestPaid { get; set; }
         public decimal OtherOperatingOutflows { get; set; }
-        public decimal TotalOperatingOutflows => ExpensesPaid + BillsPaid + InterestPaid + OtherOperatingOutflows;
+        public decimal TotalOperatingOutflows => Math.Abs(ExpensesPaid) + Math.Abs(BillsPaid) + Math.Abs(InterestPaid) + Math.Abs(OtherOperatingOutflows);
         
         // Net Cash from Operating Activities
-        public decimal NetCashFromOperations => TotalOperatingInflows - TotalOperatingOutflows;
+        public decimal NetCashFromOperations => Math.Abs(TotalOperatingInflows) - Math.Abs(TotalOperatingOutflows);
         
         // Details
         public List<CashFlowItemDto> InflowItems { get; set; } = new();
@@ -364,11 +364,11 @@ namespace UtilityHub360.DTOs
         public decimal OtherInvestingInflows { get; set; }
         public decimal TotalInvestingInflows => SavingsWithdrawals + InvestmentReturns + OtherInvestingInflows;
         
-        // Cash Outflows
+        // Cash Outflows - use absolute values to ignore negative signs
         public decimal SavingsDeposits { get; set; }
         public decimal InvestmentsMade { get; set; }
         public decimal OtherInvestingOutflows { get; set; }
-        public decimal TotalInvestingOutflows => SavingsDeposits + InvestmentsMade + OtherInvestingOutflows;
+        public decimal TotalInvestingOutflows => Math.Abs(SavingsDeposits) + Math.Abs(InvestmentsMade) + Math.Abs(OtherInvestingOutflows);
         
         // Net Cash from Investing Activities
         public decimal NetCashFromInvesting => TotalInvestingInflows - TotalInvestingOutflows;
@@ -385,11 +385,11 @@ namespace UtilityHub360.DTOs
         public decimal OtherFinancingInflows { get; set; }
         public decimal TotalFinancingInflows => LoanDisbursements + OtherFinancingInflows;
         
-        // Cash Outflows
+        // Cash Outflows - use absolute values to ignore negative signs
         public decimal LoanPayments { get; set; }
         public decimal PrincipalPayments { get; set; }
         public decimal OtherFinancingOutflows { get; set; }
-        public decimal TotalFinancingOutflows => LoanPayments + OtherFinancingOutflows;
+        public decimal TotalFinancingOutflows => Math.Abs(LoanPayments) + Math.Abs(OtherFinancingOutflows);
         
         // Net Cash from Financing Activities
         public decimal NetCashFromFinancing => TotalFinancingInflows - TotalFinancingOutflows;
@@ -425,8 +425,8 @@ namespace UtilityHub360.DTOs
         // EXPENSES SECTION
         public ExpensesSectionDto Expenses { get; set; } = new();
         
-        // NET INCOME
-        public decimal NetIncome => Revenue.TotalRevenue - Expenses.TotalExpenses;
+        // NET INCOME - use absolute value for expenses to handle negative amounts
+        public decimal NetIncome => Revenue.TotalRevenue - Math.Abs(Expenses.TotalExpenses);
         
         // Comparison with previous period
         public IncomeStatementComparisonDto? Comparison { get; set; }
@@ -476,8 +476,8 @@ namespace UtilityHub360.DTOs
         public decimal LoanFeesExpense { get; set; }
         public decimal TotalFinancialExpenses { get; set; }
         
-        // Total Expenses
-        public decimal TotalExpenses => TotalOperatingExpenses + TotalFinancialExpenses;
+        // Total Expenses - use absolute value to handle negative amounts
+        public decimal TotalExpenses => Math.Abs(TotalOperatingExpenses) + Math.Abs(TotalFinancialExpenses);
         
         // Details
         public List<IncomeStatementItemDto> ExpenseItems { get; set; } = new();

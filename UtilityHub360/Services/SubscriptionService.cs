@@ -670,6 +670,65 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<BankStatementUploadLimitDto>> CheckBankStatementUploadLimitAsync(string userId)
+        {
+            try
+            {
+                var subscription = await _context.UserSubscriptions
+                    .Include(us => us.SubscriptionPlan)
+                    .Where(us => us.UserId == userId && us.Status == "ACTIVE")
+                    .FirstOrDefaultAsync();
+
+                int currentUploads = 0;
+                int? limit = null;
+                bool isFreeTier = false;
+
+                // Count uploads for current month from BankStatements table
+                var currentMonth = DateTime.UtcNow.Month;
+                var currentYear = DateTime.UtcNow.Year;
+                currentUploads = await _context.BankStatements
+                    .Where(bs => bs.UserId == userId &&
+                               bs.CreatedAt.Month == currentMonth &&
+                               bs.CreatedAt.Year == currentYear)
+                    .CountAsync();
+
+                if (subscription == null)
+                {
+                    // Free tier: 3 uploads per month
+                    limit = 3;
+                    isFreeTier = true;
+                }
+                else
+                {
+                    // Check plan name - Free tier has limit of 3, Premium/Pro have no limit (null)
+                    var planName = subscription.SubscriptionPlan.Name.ToUpper();
+                    if (planName == "FREE" || planName == "FREE_TIER" || subscription.SubscriptionPlan.MonthlyPrice == 0)
+                    {
+                        limit = 3;
+                        isFreeTier = true;
+                    }
+                    // Premium/Pro plans have unlimited (null limit)
+                }
+
+                var canUpload = limit == null || currentUploads < limit.Value;
+                
+                var result = new BankStatementUploadLimitDto
+                {
+                    CanUpload = canUpload,
+                    CurrentUploads = currentUploads,
+                    UploadLimit = limit,
+                    RemainingUploads = limit.HasValue ? Math.Max(0, limit.Value - currentUploads) : (int?)null,
+                    IsFreeTier = isFreeTier
+                };
+
+                return ApiResponse<BankStatementUploadLimitDto>.SuccessResult(result);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<BankStatementUploadLimitDto>.ErrorResult($"Failed to check upload limit: {ex.Message}");
+            }
+        }
+
         // Helper methods
         private SubscriptionPlanDto MapToSubscriptionPlanDto(SubscriptionPlan plan)
         {
@@ -719,15 +778,24 @@ namespace UtilityHub360.Services
 
         private UserSubscriptionDto MapToUserSubscriptionDto(UserSubscription subscription)
         {
+            if (subscription == null)
+            {
+                // Return an empty DTO rather than throw, as per follow-up instructions
+                return new UserSubscriptionDto();
+            }
+
+            var user = subscription.User;
+            var plan = subscription.SubscriptionPlan;
+
             return new UserSubscriptionDto
             {
                 Id = subscription.Id,
                 UserId = subscription.UserId,
-                UserName = subscription.User?.Name ?? string.Empty,
-                UserEmail = subscription.User?.Email ?? string.Empty,
+                UserName = user != null ? user.Name ?? string.Empty : string.Empty,
+                UserEmail = user != null ? user.Email ?? string.Empty : string.Empty,
                 SubscriptionPlanId = subscription.SubscriptionPlanId,
-                PlanName = subscription.SubscriptionPlan?.Name ?? string.Empty,
-                PlanDisplayName = subscription.SubscriptionPlan?.DisplayName ?? string.Empty,
+                PlanName = plan != null ? plan.Name ?? string.Empty : string.Empty,
+                PlanDisplayName = plan != null ? plan.DisplayName ?? string.Empty : string.Empty,
                 Status = subscription.Status,
                 BillingCycle = subscription.BillingCycle,
                 CurrentPrice = subscription.CurrentPrice,

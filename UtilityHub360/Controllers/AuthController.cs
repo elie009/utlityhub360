@@ -48,21 +48,42 @@ namespace UtilityHub360.Controllers
         {
             try
             {
+                // Log the incoming request for debugging
+                Console.WriteLine($"[Login] Attempting login for email: {loginCredentials?.Email ?? "null"}");
+
+                if (loginCredentials == null)
+                {
+                    return BadRequest(ApiResponse<AuthResponseDto>.ErrorResult("Login credentials are required"));
+                }
+
                 if (!ModelState.IsValid)
                 {
                     var errors = ModelState.Values
                         .SelectMany(v => v.Errors)
                         .Select(e => e.ErrorMessage)
                         .ToList();
+                    Console.WriteLine($"[Login] Validation failed: {string.Join(", ", errors)}");
                     return BadRequest(ApiResponse<AuthResponseDto>.ErrorResult("Validation failed", errors));
                 }
 
                 var result = await _authService.LoginAsync(loginCredentials);
+                Console.WriteLine($"[Login] Login successful for email: {loginCredentials.Email}");
                 return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                // This is expected for invalid credentials
+                Console.WriteLine($"[Login] Unauthorized: {ex.Message}");
+                // Use StatusCode(401, ...) instead of Unauthorized() to ensure response body is included
+                return StatusCode(401, ApiResponse<AuthResponseDto>.ErrorResult(ex.Message));
             }
             catch (Exception ex)
             {
-                return Unauthorized(ApiResponse<AuthResponseDto>.ErrorResult($"Login failed: {ex.Message}"));
+                // Log unexpected errors for debugging
+                Console.WriteLine($"[Login] Unexpected error: {ex.GetType().Name} - {ex.Message}");
+                Console.WriteLine($"[Login] Stack trace: {ex.StackTrace}");
+                // Use StatusCode(401, ...) instead of Unauthorized() to ensure response body is included
+                return StatusCode(401, ApiResponse<AuthResponseDto>.ErrorResult($"Login failed: {ex.Message}"));
             }
         }
 
@@ -84,6 +105,60 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<UserDto>.ErrorResult($"Failed to get current user: {ex.Message}"));
+            }
+        }
+
+        /// <summary>Setup or update PIN for mobile PIN login (mobile-only). Requires authentication.</summary>
+        [HttpPost("setup-pin")]
+        [Authorize]
+        public async Task<ActionResult<ApiResponse<object>>> SetupPin([FromBody] SetupPinDto dto)
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(ApiResponse<object>.ErrorResult("User not authenticated"));
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<object>.ErrorResult("Validation failed", errors));
+                }
+                var result = await _authService.SetupPinAsync(dto, userId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.ErrorResult(ex.Message));
+            }
+        }
+
+        /// <summary>Login with email + PIN (mobile-only). Returns JWT and refresh token.</summary>
+        [HttpPost("login-pin")]
+        public async Task<ActionResult<ApiResponse<AuthResponseDto>>> LoginWithPin([FromBody] LoginWithPinDto dto)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<AuthResponseDto>.ErrorResult("Validation failed", errors));
+                }
+                var result = await _authService.LoginWithPinAsync(dto);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(401, ApiResponse<AuthResponseDto>.ErrorResult(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<AuthResponseDto>.ErrorResult(ex.Message));
             }
         }
 
@@ -237,6 +312,52 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<object>.ErrorResult($"Failed to clear user data: {ex.Message}"));
+            }
+        }
+
+        [HttpPost("verify-email")]
+        public async Task<ActionResult<ApiResponse<bool>>> VerifyEmail([FromBody] VerifyEmailDto verifyEmailData)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<bool>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _authService.VerifyEmailAsync(verifyEmailData.Email, verifyEmailData.Token);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Email verification failed: {ex.Message}"));
+            }
+        }
+
+        [HttpPost("resend-verification")]
+        public async Task<ActionResult<ApiResponse<bool>>> ResendVerificationEmail([FromBody] ResendVerificationDto request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    return BadRequest(ApiResponse<bool>.ErrorResult("Validation failed", errors));
+                }
+
+                var result = await _authService.ResendVerificationEmailAsync(request.Email);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to resend verification email: {ex.Message}"));
             }
         }
     }

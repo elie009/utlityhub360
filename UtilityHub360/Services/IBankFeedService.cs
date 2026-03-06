@@ -27,6 +27,11 @@ namespace UtilityHub360.Services
         /// Check if account is connected to bank feed
         /// </summary>
         Task<bool> IsAccountConnectedAsync(string bankAccountId);
+
+        /// <summary>
+        /// Store Plaid access token after public token exchange
+        /// </summary>
+        Task<ApiResponse<string>> StorePlaidAccessTokenAsync(string userId, string bankAccountId, string accessToken, string itemId);
     }
 
     /// <summary>

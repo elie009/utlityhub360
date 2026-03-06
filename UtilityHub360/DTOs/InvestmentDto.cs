@@ -17,6 +17,7 @@ namespace UtilityHub360.DTOs
         public decimal? UnrealizedGainLoss { get; set; }
         public decimal? RealizedGainLoss { get; set; }
         public decimal? TotalReturnPercentage { get; set; }
+        public DateTime? DateOfInvestment { get; set; }
         public string Currency { get; set; } = "USD";
         public string? Description { get; set; }
         public bool IsActive { get; set; }
@@ -42,6 +43,9 @@ namespace UtilityHub360.DTOs
 
         [StringLength(100)]
         public string? AccountNumber { get; set; }
+
+        [Required]
+        public DateTime? DateOfInvestment { get; set; }
 
         [Required]
         [Range(0, double.MaxValue)]
@@ -73,6 +77,8 @@ namespace UtilityHub360.DTOs
 
         [Range(0, double.MaxValue)]
         public decimal? CurrentValue { get; set; }
+
+        public DateTime? DateOfInvestment { get; set; }
 
         [StringLength(500)]
         public string? Description { get; set; }

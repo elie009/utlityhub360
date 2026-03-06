@@ -20,6 +20,9 @@ namespace UtilityHub360.Entities
         [StringLength(20)]
         public string? Phone { get; set; }
 
+        [StringLength(100)]
+        public string? Country { get; set; }
+
         [Required]
         [StringLength(20)]
         public string Role { get; set; } = "USER"; // USER, ADMIN
@@ -30,9 +33,20 @@ namespace UtilityHub360.Entities
 
         public bool IsActive { get; set; } = true;
 
+        public bool EmailVerified { get; set; } = false;
+
+        [StringLength(255)]
+        public string? EmailVerificationToken { get; set; }
+
+        public DateTime? EmailVerificationTokenExpiresAt { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+        /// <summary>BCrypt hash of user's 6-digit PIN for mobile PIN login (optional, mobile-only).</summary>
+        [StringLength(255)]
+        public string? PinHash { get; set; }
 
         // Navigation properties
         public virtual ICollection<Loan> Loans { get; set; } = new List<Loan>();

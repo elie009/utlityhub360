@@ -73,6 +73,10 @@ namespace UtilityHub360.Entities
         [StringLength(450)]
         public string? SavingsAccountId { get; set; }
 
+        // Payment reference (for linking to Payments table)
+        [StringLength(450)]
+        public string? PaymentId { get; set; }
+
         // Transaction purpose/category for linking
         [StringLength(50)]
         public string? TransactionPurpose { get; set; } // BILL, UTILITY, SAVINGS, LOAN, OTHER
@@ -102,5 +106,8 @@ namespace UtilityHub360.Entities
 
         [ForeignKey("SavingsAccountId")]
         public virtual SavingsAccount? SavingsAccount { get; set; }
+
+        [ForeignKey("PaymentId")]
+        public virtual Payment? Payment { get; set; }
     }
 }

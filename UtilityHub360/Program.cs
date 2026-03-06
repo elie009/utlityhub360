@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Text.Json.Serialization;
 using UtilityHub360.Data;
 using UtilityHub360.Services;
 using UtilityHub360.Models;
@@ -11,7 +12,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Allow string enum values to be converted to enum types
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -75,8 +81,8 @@ builder.Services.AddCors(options =>
                 "https://localhost:3000",
                 "http://localhost:5000",
                 "https://localhost:5000",
-                "http://localhost:64653",
-                "https://localhost:64653"
+                "http://localhost:49200",
+                "https://localhost:49200"
               )
               .AllowAnyHeader()
               .AllowAnyMethod()
@@ -98,6 +104,11 @@ builder.Services.AddSingleton(jwtSettings);
 // Add OpenAI Settings
 var openAISettings = builder.Configuration.GetSection("OpenAISettings").Get<OpenAISettings>() ?? new OpenAISettings();
 builder.Services.AddSingleton(openAISettings);
+
+// Add Plaid Settings
+var plaidSettings = builder.Configuration.GetSection("Plaid").Get<PlaidSettings>() ?? new PlaidSettings();
+builder.Services.AddSingleton(plaidSettings);
+builder.Services.AddHttpClient<PlaidService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -167,27 +178,18 @@ builder.Services.AddScoped<IAIAgentService>(sp =>
     return new AIAgentService(context, bankAccountService, logger, openAISettings);
 });
 builder.Services.AddScoped<IFinancialReportService, FinancialReportService>();
+builder.Services.AddScoped<IRdlcReportService, RdlcReportService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<IReconciliationService>(sp =>
 {
     var context = sp.GetRequiredService<ApplicationDbContext>();
-    var extractionService = sp.GetRequiredService<IBankStatementExtractionService>();
     var aiAgentService = sp.GetRequiredService<IAIAgentService>();
     var ocrService = sp.GetRequiredService<IOcrService>();
     var bankAccountService = sp.GetRequiredService<IBankAccountService>();
     var logger = sp.GetRequiredService<ILogger<ReconciliationService>>();
     var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
     var openAISettings = sp.GetRequiredService<OpenAISettings>();
-    return new ReconciliationService(context, extractionService, aiAgentService, ocrService, bankAccountService, logger, loggerFactory, openAISettings);
-});
-builder.Services.AddScoped<IBankStatementExtractionService>(sp =>
-{
-    var context = sp.GetRequiredService<ApplicationDbContext>();
-    var aiAgentService = sp.GetRequiredService<IAIAgentService>();
-    var ocrService = sp.GetRequiredService<IOcrService>();
-    var logger = sp.GetRequiredService<ILogger<BankStatementExtractionService>>();
-    var openAISettings = sp.GetRequiredService<OpenAISettings>();
-    return new BankStatementExtractionService(context, aiAgentService, ocrService, logger, openAISettings);
+    return new ReconciliationService(context, aiAgentService, ocrService, bankAccountService, logger, loggerFactory, openAISettings);
 });
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IBankFeedService, BankFeedService>();
@@ -236,6 +238,9 @@ app.UseCors("AllowAll");
 
 // Disable HTTPS redirection completely for local development
 // app.UseHttpsRedirection(); // Commented out to prevent any HTTPS redirects
+
+// Serve static files (for uploaded logos, receipts, etc.)
+app.UseStaticFiles();
 
 // Add Response Caching Middleware
 app.UseResponseCaching();

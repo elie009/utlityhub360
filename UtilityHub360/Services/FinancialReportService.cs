@@ -1,9 +1,11 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
+using System.Text;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
-using UtilityHub360.Models;
 using UtilityHub360.Entities;
-using System.Text;
+using UtilityHub360.Models;
 
 namespace UtilityHub360.Services
 {
@@ -32,8 +34,11 @@ namespace UtilityHub360.Services
                     Period = query.Period
                 };
 
-                // Generate all report sections
-                var summaryResult = await GetFinancialSummaryAsync(userId, endDate);
+                // Run all report sections sequentially to avoid DbContext concurrency issues
+                // This prevents "A second operation started on this context" errors
+                
+                // Main report sections - run sequentially
+                var summaryResult = await GetFinancialSummaryAsync(userId, query);
                 if (summaryResult.Success) report.Summary = summaryResult.Data!;
 
                 var incomeResult = await GetIncomeReportAsync(userId, query);
@@ -75,6 +80,7 @@ namespace UtilityHub360.Services
                     Console.WriteLine($"[FULL REPORT ERROR] Net Worth report failed: {netWorthResult.Message}");
                 }
 
+                // Conditional tasks - run sequentially
                 if (query.IncludeInsights)
                 {
                     var insightsResult = await GetFinancialInsightsAsync(userId, endDate);
@@ -105,29 +111,32 @@ namespace UtilityHub360.Services
         // FINANCIAL SUMMARY
         // ==========================================
 
-        public async Task<ApiResponse<ReportFinancialSummaryDto>> GetFinancialSummaryAsync(string userId, DateTime? date = null)
+        public async Task<ApiResponse<ReportFinancialSummaryDto>> GetFinancialSummaryAsync(string userId, ReportQueryDto query)
         {
             try
             {
-                var targetDate = date ?? DateTime.UtcNow;
-                var startOfMonth = new DateTime(targetDate.Year, targetDate.Month, 1);
-                var endOfMonth = startOfMonth.AddMonths(1).AddDays(-1);
+                var (startDate, endDate) = GetDateRange(query);
+                
+                // Get previous period for comparison
+                var (prevStartDate, prevEndDate) = GetPreviousPeriod(startDate, endDate);
 
-                // Get previous month for comparison
-                var prevMonthStart = startOfMonth.AddMonths(-1);
-                var prevMonthEnd = startOfMonth.AddDays(-1);
-
-                // Calculate current month values
-                var currentIncome = await CalculateTotalIncomeAsync(userId, startOfMonth, endOfMonth);
-                var currentExpenses = await CalculateTotalExpensesAsync(userId, startOfMonth, endOfMonth);
+                // Calculate current period values using the actual date range
+                var currentIncome = await CalculateTotalIncomeTransactionAsync(userId, startDate, endDate);
+                var currentExpenses = await CalculateTotalExpensesAsync(userId, startDate, endDate);
                 var currentSavings = await CalculateTotalSavingsAsync(userId);
                 var savingsGoal = await GetSavingsGoalAsync(userId);
                 var netWorth = await CalculateNetWorthAsync(userId);
 
-                // Calculate previous month values for comparison
-                var prevIncome = await CalculateTotalIncomeAsync(userId, prevMonthStart, prevMonthEnd);
-                var prevExpenses = await CalculateTotalExpensesAsync(userId, prevMonthStart, prevMonthEnd);
-                var prevNetWorth = await CalculateNetWorthAsync(userId, prevMonthEnd);
+                // Get disposable income from stored procedure for current period
+                var currentDisposableIncome = await CalculateDisposableIncomeAsync(userId, startDate, endDate);
+
+                // Calculate previous period values for comparison
+                var prevIncome = await CalculateTotalIncomeTransactionAsync(userId, prevStartDate, prevEndDate);
+                var prevExpenses = await CalculateTotalExpensesAsync(userId, prevStartDate, prevEndDate);
+                var prevNetWorth = await CalculateNetWorthAsync(userId, prevEndDate);
+
+                // Get disposable income from stored procedure for previous period
+                var prevDisposableIncome = await CalculateDisposableIncomeAsync(userId, prevStartDate, prevEndDate);
 
                 var summary = new ReportFinancialSummaryDto
                 {
@@ -137,11 +146,8 @@ namespace UtilityHub360.Services
                     TotalExpenses = currentExpenses,
                     ExpenseChange = CalculatePercentageChange(prevExpenses, currentExpenses),
                     
-                    DisposableIncome = currentIncome - currentExpenses,
-                    DisposableChange = CalculatePercentageChange(
-                        prevIncome - prevExpenses,
-                        currentIncome - currentExpenses
-                    ),
+                    DisposableIncome = currentDisposableIncome,
+                    DisposableChange = CalculatePercentageChange(prevDisposableIncome, currentDisposableIncome),
                     
                     TotalSavings = currentSavings,
                     SavingsGoal = savingsGoal,
@@ -157,6 +163,19 @@ namespace UtilityHub360.Services
             {
                 return ApiResponse<ReportFinancialSummaryDto>.ErrorResult($"Error getting financial summary: {ex.Message}");
             }
+        }
+
+        // Overload for backward compatibility - accepts DateTime? for dashboard/summary endpoint
+        public async Task<ApiResponse<ReportFinancialSummaryDto>> GetFinancialSummaryAsync(string userId, DateTime? date = null)
+        {
+            var targetDate = date ?? DateTime.UtcNow;
+            var query = new ReportQueryDto
+            {
+                Period = "MONTHLY",
+                StartDate = new DateTime(targetDate.Year, targetDate.Month, 1),
+                EndDate = new DateTime(targetDate.Year, targetDate.Month, 1).AddMonths(1).AddDays(-1)
+            };
+            return await GetFinancialSummaryAsync(userId, query);
         }
 
         // ==========================================
@@ -644,13 +663,13 @@ namespace UtilityHub360.Services
                 Console.WriteLine($"[NET WORTH REPORT DEBUG] UserId: {userId}, Query Period: {query.Period}");
                 Console.WriteLine($"[NET WORTH REPORT DEBUG] Date Range: {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd}");
 
-                // Calculate Assets: Bank Accounts + Savings
-                var bankAccounts = await _context.BankAccounts
-                    .Where(ba => ba.UserId == userId && ba.IsActive)
+                // Calculate Assets: Bank Accounts + Savings using stored procedure
+                var totalBalanceParam = new SqlParameter("@UserId", userId);
+                var totalBalanceResult = await _context.Database
+                    .SqlQueryRaw<decimal>("EXEC GetTotalBankAccountNetAmount @UserId", totalBalanceParam)
                     .ToListAsync();
-
-                var totalBankBalance = bankAccounts.Sum(ba => ba.CurrentBalance);
-                Console.WriteLine($"[NET WORTH REPORT DEBUG] Total Bank Accounts: {bankAccounts.Count}, Total Balance: {totalBankBalance}");
+                var totalBankBalance = totalBalanceResult.FirstOrDefault();
+                Console.WriteLine($"[NET WORTH REPORT DEBUG] Total Bank Balance (from stored procedure): {totalBankBalance}");
 
                 // Calculate Savings (from SavingsAccounts)
                 var totalSavings = await CalculateTotalSavingsAsync(userId);
@@ -742,10 +761,17 @@ namespace UtilityHub360.Services
         // BALANCE SHEET
         // ==========================================
 
-        public async Task<ApiResponse<DTOs.BalanceSheetDto>> GetBalanceSheetAsync(string userId, DateTime? asOfDate = null)
+        // Note: A Balance Sheet is an "as of" report as of a single point in time (not a range), 
+        // so there is no startDate/endDate concept here; only asOfDate is relevant.
+        // However, if you want to support a range (start/end), you would have to redesign this.
+        // For now, only 'asOfDate' is respected.
+
+        public async Task<ApiResponse<DTOs.BalanceSheetDto>> GetBalanceSheetAsync(string userId, DateTime? asOfDate = null, DateTime? startDate = null, DateTime? endDate = null)
         {
             try
             {
+                // The balance sheet reflects a snapshot at this moment; 'asOfDate' is the "when".
+                // startDate and endDate are optional parameters that can be used for filtering
                 var reportDate = asOfDate ?? DateTime.UtcNow;
 
                 // ASSETS SECTION
@@ -758,39 +784,51 @@ namespace UtilityHub360.Services
 
                 foreach (var account in bankAccounts)
                 {
-                    // Exclude credit cards from assets
                     var accountTypeLower = account.AccountType?.ToLower().Trim() ?? "";
-                    var isCreditCard = accountTypeLower == "credit_card" || 
-                                       accountTypeLower == "credit card" || 
-                                       accountTypeLower == "creditcard";
+                    var isCreditCard = accountTypeLower == "credit_card"
+                                    || accountTypeLower == "credit card"
+                                    || accountTypeLower == "creditcard";
                     
-                    if (!isCreditCard && account.CurrentBalance > 0)
+                    // Use stored procedure to get the net amount for this bank account
+                    var bankAccountIdParam = new SqlParameter("@BankAccountId", account.Id);
+                    var userIdParam = new SqlParameter("@UserId", userId);
+                    // Use DBNull.Value instead of ""
+                    var startDateParam = new SqlParameter("@StartDate", SqlDbType.DateTime2) { Value = DBNull.Value };
+                    var endDateParam = new SqlParameter("@EndDate", SqlDbType.DateTime2) { Value = DBNull.Value };
+                    var accountBalanceResult = await _context.Database
+                        .SqlQueryRaw<decimal>("EXEC GetBankAccountNetAmount @BankAccountId, @UserId, @StartDate, @EndDate"
+                        , bankAccountIdParam, userIdParam, startDateParam, endDateParam)
+                        .ToListAsync();
+                    var accountBalance = accountBalanceResult.FirstOrDefault();
+                    
+                    if (!isCreditCard && accountBalance > 0)
                     {
                         assets.CurrentAssets.Add(new DTOs.BalanceSheetItemDto
                         {
                             AccountName = account.AccountName ?? "Unnamed Account",
                             AccountType = account.AccountType ?? "Bank Account",
-                            Amount = account.CurrentBalance,
+                            Amount = accountBalance,
                             Description = $"{account.AccountType} - {account.AccountName}",
                             ReferenceId = account.Id
                         });
                     }
                 }
 
-                // Current Assets: Savings Accounts
+                // Savings Accounts (calculate balance as of asOfDate)
                 var savingsAccounts = await _context.SavingsAccounts
                     .Where(sa => sa.UserId == userId)
                     .ToListAsync();
 
                 foreach (var savingsAccount in savingsAccounts)
                 {
-                    // Calculate savings balance from transactions
+                    // Sum only savings transactions up to asOfDate
                     var savingsTransactions = await _context.SavingsTransactions
-                        .Where(st => st.SavingsAccountId == savingsAccount.Id)
+                        .Where(st => st.SavingsAccountId == savingsAccount.Id && st.TransactionDate <= reportDate)
                         .ToListAsync();
 
-                    var savingsBalance = savingsTransactions.Sum(st => 
-                        st.TransactionType == "DEPOSIT" ? st.Amount : -st.Amount);
+                    var savingsBalance = savingsTransactions.Sum(st =>
+                        st.TransactionType == "DEPOSIT" ? st.Amount : -st.Amount
+                    );
 
                     if (savingsBalance > 0)
                     {
@@ -807,54 +845,109 @@ namespace UtilityHub360.Services
 
                 assets.TotalCurrentAssets = assets.CurrentAssets.Sum(a => a.Amount);
 
-                // Fixed Assets: None for personal finance (could add property, vehicles, etc. in future)
-                assets.TotalFixedAssets = 0;
+                // Fixed Assets: Include real estate investments AS OF asOfDate
+                var realEstateInvestments = await _context.Investments
+                    .Where(i => i.UserId == userId &&
+                                !i.IsDeleted &&
+                                i.IsActive &&
+                                i.InvestmentType == "REAL_ESTATE" &&
+                                i.CurrentValue > 0)
+                    .ToListAsync();
 
-                // Other Assets: None for now
-                assets.TotalOtherAssets = 0;
+                foreach (var investment in realEstateInvestments)
+                {
+                    assets.FixedAssets.Add(new DTOs.BalanceSheetItemDto
+                    {
+                        AccountName = investment.AccountName ?? "Unnamed Property",
+                        AccountType = "Property",
+                        Amount = investment.CurrentValue,
+                        Description = $"Property - {investment.AccountName}",
+                        ReferenceId = investment.Id
+                    });
+                }
+
+                assets.TotalFixedAssets = assets.FixedAssets.Sum(a => a.Amount);
+
+                // Other Assets: Non-real-estate investments AS OF asOfDate
+                var otherInvestments = await _context.Investments
+                    .Where(i => i.UserId == userId &&
+                                !i.IsDeleted &&
+                                i.IsActive &&
+                                i.InvestmentType != "REAL_ESTATE" &&
+                                i.CurrentValue > 0)
+                    .ToListAsync();
+
+                foreach (var investment in otherInvestments)
+                {
+                    assets.OtherAssets.Add(new DTOs.BalanceSheetItemDto
+                    {
+                        AccountName = investment.AccountName ?? "Unnamed Investment",
+                        AccountType = investment.InvestmentType ?? "Investment",
+                        Amount = investment.CurrentValue,
+                        Description = $"{investment.InvestmentType} - {investment.AccountName}",
+                        ReferenceId = investment.Id
+                    });
+                }
+
+                assets.TotalOtherAssets = assets.OtherAssets.Sum(a => a.Amount);
 
                 // LIABILITIES SECTION
                 var liabilities = new DTOs.LiabilitiesSectionDto();
 
-                // Current Liabilities: Credit Card Balances
+                // Credit Card balances (as liabilities)
                 foreach (var account in bankAccounts)
                 {
                     var accountTypeLower = account.AccountType?.ToLower().Trim() ?? "";
-                    var isCreditCard = accountTypeLower == "credit_card" || 
-                                       accountTypeLower == "credit card" || 
-                                       accountTypeLower == "creditcard";
+                    var isCreditCard = accountTypeLower == "credit_card"
+                                    || accountTypeLower == "credit card"
+                                    || accountTypeLower == "creditcard";
                     
-                    if (isCreditCard && account.CurrentBalance > 0)
+                    if (isCreditCard)
                     {
-                        liabilities.CurrentLiabilities.Add(new DTOs.BalanceSheetItemDto
+                        // Use stored procedure to get the net amount for this credit card account
+                        var bankAccountIdParam = new SqlParameter("@BankAccountId", account.Id);
+                        var userIdParam = new SqlParameter("@UserId", userId);
+                        var startDateParam = new SqlParameter("@StartDate", startDate.HasValue ? (object)startDate.Value : DBNull.Value);
+                        var endDateParam = new SqlParameter("@EndDate", endDate.HasValue ? (object)endDate.Value : DBNull.Value);
+                        var accountBalanceResult = await _context.Database
+                            .SqlQueryRaw<decimal>("EXEC GetBankAccountNetAmount @BankAccountId, @UserId, @StartDate, @EndDate", 
+                            bankAccountIdParam, userIdParam, startDateParam, endDateParam)
+                            .ToListAsync();
+                        var accountBalance = accountBalanceResult.FirstOrDefault();
+                        
+                        if (accountBalance > 0)
                         {
-                            AccountName = account.AccountName ?? "Unnamed Credit Card",
-                            AccountType = "Credit Card",
-                            Amount = account.CurrentBalance,
-                            Description = $"Credit Card - {account.AccountName} (Outstanding Balance)",
-                            ReferenceId = account.Id
-                        });
+                            liabilities.CurrentLiabilities.Add(new DTOs.BalanceSheetItemDto
+                            {
+                                AccountName = account.AccountName ?? "Unnamed Credit Card",
+                                AccountType = "Credit Card",
+                                Amount = accountBalance,
+                                Description = $"Credit Card - {account.AccountName} (Outstanding Balance)",
+                                ReferenceId = account.Id
+                            });
+                        }
                     }
                 }
 
-                // Current Liabilities: Overdue Bills Only
-                // Only include bills that are past their due date as liabilities
-                // Future bills are not yet obligations and should not appear as liabilities
-                var overdueBills = await _context.Bills
-                    .Where(b => b.UserId == userId && 
-                               b.Status != null && 
-                               b.Status.ToUpper() != "PAID" &&
-                               b.DueDate <= reportDate)
+                // Unpaid bills due on/before asOfDate
+                var reportDateEndOfDay = reportDate.Date.AddDays(1).AddTicks(-1);
+                var unpaidBills = await _context.Bills
+                    .Where(b => b.UserId == userId &&
+                                b.Status != null &&
+                                b.Status.ToUpper() != "PAID" &&
+                                !b.IsDeleted &&
+                                b.DueDate <= reportDateEndOfDay)
                     .ToListAsync();
 
-                foreach (var bill in overdueBills)
+                foreach (var bill in unpaidBills)
                 {
+                    var billStatus = bill.DueDate <= reportDate ? "Overdue" : "Pending";
                     liabilities.CurrentLiabilities.Add(new DTOs.BalanceSheetItemDto
                     {
                         AccountName = bill.Provider ?? "Unnamed Bill",
                         AccountType = bill.BillType ?? "Bill",
                         Amount = bill.Amount,
-                        Description = $"{bill.BillType} - {bill.Provider} (Overdue)",
+                        Description = $"{bill.BillType} - {bill.Provider} ({billStatus}, Due: {bill.DueDate:MMM dd, yyyy})",
                         ReferenceId = bill.Id
                     });
                 }
@@ -864,9 +957,9 @@ namespace UtilityHub360.Services
                 // Long-term Liabilities: Active Loans
                 var activeLoans = await _context.Loans
                     .Where(l => l.UserId == userId &&
-                               !string.IsNullOrWhiteSpace(l.Status) &&
-                               l.Status.Trim().ToUpper() != "REJECTED" && 
-                               l.Status.Trim().ToUpper() != "COMPLETED")
+                                !string.IsNullOrWhiteSpace(l.Status) &&
+                                l.Status.Trim().ToUpper() != "REJECTED" &&
+                                l.Status.Trim().ToUpper() != "COMPLETED")
                     .ToListAsync();
 
                 foreach (var loan in activeLoans)
@@ -886,43 +979,33 @@ namespace UtilityHub360.Services
                 // EQUITY SECTION
                 var equity = new DTOs.EquitySectionDto();
 
-                // Calculate total assets and liabilities for equity calculation
                 var totalAssets = assets.TotalAssets;
                 var totalLiabilities = liabilities.TotalLiabilities;
 
-                // Owner's Capital: Initial capital (could be from user profile or first transaction)
-                // For now, we'll calculate it as: Assets - Liabilities - Retained Earnings
-                // Retained Earnings = Net Income (Income - Expenses) over time
-                
-                // Calculate net income (simplified - from income sources and expenses)
+                // Owner's Capital: No official startDate/endDate. 
+                // For equity, use income/expense activity up to asOfDate.
                 var incomeSources = await _context.IncomeSources
                     .Where(i => i.UserId == userId && i.IsActive)
                     .ToListAsync();
 
                 var totalIncome = incomeSources.Sum(i => i.Amount);
 
-                // Calculate expenses from transactions
                 var expenseTransactions = await _context.Payments
-                    .Where(p => p.UserId == userId && 
-                               p.TransactionType == "DEBIT" &&
-                               p.TransactionDate <= reportDate)
+                    .Where(p => p.UserId == userId
+                             && p.TransactionType == "DEBIT"
+                             && p.TransactionDate <= reportDate)
                     .SumAsync(p => p.Amount);
 
                 var netIncome = totalIncome - expenseTransactions;
-
-                // Retained Earnings = Net Income (simplified)
                 equity.RetainedEarnings = netIncome > 0 ? netIncome : 0;
 
-                // Owner's Capital = Total Assets - Total Liabilities - Retained Earnings
                 equity.OwnersCapital = totalAssets - totalLiabilities - equity.RetainedEarnings;
                 if (equity.OwnersCapital < 0)
                 {
-                    // If negative, it means we have negative equity (debt exceeds assets)
                     equity.OwnersCapital = 0;
                     equity.RetainedEarnings = totalAssets - totalLiabilities;
                 }
 
-                // Build Balance Sheet
                 var balanceSheet = new DTOs.BalanceSheetDto
                 {
                     AsOfDate = reportDate,
@@ -973,29 +1056,50 @@ namespace UtilityHub360.Services
                     .Where(ba => ba.UserId == userId && ba.IsActive)
                     .ToListAsync();
 
-                // Calculate beginning balance by looking at transactions before period start
+                // Calculate beginning balance from BankStatements
                 var beginningBalance = 0m;
                 foreach (var account in bankAccounts)
                 {
-                    // Get balance at period start by calculating from transactions
-                    var transactionsBefore = await _context.Payments
-                        .Where(p => p.BankAccountId == account.Id && 
-                                   p.TransactionDate < periodStart)
-                        .ToListAsync();
+                    // Get bank statements where StatementStartDate falls within the period
+                    var relevantStatement = await _context.BankStatements
+                        .Where(bs => bs.BankAccountId == account.Id &&
+                                    bs.UserId == userId &&
+                                    bs.StatementStartDate >= periodStart &&
+                                    bs.StatementStartDate <= periodEnd)
+                        .OrderBy(bs => bs.StatementStartDate)
+                        .FirstOrDefaultAsync();
                     
-                    var accountBalance = account.CurrentBalance;
-                    // Adjust for transactions during period to get beginning balance
-                    var transactionsDuring = await _context.Payments
-                        .Where(p => p.BankAccountId == account.Id && 
-                                   p.TransactionDate.HasValue &&
-                                   p.TransactionDate >= periodStart && 
-                                   p.TransactionDate <= periodEnd)
-                        .ToListAsync();
-                    
-                    var netDuringPeriod = transactionsDuring.Sum(t => 
-                        t.TransactionType == "CREDIT" ? t.Amount : -t.Amount);
-                    
-                    beginningBalance += accountBalance - netDuringPeriod;
+                    if (relevantStatement != null)
+                    {
+                        // Use the opening balance from the statement that starts in this period
+                        beginningBalance += Math.Abs(relevantStatement.OpeningBalance);
+                    }
+                    else
+                    {
+                        // Fallback: If no bank statement exists, calculate from stored procedure
+                        var bankAccountIdParam = new SqlParameter("@BankAccountId", account.Id);
+                        var userIdParam = new SqlParameter("@UserId", userId);
+                        var startDateParam = new SqlParameter("@StartDate", periodStart);
+                        var endDateParam = new SqlParameter("@EndDate", periodEnd);
+                        var accountBalanceResult = await _context.Database
+                            .SqlQueryRaw<decimal>("EXEC GetBankAccountNetAmount @BankAccountId, @UserId, @StartDate, @EndDate", 
+                            bankAccountIdParam, userIdParam, startDateParam, endDateParam)
+                            .ToListAsync();
+                        var accountBalance = accountBalanceResult.FirstOrDefault();
+                        
+                        // Adjust for transactions during period to get beginning balance
+                        var transactionsDuring = await _context.Payments
+                            .Where(p => p.BankAccountId == account.Id && 
+                                       p.TransactionDate.HasValue &&
+                                       p.TransactionDate >= periodStart && 
+                                       p.TransactionDate <= periodEnd)
+                            .ToListAsync();
+                        
+                        var netDuringPeriod = transactionsDuring.Sum(t => 
+                            t.TransactionType == "CREDIT" ? t.Amount : -t.Amount);
+                        
+                        beginningBalance += Math.Abs(accountBalance - netDuringPeriod);
+                    }
                 }
 
                 // OPERATING ACTIVITIES
@@ -1220,8 +1324,37 @@ namespace UtilityHub360.Services
                     ReferenceType = "LOAN"
                 }));
 
-                // Calculate ending cash balance
-                var endingBalance = bankAccounts.Sum(ba => ba.CurrentBalance);
+                // Calculate ending cash balance from BankStatements
+                var endingBalance = 0m;
+                foreach (var account in bankAccounts)
+                {
+                    // Get sum of closing balances from bank statements where StatementStartDate falls within the period
+                    var closingBalanceSum = await _context.BankStatements
+                        .Where(bs => bs.BankAccountId == account.Id &&
+                                    bs.UserId == userId &&
+                                    bs.StatementStartDate >= periodStart &&
+                                    bs.StatementStartDate <= periodEnd)
+                        .SumAsync(bs => bs.ClosingBalance);
+                    
+                    if (closingBalanceSum != 0)
+                    {
+                        // Use the sum of closing balances from statements
+                        endingBalance += Math.Abs(closingBalanceSum);
+                    }
+                    else
+                    {
+                        // Fallback: If no bank statement exists, calculate from stored procedure
+                        var bankAccountIdParam = new SqlParameter("@BankAccountId", account.Id);
+                        var userIdParam = new SqlParameter("@UserId", userId);
+                        var startDateParam = new SqlParameter("@StartDate", periodStart);
+                        var endDateParam = new SqlParameter("@EndDate", periodEnd);
+                        var accountBalanceResult = await _context.Database
+                            .SqlQueryRaw<decimal>("EXEC GetBankAccountNetAmount @BankAccountId, @UserId, @StartDate, @EndDate",
+                            bankAccountIdParam, userIdParam, startDateParam, endDateParam)
+                            .ToListAsync();
+                        endingBalance += Math.Abs(accountBalanceResult.FirstOrDefault());
+                    }
+                }
 
                 // Build Cash Flow Statement
                 var cashFlowStatement = new DTOs.CashFlowStatementDto
@@ -1254,8 +1387,14 @@ namespace UtilityHub360.Services
             {
                 // Determine date range
                 DateTime periodStart, periodEnd;
-                
-                if (startDate.HasValue && endDate.HasValue)
+
+                //Start date and End Date (from date picker) and period is CUSTOM (Select Period)
+                if (startDate.HasValue && endDate.HasValue && period?.ToUpper() == "CUSTOM")
+                {
+                    periodStart = startDate.Value;
+                    periodEnd = endDate.Value;
+                }
+                else if (startDate.HasValue && endDate.HasValue)
                 {
                     periodStart = startDate.Value;
                     periodEnd = endDate.Value;
@@ -1263,75 +1402,135 @@ namespace UtilityHub360.Services
                 else
                 {
                     var now = DateTime.UtcNow;
-                    periodStart = new DateTime(now.Year, now.Month, 1);
-                    
-                    periodEnd = period.ToUpper() switch
+
+                    // Calculate period based on selected period type
+                    switch (period?.ToUpper() ?? "")
                     {
-                        "QUARTERLY" => periodStart.AddMonths(3).AddDays(-1),
-                        "YEARLY" => periodStart.AddYears(1).AddDays(-1),
-                        _ => periodStart.AddMonths(1).AddDays(-1) // MONTHLY
-                    };
+                        case "YEARLY":
+                            // Full calendar year (Jan 1 to Dec 31)
+                            periodStart = new DateTime(now.Year, 1, 1);
+                            periodEnd = new DateTime(now.Year, 12, 31);
+                            break;
+                        case "QUARTERLY":
+                            // Current quarter
+                            var currentQuarter = (now.Month - 1) / 3;
+                            periodStart = new DateTime(now.Year, currentQuarter * 3 + 1, 1);
+                            periodEnd = periodStart.AddMonths(3).AddDays(-1);
+                            break;
+                        default: // MONTHLY
+                            periodStart = new DateTime(now.Year, now.Month, 1);
+                            periodEnd = periodStart.AddMonths(1).AddDays(-1);
+                            break;
+                    }
                 }
 
-                // REVENUE SECTION
+                // REVENUE SECTION - Calculate from actual bank transactions (CREDIT/deposits)
                 var revenue = new DTOs.RevenueSectionDto();
 
-                // Get income sources
-                var incomeSources = await _context.IncomeSources
-                    .Where(i => i.UserId == userId && i.IsActive)
+                // DEBUG: Log the period being used
+                Console.WriteLine($"[IncomeStatement] Period: {period}, Start: {periodStart:yyyy-MM-dd}, End: {periodEnd:yyyy-MM-dd}");
+
+                // Get all CREDIT transactions (deposits/income) for the period from Payments table
+                var creditTransactions = await _context.Payments
+                    .Where(p => p.UserId == userId &&
+                               p.IsBankTransaction &&
+                               p.TransactionType == "CREDIT" &&
+                               p.TransactionDate.HasValue &&
+                               p.TransactionDate >= periodStart &&
+                               p.TransactionDate <= periodEnd &&
+                               !p.IsDeleted)
                     .ToListAsync();
-                
-                // Filter out deleted income sources in memory (IsDeleted may not be mapped)
-                incomeSources = incomeSources.Where(i => !i.IsDeleted).ToList();
 
-                // Calculate period income based on frequency
-                var monthsInPeriod = CalculateMonthsInPeriod(periodStart, periodEnd);
-                
-                foreach (var income in incomeSources)
+                // DEBUG: Log transaction count
+                Console.WriteLine($"[IncomeStatement] Found {creditTransactions.Count} CREDIT transactions");
+
+                // Get user's transaction categories to determine income types
+                var userCategories = await _context.TransactionCategories
+                    .Where(c => c.UserId == userId && !c.IsDeleted)
+                    .ToDictionaryAsync(c => c.Name.ToUpper(), c => c.Type?.ToUpper() ?? "OTHER");
+
+                // Income category keywords for classification
+                var salaryKeywords = new[] { "SALARY", "WAGE", "PAYCHECK", "PAYROLL", "COMPENSATION" };
+                var businessKeywords = new[] { "BUSINESS", "REVENUE", "SALES", "CLIENT", "INVOICE" };
+                var freelanceKeywords = new[] { "FREELANCE", "CONTRACT", "GIG", "SIDE_HUSTLE", "CONSULTING" };
+                var investmentKeywords = new[] { "INVESTMENT", "DIVIDEND", "STOCK", "MUTUAL FUND", "ETF" };
+                var interestKeywords = new[] { "INTEREST", "YIELD", "APY" };
+                var rentalKeywords = new[] { "RENTAL", "RENT", "LEASE", "PROPERTY" };
+                var transferKeywords = new[] { "TRANSFER", "DEPOSIT", "REFUND" };
+
+                foreach (var transaction in creditTransactions)
                 {
-                    var periodAmount = CalculatePeriodIncomeAmount(income, periodStart, periodEnd, monthsInPeriod);
-                    var category = income.Category?.ToUpper() ?? "OTHER";
-                    var name = income.Name?.ToUpper() ?? "";
+                    // Skip bill payments - they should never be in revenue (safeguard)
+                    if (transaction.BillId != null)
+                    {
+                        continue;
+                    }
 
-                    // Categorize income
-                    if (category.Contains("PRIMARY") || name.Contains("SALARY") || name.Contains("WAGE"))
+                    var amount = transaction.Amount;
+                    var category = transaction.Category?.ToUpper() ?? "";
+                    var description = transaction.Description?.ToUpper() ?? "";
+                    var merchant = transaction.Merchant?.ToUpper() ?? "";
+                    
+                    // Check if category is marked as INCOME type in TransactionCategories
+                    var categoryType = userCategories.GetValueOrDefault(category, "OTHER");
+                    var isIncomeCategory = categoryType == "INCOME";
+                    var isSavingsCategory = categoryType == "SAVINGS";
+                    var isTransferCategory = categoryType == "TRANSFER";
+
+                    // Classify based on category type and keywords
+                    if (salaryKeywords.Any(k => category.Contains(k) || description.Contains(k) || merchant.Contains(k)))
                     {
-                        revenue.SalaryIncome += periodAmount;
+                        revenue.SalaryIncome += amount;
                     }
-                    else if (category.Contains("BUSINESS"))
+                    else if (businessKeywords.Any(k => category.Contains(k) || description.Contains(k)))
                     {
-                        revenue.BusinessIncome += periodAmount;
+                        revenue.BusinessIncome += amount;
                     }
-                    else if (category.Contains("SIDE_HUSTLE") || name.Contains("FREELANCE") || name.Contains("CONTRACT"))
+                    else if (freelanceKeywords.Any(k => category.Contains(k) || description.Contains(k)))
                     {
-                        revenue.FreelanceIncome += periodAmount;
+                        revenue.FreelanceIncome += amount;
                     }
-                    else if (category.Contains("INVESTMENT") || category.Contains("DIVIDEND"))
+                    else if (investmentKeywords.Any(k => category.Contains(k) || description.Contains(k)))
                     {
-                        revenue.InvestmentIncome += periodAmount;
-                        revenue.DividendIncome += periodAmount;
+                        revenue.InvestmentIncome += amount;
+                        if (category.Contains("DIVIDEND") || description.Contains("DIVIDEND"))
+                        {
+                            revenue.DividendIncome += amount;
+                        }
                     }
-                    else if (category.Contains("INTEREST"))
+                    else if (interestKeywords.Any(k => category.Contains(k) || description.Contains(k)))
                     {
-                        revenue.InterestIncome += periodAmount;
+                        revenue.InterestIncome += amount;
                     }
-                    else if (category.Contains("RENTAL") || category.Contains("RENT"))
+                    else if (rentalKeywords.Any(k => category.Contains(k) || description.Contains(k)))
                     {
-                        revenue.RentalIncome += periodAmount;
+                        revenue.RentalIncome += amount;
+                    }
+                    else if (isIncomeCategory)
+                    {
+                        // Generic income category - add to other operating revenue
+                        revenue.OtherOperatingRevenue += amount;
+                    }
+                    else if (isSavingsCategory || isTransferCategory || 
+                             transferKeywords.Any(k => category.Contains(k) || description.Contains(k)))
+                    {
+                        // Savings deposits and transfers - add to other income
+                        revenue.OtherIncome += amount;
                     }
                     else
                     {
-                        revenue.OtherOperatingRevenue += periodAmount;
+                        // Uncategorized credit - add to other operating revenue
+                        revenue.OtherOperatingRevenue += amount;
                     }
 
                     revenue.RevenueItems.Add(new DTOs.IncomeStatementItemDto
                     {
-                        AccountName = income.Name,
-                        Category = income.Category ?? "OTHER",
-                        Amount = periodAmount,
-                        Description = income.Description,
-                        ReferenceId = income.Id,
-                        ReferenceType = "INCOME_SOURCE"
+                        AccountName = transaction.Merchant ?? transaction.Description ?? "Income",
+                        Category = transaction.Category ?? "OTHER",
+                        Amount = amount,
+                        Description = $"{transaction.Description} ({transaction.TransactionDate:MMM dd, yyyy})",
+                        ReferenceId = transaction.Id,
+                        ReferenceType = "PAYMENT"
                     });
                 }
 
@@ -1340,139 +1539,224 @@ namespace UtilityHub360.Services
                 revenue.TotalOtherRevenue = revenue.InvestmentIncome + revenue.InterestIncome + 
                                           revenue.RentalIncome + revenue.DividendIncome + revenue.OtherIncome;
 
-                // EXPENSES SECTION
+                // EXPENSES SECTION - Calculate from actual bank transactions (DEBIT/withdrawals)
                 var expenses = new DTOs.ExpensesSectionDto();
 
-                // Get bills
-                var bills = await _context.Bills
-                    .Where(b => b.UserId == userId &&
-                               b.DueDate >= periodStart && b.DueDate <= periodEnd)
+                // Get all DEBIT transactions (expenses/withdrawals) for the period from Payments table
+                var debitTransactions = await _context.Payments
+                    .Where(p => p.UserId == userId &&
+                               p.IsBankTransaction &&
+                               p.TransactionType == "DEBIT" &&
+                               p.TransactionDate.HasValue &&
+                               p.TransactionDate >= periodStart &&
+                               p.TransactionDate <= periodEnd &&
+                               !p.IsDeleted)
                     .ToListAsync();
-                
-                // Filter out deleted bills in memory (IsDeleted may not be mapped)
-                bills = bills.Where(b => !b.IsDeleted).ToList();
 
-                foreach (var bill in bills)
+                // Get user's categories (including system-seeded ones) that are expense types
+                var expenseCategories = await _context.TransactionCategories
+                    .Where(c => c.UserId == userId && !c.IsDeleted &&
+                               (c.Type == "EXPENSE" || c.Type == "BILL"))
+                    .ToDictionaryAsync(c => c.Name.ToUpper(), c => c);
+
+                // Group transactions by their category and calculate totals
+                var categoryTotals = new Dictionary<string, decimal>();
+
+                foreach (var transaction in debitTransactions)
                 {
-                    var billType = bill.BillType?.ToUpper() ?? "";
-                    var amount = bill.Amount;
+                    var amount = transaction.Amount;
+                    var category = transaction.Category?.ToUpper() ?? "";
 
-                    if (billType.Contains("UTILITY") || billType.Contains("ELECTRIC") || 
-                        billType.Contains("WATER") || billType.Contains("GAS"))
+                    // Skip non-expense transactions - Payment table has specific foreign keys for different types
+                    if (transaction.SavingsAccountId != null || transaction.LoanId != null)
                     {
-                        expenses.UtilitiesExpense += amount;
+                        continue;
                     }
-                    else if (billType.Contains("INSURANCE"))
+
+                    // If transaction is linked to a bill, treat it as BILL_PAYMENT category
+                    if (transaction.BillId != null)
                     {
-                        expenses.InsuranceExpense += amount;
+                        category = "BILL_PAYMENT";
                     }
-                    else if (billType.Contains("SUBSCRIPTION"))
+
+                    // Group by category if it exists in user's categories or create "OTHER" for uncategorized
+                    var displayCategory = "OTHER";
+                    if (transaction.BillId != null)
                     {
-                        expenses.SubscriptionExpense += amount;
+                        displayCategory = "BILL_PAYMENT"; // Force BILL_PAYMENT for bill transactions
                     }
-                    else
+                    else if (expenseCategories.ContainsKey(category))
                     {
-                        expenses.OtherOperatingExpenses += amount;
+                        displayCategory = expenseCategories[category].Name; // Use original case
                     }
+                    else if (!string.IsNullOrEmpty(transaction.Category))
+                    {
+                        displayCategory = transaction.Category; // Use transaction's category if not in user's list
+                    }
+
+                    if (!categoryTotals.ContainsKey(displayCategory))
+                    {
+                        categoryTotals[displayCategory] = 0;
+                    }
+                    categoryTotals[displayCategory] += amount;
 
                     expenses.ExpenseItems.Add(new DTOs.IncomeStatementItemDto
                     {
-                        AccountName = bill.Provider ?? "Bill",
-                        Category = bill.BillType ?? "OTHER",
+                        AccountName = transaction.Merchant ?? transaction.Description ?? "Expense",
+                        Category = transaction.Category ?? "OTHER",
                         Amount = amount,
-                        Description = $"{bill.BillType} - {bill.Provider}",
-                        ReferenceId = bill.Id,
-                        ReferenceType = "BILL"
+                        Description = $"{transaction.Description} ({transaction.TransactionDate:MMM dd, yyyy})",
+                        ReferenceId = transaction.Id,
+                        ReferenceType = "PAYMENT"
                     });
                 }
 
-                // Get variable expenses
-                var variableExpenses = await _context.VariableExpenses
-                    .Where(v => v.UserId == userId &&
-                               v.ExpenseDate >= periodStart && v.ExpenseDate <= periodEnd)
-                    .ToListAsync();
-                
-                // Filter out deleted variable expenses in memory (IsDeleted may not be mapped)
-                variableExpenses = variableExpenses.Where(v => !v.IsDeleted).ToList();
-
-                foreach (var expense in variableExpenses)
+                // Map category totals to the standard expense buckets or add to Other Operating
+                foreach (var categoryTotal in categoryTotals)
                 {
-                    var category = expense.Category?.ToUpper() ?? "";
-                    var amount = expense.Amount;
+                    var categoryName = categoryTotal.Key.ToUpper();
+                    var amount = categoryTotal.Value;
 
-                    if (category.Contains("FOOD") || category.Contains("GROCERIES") || category.Contains("RESTAURANT"))
+                    // Check if this category should map to a standard expense bucket
+                    // Map BILL_PAYMENT to Utilities
+                    if (categoryName.Contains("BILL_PAYMENT") || categoryName == "BILL_PAYMENT" || 
+                        (categoryName.Contains("BILL") && categoryName.Contains("PAYMENT")))
+                    {
+                        expenses.UtilitiesExpense += amount;
+                    }
+                    else if (categoryName.Contains("UTILIT") || categoryName == "UTILITIES")
+                    {
+                        expenses.UtilitiesExpense += amount;
+                    }
+                    else if (categoryName.Contains("RENT") || categoryName == "RENT")
+                    {
+                        expenses.RentExpense += amount;
+                    }
+                    else if (categoryName.Contains("INSURANCE") || categoryName == "INSURANCE")
+                    {
+                        expenses.InsuranceExpense += amount;
+                    }
+                    else if (categoryName.Contains("SUBSCRIP") || categoryName == "SUBSCRIPTIONS")
+                    {
+                        expenses.SubscriptionExpense += amount;
+                    }
+                    else if (categoryName.Contains("FOOD") || categoryName == "FOOD" ||
+                             categoryName.Contains("GROCER") || categoryName == "GROCERIES" ||
+                             categoryName.Contains("RESTAURANT") || categoryName == "RESTAURANTS")
                     {
                         expenses.FoodExpense += amount;
                     }
-                    else if (category.Contains("TRANSPORT") || category.Contains("GAS") || category.Contains("TAXI"))
+                    else if (categoryName.Contains("TRANSPORT") || categoryName == "TRANSPORTATION" ||
+                             categoryName.Contains("GAS") || categoryName == "GAS")
                     {
                         expenses.TransportationExpense += amount;
                     }
-                    else if (category.Contains("HEALTH") || category.Contains("MEDICAL") || category.Contains("DOCTOR"))
+                    else if (categoryName.Contains("HEALTH") || categoryName == "HEALTHCARE")
                     {
                         expenses.HealthcareExpense += amount;
                     }
-                    else if (category.Contains("EDUCATION") || category.Contains("COURSE"))
+                    else if (categoryName.Contains("EDUCATION") || categoryName == "EDUCATION")
                     {
                         expenses.EducationExpense += amount;
                     }
-                    else if (category.Contains("ENTERTAINMENT") || category.Contains("MOVIE") || category.Contains("GAME"))
+                    else if (categoryName.Contains("ENTERTAINMENT") || categoryName == "ENTERTAINMENT" ||
+                             categoryName.Contains("SHOPPING") || categoryName == "SHOPPING")
                     {
                         expenses.EntertainmentExpense += amount;
                     }
                     else
                     {
+                        // For categories not mapping to standard buckets, add to Other Operating
                         expenses.OtherOperatingExpenses += amount;
                     }
-
-                    expenses.ExpenseItems.Add(new DTOs.IncomeStatementItemDto
-                    {
-                        AccountName = expense.Category ?? "Expense",
-                        Category = expense.Category ?? "OTHER",
-                        Amount = amount,
-                        Description = expense.Description,
-                        ReferenceId = expense.Id,
-                        ReferenceType = "VARIABLE_EXPENSE"
-                    });
                 }
 
-                // Get loan interest payments
-                var loanPayments = await _context.Payments
+                // Include unpaid bills in expenses calculation
+                // Get all unpaid bills (PENDING status) with due dates within the period
+                // Exclude bills that have already been paid (to avoid double counting with DEBIT transactions)
+                var paidBillIds = await _context.Payments
                     .Where(p => p.UserId == userId &&
-                               p.TransactionType == "DEBIT" &&
+                               p.BillId != null &&
                                p.TransactionDate.HasValue &&
                                p.TransactionDate >= periodStart &&
                                p.TransactionDate <= periodEnd &&
-                               p.LoanId != null)
+                               !p.IsDeleted)
+                    .Select(p => p.BillId)
+                    .Distinct()
                     .ToListAsync();
 
-                foreach (var payment in loanPayments)
-                {
-                    // Get interest portion from journal entries
-                    var journalEntries = await _context.JournalEntries
-                        .Include(je => je.JournalEntryLines)
-                        .Where(je => je.Reference == payment.Id.ToString() || 
-                                    (je.LoanId != null && je.LoanId == payment.LoanId &&
-                                     je.EntryDate >= periodStart && je.EntryDate <= periodEnd))
-                        .ToListAsync();
+                var unpaidBills = await _context.Bills
+                    .Where(b => b.UserId == userId &&
+                               b.Status == "PENDING" &&
+                               b.DueDate >= periodStart &&
+                               b.DueDate <= periodEnd &&
+                               !b.IsDeleted &&
+                               !paidBillIds.Contains(b.Id))
+                    .ToListAsync();
 
-                    foreach (var entry in journalEntries)
+                // Process each unpaid bill and add to expenses
+                foreach (var bill in unpaidBills)
+                {
+                    var amount = bill.Amount;
+                    var billType = bill.BillType?.ToUpper() ?? "";
+                    var billName = bill.BillName ?? "Unpaid Bill";
+
+                    // Add to ExpenseItems for display
+                    expenses.ExpenseItems.Add(new DTOs.IncomeStatementItemDto
                     {
-                        var interestLine = entry.JournalEntryLines
-                            .FirstOrDefault(jel => jel.AccountName.Contains("Interest", StringComparison.OrdinalIgnoreCase));
-                        if (interestLine != null && interestLine.EntrySide == "DEBIT")
-                        {
-                            expenses.InterestExpense += interestLine.Amount;
-                        }
+                        AccountName = bill.Provider ?? billName,
+                        Category = bill.BillType ?? "BILL",
+                        Amount = amount,
+                        Description = $"{billName} (Due: {bill.DueDate:MMM dd, yyyy}) - Unpaid",
+                        ReferenceId = bill.Id,
+                        ReferenceType = "BILL"
+                    });
+
+                    // Map bill type to appropriate expense category
+                    if (billType.Contains("UTILIT") || billType == "UTILITY" || billType == "UTILITIES")
+                    {
+                        expenses.UtilitiesExpense += amount;
+                    }
+                    else if (billType.Contains("RENT") || billType == "RENT")
+                    {
+                        expenses.RentExpense += amount;
+                    }
+                    else if (billType.Contains("INSURANCE") || billType == "INSURANCE")
+                    {
+                        expenses.InsuranceExpense += amount;
+                    }
+                    else if (billType.Contains("SUBSCRIP") || billType == "SUBSCRIPTION" || billType == "SUBSCRIPTIONS")
+                    {
+                        expenses.SubscriptionExpense += amount;
+                    }
+                    else if (billType.Contains("LOAN") || billType == "LOAN")
+                    {
+                        // Loan bills could be interest or principal - add to loan fees for now
+                        expenses.LoanFeesExpense += amount;
+                    }
+                    else if (billType.Contains("HEALTH") || billType == "HEALTHCARE")
+                    {
+                        expenses.HealthcareExpense += amount;
+                    }
+                    else if (billType.Contains("EDUCATION") || billType == "EDUCATION")
+                    {
+                        expenses.EducationExpense += amount;
+                    }
+                    else
+                    {
+                        // For other bill types, add to Other Operating Expenses
+                        expenses.OtherOperatingExpenses += amount;
                     }
                 }
 
+                // Recalculate totals after including unpaid bills
                 expenses.TotalOperatingExpenses = expenses.UtilitiesExpense + expenses.RentExpense +
                                                  expenses.InsuranceExpense + expenses.SubscriptionExpense +
                                                  expenses.FoodExpense + expenses.TransportationExpense +
                                                  expenses.HealthcareExpense + expenses.EducationExpense +
                                                  expenses.EntertainmentExpense + expenses.OtherOperatingExpenses;
                 expenses.TotalFinancialExpenses = expenses.InterestExpense + expenses.LoanFeesExpense;
+                // Note: TotalExpenses is a computed property that automatically sums TotalOperatingExpenses + TotalFinancialExpenses
 
                 // COMPARISON (if requested)
                 DTOs.IncomeStatementComparisonDto? comparison = null;
@@ -2167,7 +2451,7 @@ namespace UtilityHub360.Services
                 };
 
                 // Generate all report sections
-                var summaryResult = await GetFinancialSummaryAsync(userId, endDate);
+                var summaryResult = await GetFinancialSummaryAsync(userId, query);
                 if (summaryResult.Success) report.Summary = summaryResult.Data!;
 
                 var incomeResult = await GetIncomeReportAsync(userId, query);
@@ -2271,21 +2555,73 @@ namespace UtilityHub360.Services
             return incomeSources.Sum(i => i.MonthlyAmount);
         }
 
+        private async Task<decimal> CalculateTotalIncomeTransactionAsync(string userId, DateTime startDate, DateTime endDate)
+        {
+            try
+            {
+                // Use stored procedure to calculate total expenses from Payments table
+                var userIdParam = new SqlParameter("@UserId", userId);
+                var startDateParam = new SqlParameter("@StartDate", startDate);
+                var endDateParam = new SqlParameter("@EndDate", endDate);
+
+                var incomeResult = await _context.Database
+                    .SqlQueryRaw<decimal>("EXEC GetTotalIncomesDetailed @UserId, @StartDate, @EndDate",
+                        userIdParam, startDateParam, endDateParam)
+                    .ToListAsync();
+
+                return incomeResult.FirstOrDefault();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[EXPENSE CALC ERROR] Error calculating total expenses: {ex.Message}");
+                return 0;
+            }
+        }
+
         private async Task<decimal> CalculateTotalExpensesAsync(string userId, DateTime startDate, DateTime endDate)
         {
-            // Note: IsDeleted is ignored in DbContext, so we don't filter by it
-            var bills = await _context.Bills
-                .Where(b => b.UserId == userId &&
-                            b.DueDate >= startDate && b.DueDate <= endDate)
-                .SumAsync(b => b.Amount);
+            try
+            {
+                // Use stored procedure to calculate total expenses from Payments table
+                var userIdParam = new SqlParameter("@UserId", userId);
+                var startDateParam = new SqlParameter("@StartDate", startDate);
+                var endDateParam = new SqlParameter("@EndDate", endDate);
 
-            // Note: IsDeleted is ignored in DbContext, so we don't filter by it
-            var variableExpenses = await _context.VariableExpenses
-                .Where(v => v.UserId == userId &&
-                            v.ExpenseDate >= startDate && v.ExpenseDate <= endDate)
-                .SumAsync(v => v.Amount);
+                var expenseResult = await _context.Database
+                    .SqlQueryRaw<decimal>("EXEC GetTotalExpensesDetailed @UserId, @StartDate, @EndDate",
+                        userIdParam, startDateParam, endDateParam)
+                    .ToListAsync();
 
-            return bills + variableExpenses;
+                return expenseResult.FirstOrDefault();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[EXPENSE CALC ERROR] Error calculating total expenses: {ex.Message}");
+                return 0;
+            }
+        }
+
+        private async Task<decimal> CalculateDisposableIncomeAsync(string userId, DateTime startDate, DateTime endDate)
+        {
+            try
+            {
+                // Use stored procedure to calculate disposable income
+                var userIdParam = new SqlParameter("@UserId", userId);
+                var startDateParam = new SqlParameter("@DateFrom", startDate);
+                var endDateParam = new SqlParameter("@DateTo", endDate);
+
+                var disposableResult = await _context.Database
+                    .SqlQueryRaw<decimal>("EXEC GetTotalDisposableIncome @UserId, @DateFrom, @DateTo",
+                        userIdParam, startDateParam, endDateParam)
+                    .ToListAsync();
+
+                return disposableResult.FirstOrDefault();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[DISPOSABLE INCOME CALC ERROR] Error calculating disposable income: {ex.Message}");
+                return 0;
+            }
         }
 
         private async Task<decimal> CalculateBillsAsync(string userId, DateTime startDate, DateTime endDate)
@@ -2319,12 +2655,13 @@ namespace UtilityHub360.Services
 
         private async Task<decimal> CalculateNetWorthAsync(string userId, DateTime? asOfDate = null)
         {
-            // Calculate total assets (Bank Accounts + Savings)
-            var bankAccounts = await _context.BankAccounts
-                .Where(ba => ba.UserId == userId && ba.IsActive)
+            // Calculate total assets (Bank Accounts + Savings) using stored procedure
+            var totalBalanceParam = new SqlParameter("@UserId", userId);
+            var totalBalanceResult = await _context.Database
+                .SqlQueryRaw<decimal>("EXEC GetTotalBankAccountNetAmount @UserId", totalBalanceParam)
                 .ToListAsync();
-
-            var totalBankBalance = bankAccounts.Sum(ba => ba.CurrentBalance);
+            var totalBankBalance = totalBalanceResult.FirstOrDefault();
+            
             var totalSavings = await CalculateTotalSavingsAsync(userId);
             var totalAssets = totalBankBalance + totalSavings;
 
@@ -3057,6 +3394,13 @@ namespace UtilityHub360.Services
                                 e.ExpenseDate <= endDate)
                     .ToListAsync();
 
+                // Load all expense categories upfront to avoid N+1 query problem
+                var categoryIds = expenseBudgets.Select(e => e.CategoryId).Distinct().ToList();
+                var categories = await _context.ExpenseCategories
+                    .Where(c => categoryIds.Contains(c.Id))
+                    .ToListAsync();
+                var categoryDictionary = categories.ToDictionary(c => c.Id, c => c);
+
                 // Group by category
                 var categoryGroups = expenseBudgets
                     .GroupBy(e => e.CategoryId)
@@ -3064,7 +3408,7 @@ namespace UtilityHub360.Services
                     {
                         CategoryId = g.Key,
                         BudgetAmount = g.Sum(e => e.BudgetAmount),
-                        Category = _context.ExpenseCategories.FirstOrDefault(c => c.Id == g.Key)
+                        Category = categoryDictionary.ContainsKey(g.Key) ? categoryDictionary[g.Key] : null
                     })
                     .ToList();
 

@@ -86,6 +86,7 @@ namespace UtilityHub360.Controllers
         /// Update user profile
         /// </summary>
         [HttpPut]
+        [HttpPost("update")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<UserProfileDto>>> UpdateUserProfile([FromBody] UpdateUserProfileDto updateUserProfileDto)
         {
             try
@@ -114,6 +115,7 @@ namespace UtilityHub360.Controllers
         /// Delete user profile
         /// </summary>
         [HttpDelete]
+        [HttpPost("delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeleteUserProfile()
         {
             try
@@ -142,6 +144,7 @@ namespace UtilityHub360.Controllers
         /// Activate user profile
         /// </summary>
         [HttpPut("activate")]
+        [HttpPost("activate")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<bool>>> ActivateUserProfile()
         {
             try
@@ -170,6 +173,7 @@ namespace UtilityHub360.Controllers
         /// Deactivate user profile
         /// </summary>
         [HttpPut("deactivate")]
+        [HttpPost("deactivate")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeactivateUserProfile()
         {
             try
@@ -200,6 +204,7 @@ namespace UtilityHub360.Controllers
         /// Update savings goal
         /// </summary>
         [HttpPut("savings-goal")]
+        [HttpPost("savings-goal")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<UserProfileDto>>> UpdateSavingsGoal([FromBody] UpdateGoalDto updateGoalDto)
         {
             try
@@ -228,6 +233,7 @@ namespace UtilityHub360.Controllers
         /// Update investment goal
         /// </summary>
         [HttpPut("investment-goal")]
+        [HttpPost("investment-goal")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<UserProfileDto>>> UpdateInvestmentGoal([FromBody] UpdateGoalDto updateGoalDto)
         {
             try
@@ -256,6 +262,7 @@ namespace UtilityHub360.Controllers
         /// Update emergency fund goal
         /// </summary>
         [HttpPut("emergency-fund-goal")]
+        [HttpPost("emergency-fund-goal")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<UserProfileDto>>> UpdateEmergencyFundGoal([FromBody] UpdateGoalDto updateGoalDto)
         {
             try
@@ -286,6 +293,7 @@ namespace UtilityHub360.Controllers
         /// Update tax information
         /// </summary>
         [HttpPut("tax-information")]
+        [HttpPost("tax-information")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<UserProfileDto>>> UpdateTaxInformation([FromBody] UpdateTaxInformationDto updateTaxInformationDto)
         {
             try
@@ -319,6 +327,7 @@ namespace UtilityHub360.Controllers
         /// Update employment information
         /// </summary>
         [HttpPut("employment-info")]
+        [HttpPost("employment-info")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<UserProfileDto>>> UpdateEmploymentInfo([FromBody] UpdateEmploymentInfoDto updateEmploymentInfoDto)
         {
             try
@@ -353,6 +362,7 @@ namespace UtilityHub360.Controllers
         /// Update preferred currency
         /// </summary>
         [HttpPut("currency")]
+        [HttpPost("currency")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<UserProfileDto>>> UpdatePreferredCurrency([FromBody] UpdateCurrencyDto updateCurrencyDto)
         {
             try

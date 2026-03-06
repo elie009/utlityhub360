@@ -41,20 +41,6 @@ namespace UtilityHub360.Controllers
                     return Unauthorized(ApiResponse<BillDto>.ErrorResult("User not authenticated"));
                 }
 
-                // ============================================
-                // CONTROLLER-LEVEL VALIDATION: Current year only
-                // ============================================
-                var currentYear = DateTime.UtcNow.Year;
-                var billYear = createBillDto.DueDate.Year;
-
-                if (billYear != currentYear)
-                {
-                    return BadRequest(ApiResponse<BillDto>.ErrorResult(
-                        $"Bills can only be created for the current year ({currentYear}). " +
-                        $"You tried to create a bill for {createBillDto.DueDate:MMMM yyyy}. " +
-                        $"Please select a date within {currentYear}."));
-                }
-
                 // Check subscription limit for bills
                 var currentMonth = DateTime.UtcNow.Month;
                 var currentYearForLimit = DateTime.UtcNow.Year;
@@ -144,6 +130,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpPut("{billId}")]
+        [HttpPost("{billId}/update")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<BillDto>>> UpdateBill(string billId, [FromBody] UpdateBillDto updateBillDto)
         {
             try
@@ -153,23 +140,6 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId))
                 {
                     return Unauthorized(ApiResponse<BillDto>.ErrorResult("User not authenticated"));
-                }
-
-                // ============================================
-                // CONTROLLER-LEVEL VALIDATION: Current year only for due date updates
-                // ============================================
-                if (updateBillDto.DueDate.HasValue)
-                {
-                    var currentYear = DateTime.UtcNow.Year;
-                    var newDueDateYear = updateBillDto.DueDate.Value.Year;
-
-                    if (newDueDateYear != currentYear)
-                    {
-                        return BadRequest(ApiResponse<BillDto>.ErrorResult(
-                            $"Bill due dates can only be set for the current year ({currentYear}). " +
-                            $"You tried to set a due date for {updateBillDto.DueDate.Value:MMMM yyyy}. " +
-                            $"Please select a date within {currentYear}."));
-                    }
                 }
 
                 var result = await _billService.UpdateBillAsync(billId, updateBillDto, userId);
@@ -188,6 +158,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpDelete("{billId}")]
+        [HttpPost("{billId}/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeleteBill(string billId)
         {
             try
@@ -327,6 +298,7 @@ namespace UtilityHub360.Controllers
         // Bill Management Endpoints
 
         [HttpPut("{billId}/mark-paid")]
+        [HttpPost("{billId}/mark-paid")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<BillDto>>> MarkBillAsPaid(string billId, [FromBody] MarkBillPaidDto? request = null)
         {
             try
@@ -356,6 +328,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpPut("{billId}/status")]
+        [HttpPost("{billId}/status")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<bool>>> UpdateBillStatus(string billId, [FromBody] string status)
         {
             try
@@ -546,6 +519,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpDelete("payments/{paymentId}")]
+        [HttpPost("payments/{paymentId}/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeleteBillPayment(string paymentId)
         {
             try
@@ -730,6 +704,7 @@ namespace UtilityHub360.Controllers
         /// Update an existing budget
         /// </summary>
         [HttpPut("budgets/{budgetId}")]
+        [HttpPost("budgets/{budgetId}/update")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<BudgetSettingDto>>> UpdateBudget(
             string budgetId,
             [FromBody] CreateBudgetSettingDto budgetDto)
@@ -753,6 +728,7 @@ namespace UtilityHub360.Controllers
         /// Delete a budget
         /// </summary>
         [HttpDelete("budgets/{budgetId}")]
+        [HttpPost("budgets/{budgetId}/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeleteBudget(string budgetId)
         {
             try
@@ -869,6 +845,7 @@ namespace UtilityHub360.Controllers
         /// Mark an alert as read
         /// </summary>
         [HttpPut("alerts/{alertId}/read")]
+        [HttpPost("alerts/{alertId}/read")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<bool>>> MarkAlertAsRead(string alertId)
         {
             try
@@ -1238,6 +1215,7 @@ namespace UtilityHub360.Controllers
         /// Confirm and update auto-generated bill amount
         /// </summary>
         [HttpPut("{billId}/confirm-amount")]
+        [HttpPost("{billId}/confirm-amount")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<BillDto>>> ConfirmAutoGeneratedBill(
             string billId,
             [FromBody] ConfirmBillAmountDto confirmDto)
@@ -1299,16 +1277,6 @@ namespace UtilityHub360.Controllers
                 if (string.IsNullOrEmpty(userId))
                     return Unauthorized(ApiResponse<List<BillDto>>.ErrorResult("User not authenticated"));
 
-                // ============================================
-                // VALIDATION: Only allow current year for consistency
-                // ============================================
-                var currentYear = DateTime.UtcNow.Year;
-                
-                if (year != currentYear)
-                    return BadRequest(ApiResponse<List<BillDto>>.ErrorResult(
-                        $"Can only view bills for the current year ({currentYear}). " +
-                        $"You requested {year}. Please use {currentYear}."));
-
                 if (month < 1 || month > 12)
                     return BadRequest(ApiResponse<List<BillDto>>.ErrorResult("Invalid month"));
 
@@ -1325,6 +1293,7 @@ namespace UtilityHub360.Controllers
         /// Update a specific month's bill amount and details
         /// </summary>
         [HttpPut("{billId}/monthly")]
+        [HttpPost("{billId}/monthly")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<BillDto>>> UpdateMonthlyBill(
             string billId,
             [FromBody] UpdateMonthlyBillDto updateDto)

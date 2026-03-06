@@ -141,6 +141,11 @@ namespace UtilityHub360.DTOs
         public string? BillName { get; set; }
         public string? LoanPurpose { get; set; }
         public string? SavingsAccountName { get; set; }
+        
+        // Split transaction support
+        public List<TransactionSplitDto>? Splits { get; set; }
+        public bool IsSplit { get; set; } = false;
+        public int? SplitCount { get; set; }
     }
 
     public class CreateBankTransactionDto
@@ -199,11 +204,33 @@ namespace UtilityHub360.DTOs
         [StringLength(450)]
         public string? LoanId { get; set; } // Reference to loan if category is loan-related
 
+        [StringLength(450)]
+        public string? InvestmentId { get; set; } // Reference to investment account if category is investment-related
+
         [StringLength(50)]
         public string? TransactionPurpose { get; set; } // BILL, UTILITY, SAVINGS, LOAN, OTHER
 
         [StringLength(450)]
         public string? ToBankAccountId { get; set; } // Destination account for bank transfer transactions
+
+        // Split transaction support
+        public List<TransactionSplitDto>? Splits { get; set; }
+        public bool IsSplit { get; set; } = false;
+    }
+
+    public class BulkDeleteTransactionsDto
+    {
+        [Required]
+        public List<string> TransactionIds { get; set; } = new List<string>();
+    }
+
+    public class BulkDeleteTransactionsResultDto
+    {
+        public int TotalRequested { get; set; }
+        public int Successful { get; set; }
+        public int Failed { get; set; }
+        public List<string> FailedTransactionIds { get; set; } = new List<string>();
+        public List<string> FailureReasons { get; set; } = new List<string>();
     }
 
     public class UpdateBankTransactionDto
@@ -257,6 +284,10 @@ namespace UtilityHub360.DTOs
 
         [StringLength(450)]
         public string? BankAccountId { get; set; } // Destination account for bank transfer transactions
+        
+        // Split transaction support for editing
+        public List<TransactionSplitDto>? Splits { get; set; }
+        public bool? IsSplit { get; set; }
     }
 
     public class BankAccountSummaryDto
@@ -295,6 +326,26 @@ namespace UtilityHub360.DTOs
 
         [StringLength(100)]
         public string? ConnectionId { get; set; }
+    }
+
+    public class PlaidLinkTokenRequestDto
+    {
+        public string? WebhookUrl { get; set; }
+    }
+
+    public class PlaidLinkTokenResponseDto
+    {
+        public string LinkToken { get; set; } = string.Empty;
+        public DateTime Expiration { get; set; }
+    }
+
+    public class PlaidExchangeTokenDto
+    {
+        [Required]
+        public string PublicToken { get; set; } = string.Empty;
+
+        [Required]
+        public string BankAccountId { get; set; } = string.Empty;
     }
 
     public class SyncBankAccountDto
@@ -377,5 +428,13 @@ namespace UtilityHub360.DTOs
         public decimal LastMonthExpenses { get; set; }
         public Dictionary<string, decimal> TopCategories { get; set; } = new Dictionary<string, decimal>();
         public List<BankTransactionDto> RecentExpenses { get; set; } = new List<BankTransactionDto>();
+    }
+
+    /// <summary>
+    /// Result class for stored procedure GetBankAccountNetAmount
+    /// </summary>
+    public class BankAccountNetAmountResult
+    {
+        public decimal NetAmount { get; set; }
     }
 }

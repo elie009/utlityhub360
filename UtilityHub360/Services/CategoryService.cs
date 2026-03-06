@@ -131,11 +131,7 @@ namespace UtilityHub360.Services
                     return ApiResponse<bool>.ErrorResult("Category not found");
                 }
 
-                if (category.IsSystemCategory)
-                {
-                    return ApiResponse<bool>.ErrorResult("System categories cannot be deleted");
-                }
-
+                // Allow deletion of system categories - removed restriction
                 // Check if category is being used by any transactions
                 var transactionCount = await _context.BankTransactions
                     .CountAsync(t => t.Category == category.Name && t.UserId == userId && !t.IsDeleted);
@@ -201,10 +197,25 @@ namespace UtilityHub360.Services
                     .ThenBy(c => c.Name)
                     .ToListAsync();
 
+                // Batch get all transaction counts in a single query to avoid N+1 problem
                 var categoryDtos = new List<TransactionCategoryDto>();
-                foreach (var category in categories)
+                
+                if (categories.Any())
                 {
-                    categoryDtos.Add(await MapToCategoryDtoAsync(category));
+                    var categoryNames = categories.Select(c => c.Name).ToList();
+                    var transactionCounts = await _context.BankTransactions
+                        .Where(t => t.UserId == userId && 
+                                    categoryNames.Contains(t.Category) && 
+                                    !t.IsDeleted)
+                        .GroupBy(t => t.Category)
+                        .Select(g => new { CategoryName = g.Key, Count = g.Count() })
+                        .ToDictionaryAsync(x => x.CategoryName, x => x.Count);
+
+                    foreach (var category in categories)
+                    {
+                        var transactionCount = transactionCounts.GetValueOrDefault(category.Name, 0);
+                        categoryDtos.Add(MapToCategoryDto(category, transactionCount));
+                    }
                 }
 
                 return ApiResponse<List<TransactionCategoryDto>>.SuccessResult(categoryDtos);
@@ -232,10 +243,25 @@ namespace UtilityHub360.Services
                     .ThenBy(c => c.Name)
                     .ToListAsync();
 
+                // Batch get all transaction counts in a single query to avoid N+1 problem
                 var categoryDtos = new List<TransactionCategoryDto>();
-                foreach (var category in categories)
+                
+                if (categories.Any())
                 {
-                    categoryDtos.Add(await MapToCategoryDtoAsync(category));
+                    var categoryNames = categories.Select(c => c.Name).ToList();
+                    var transactionCounts = await _context.BankTransactions
+                        .Where(t => t.UserId == userId && 
+                                    categoryNames.Contains(t.Category) && 
+                                    !t.IsDeleted)
+                        .GroupBy(t => t.Category)
+                        .Select(g => new { CategoryName = g.Key, Count = g.Count() })
+                        .ToDictionaryAsync(x => x.CategoryName, x => x.Count);
+
+                    foreach (var category in categories)
+                    {
+                        var transactionCount = transactionCounts.GetValueOrDefault(category.Name, 0);
+                        categoryDtos.Add(MapToCategoryDto(category, transactionCount));
+                    }
                 }
 
                 return ApiResponse<List<TransactionCategoryDto>>.SuccessResult(categoryDtos);
@@ -306,11 +332,91 @@ namespace UtilityHub360.Services
             }
         }
 
+        public async Task<ApiResponse<bool>> CreateDefaultCategoriesAsync(string userId)
+        {
+            try
+            {
+                // Check if user already has any categories to avoid duplicates
+                var existingCategories = await _context.TransactionCategories
+                    .Where(c => c.UserId == userId && !c.IsDeleted)
+                    .ToListAsync();
+
+                // Define default category names to check
+                var defaultCategoryNames = new[] { "Food", "Transport", "Medicine", "Grocery", "Rent", "Gift", "Savings", "Entertainment", "Cash on Hand" };
+                
+                // Check if any default categories already exist
+                var existingDefaultCategories = existingCategories
+                    .Where(c => defaultCategoryNames.Contains(c.Name, StringComparer.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (existingDefaultCategories.Count == defaultCategoryNames.Length)
+                {
+                    return ApiResponse<bool>.SuccessResult(true, "Default categories already exist");
+                }
+
+                // Create only missing categories
+                var categoriesToCreate = new List<TransactionCategory>();
+                var existingNames = existingDefaultCategories.Select(c => c.Name.ToLower()).ToHashSet();
+
+                var defaultCategories = new[]
+                {
+                    new { Name = "Food", Type = "EXPENSE", Icon = "restaurant", Color = "#FF6B6B", DisplayOrder = 1 },
+                    new { Name = "Transport", Type = "EXPENSE", Icon = "directions_car", Color = "#95E1D3", DisplayOrder = 2 },
+                    new { Name = "Medicine", Type = "EXPENSE", Icon = "local_hospital", Color = "#A8E6CF", DisplayOrder = 3 },
+                    new { Name = "Grocery", Type = "EXPENSE", Icon = "shopping_cart", Color = "#4ECDC4", DisplayOrder = 4 },
+                    new { Name = "Rent", Type = "EXPENSE", Icon = "home", Color = "#95E1D3", DisplayOrder = 5 },
+                    new { Name = "Gift", Type = "EXPENSE", Icon = "card_giftcard", Color = "#FCBAD3", DisplayOrder = 6 },
+                    new { Name = "Savings", Type = "SAVINGS", Icon = "savings", Color = "#4ECDC4", DisplayOrder = 7 },
+                    new { Name = "Entertainment", Type = "EXPENSE", Icon = "movie", Color = "#AA96DA", DisplayOrder = 8 },
+                    new { Name = "Cash on Hand", Type = "EXPENSE", Icon = "account_balance_wallet", Color = "#FFD93D", DisplayOrder = 9 }
+                };
+
+                foreach (var category in defaultCategories)
+                {
+                    if (!existingNames.Contains(category.Name.ToLower()))
+                    {
+                        categoriesToCreate.Add(new TransactionCategory
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            UserId = userId,
+                            Name = category.Name,
+                            Type = category.Type,
+                            Icon = category.Icon,
+                            Color = category.Color,
+                            IsSystemCategory = true,
+                            IsActive = true,
+                            DisplayOrder = category.DisplayOrder,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
+
+                if (categoriesToCreate.Any())
+                {
+                    _context.TransactionCategories.AddRange(categoriesToCreate);
+                    await _context.SaveChangesAsync();
+                    return ApiResponse<bool>.SuccessResult(true, $"Created {categoriesToCreate.Count} default categories");
+                }
+
+                return ApiResponse<bool>.SuccessResult(true, "All default categories already exist");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Failed to create default categories: {ex.Message}");
+            }
+        }
+
         private async Task<TransactionCategoryDto> MapToCategoryDtoAsync(TransactionCategory category)
         {
             var transactionCount = await _context.BankTransactions
                 .CountAsync(t => t.Category == category.Name && t.UserId == category.UserId && !t.IsDeleted);
 
+            return MapToCategoryDto(category, transactionCount);
+        }
+
+        private TransactionCategoryDto MapToCategoryDto(TransactionCategory category, int transactionCount)
+        {
             return new TransactionCategoryDto
             {
                 Id = category.Id,

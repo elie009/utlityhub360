@@ -1,20 +1,21 @@
+// FORCE CHANGE
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.Json;
 using UtilityHub360.Data;
 using UtilityHub360.DTOs;
 using UtilityHub360.Entities;
 using UtilityHub360.Models;
-using System.Text;
-using System.Text.Json;
-using System.Linq;
-using System.Collections.Generic;
-using UtilityHub360.Controllers.PDFTextExtraction;
 
 namespace UtilityHub360.Services
 {
     public class ReconciliationService : IReconciliationService
     {
         private readonly ApplicationDbContext _context;
-        private readonly IBankStatementExtractionService _extractionService;
         private readonly IAIAgentService _aiAgentService;
         private readonly IOcrService _ocrService;
         private readonly IBankAccountService _bankAccountService;
@@ -25,7 +26,6 @@ namespace UtilityHub360.Services
 
         public ReconciliationService(
             ApplicationDbContext context,
-            IBankStatementExtractionService extractionService,
             IAIAgentService aiAgentService,
             IOcrService ocrService,
             IBankAccountService bankAccountService,
@@ -34,7 +34,6 @@ namespace UtilityHub360.Services
             OpenAISettings openAISettings)
         {
             _context = context;
-            _extractionService = extractionService;
             _aiAgentService = aiAgentService;
             _ocrService = ocrService;
             _bankAccountService = bankAccountService;
@@ -45,320 +44,7 @@ namespace UtilityHub360.Services
             
             if (!string.IsNullOrEmpty(_openAISettings.ApiKey))
             {
-                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_openAISettings.ApiKey}");
-            }
-        }
-
-        // ==================== BANK STATEMENT OPERATIONS ====================
-
-        public async Task<ApiResponse<ExtractBankStatementResponseDto>> ExtractBankStatementFromFileAsync(
-            Stream fileStream, 
-            string fileName, 
-            string bankAccountId, 
-            string userId)
-        {
-            try
-            {
-                // Use the extraction service which handles both CSV and PDF
-                var result = await _extractionService.ExtractFromFileAsync(fileStream, fileName, bankAccountId, userId);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error extracting bank statement from file");
-                return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult($"Failed to extract bank statement: {ex.Message}");
-            }
-        }
-
-        public async Task<ApiResponse<ExtractBankStatementResponseDto>> AnalyzePDFWithAIAsync(
-            Stream pdfStream, 
-            string fileName, 
-            string bankAccountId, 
-            string userId)
-        {
-            try
-            {
-                // Verify bank account exists and belongs to user
-                var bankAccount = await _context.BankAccounts
-                    .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
-
-                if (bankAccount == null)
-                {
-                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("Bank account not found or does not belong to user");
-                }
-
-                // Step 1: Extract text from PDF - try multiple methods
-                pdfStream.Position = 0;
-                string extractedText = string.Empty;
-                string extractionMethod = "Unknown";
-                
-                // Check if stream is readable
-                if (pdfStream.Length == 0)
-                {
-                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("PDF file is empty or could not be read.");
-                }
-                
-                _logger.LogInformation($"Attempting to extract text from PDF: {fileName}, Size: {pdfStream.Length} bytes");
-                
-                // Try PdfPig first for direct text extraction (faster for text-based PDFs)
-                try
-                {
-                    pdfStream.Position = 0;
-                    
-                    //separate each pdf extraction service, independently each class because i will add other type of extraction
-                    var servicePdfPigBased = new ServicePdfPigBased(
-                        _loggerFactory.CreateLogger<ServicePdfPigBased>()
-                    );
-                    
-                    extractedText = await servicePdfPigBased.ExtractTextFromPDFAsync(pdfStream);
-                    
-                    if (!string.IsNullOrWhiteSpace(extractedText))
-                    {
-                        extractionMethod = "PdfPig";
-                        _logger.LogInformation($"Successfully extracted text using ServicePdfPigBased");
-                    }
-                }
-                catch (Exception pdfPigEx)
-                {
-                    _logger.LogWarning($"PdfPig extraction failed: {pdfPigEx.Message}. Trying OCR fallback.");
-                }
-                
-                // Fallback: Try OCR service for image-based (scanned) PDFs
-                if (string.IsNullOrWhiteSpace(extractedText))
-                {
-                    try
-                    {
-                        pdfStream.Position = 0;
-                        
-                        //separate each ocr service, independently each class because i will add other type of OC
-                        var serviceImageBased = new ServiceImageBased(
-                            _loggerFactory.CreateLogger<ServiceImageBased>(), 
-                            _ocrService
-                        );
-                        
-                        var ocrExtractedText = await serviceImageBased.ExtractTextFromPDFAsync(pdfStream);
-                        
-                        if (!string.IsNullOrWhiteSpace(ocrExtractedText))
-                        {
-                            extractedText = ocrExtractedText;
-                            extractionMethod = "OCR_IMAGE_BASED";
-                            _logger.LogInformation($"Successfully extracted {extractedText.Length} characters using ServiceImageBased");
-                        }
-                    }
-                    catch (Exception ocrEx)
-                    {
-                        _logger.LogError(ocrEx, $"OCR service failed: {ocrEx.Message}");
-                    }
-                }
-                
-                // Third fallback: Try alternative PdfPig extraction methods (letters, text blocks, etc.)
-                if (string.IsNullOrWhiteSpace(extractedText))
-                {
-                    try
-                    {
-                        pdfStream.Position = 0;
-                        
-                        var servicePdfPigAlternative = new ServicePdfPigAlternative(
-                            _loggerFactory.CreateLogger<ServicePdfPigAlternative>()
-                        );
-                        
-                        var alternativeExtractedText = await servicePdfPigAlternative.ExtractTextFromPDFAsync(pdfStream);
-                        
-                        if (!string.IsNullOrWhiteSpace(alternativeExtractedText))
-                        {
-                            extractedText = alternativeExtractedText;
-                            extractionMethod = "PDFPIG_ALTERNATIVE";
-                            _logger.LogInformation($"Successfully extracted {extractedText.Length} characters using ServicePdfPigAlternative");
-                        }
-                    }
-                    catch (Exception altEx)
-                    {
-                        _logger.LogError(altEx, $"Alternative PdfPig extraction failed: {altEx.Message}");
-                    }
-                }
-                
-                // If still no text, return error with helpful message
-                if (string.IsNullOrWhiteSpace(extractedText))
-                {
-                    _logger.LogError($"Failed to extract text from PDF after trying PdfPig, OCR, and alternative methods. File: {fileName}, Size: {pdfStream.Length} bytes");
-                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(
-                        "Could not extract text from PDF. Possible reasons:\n" +
-                        "1. The PDF is password-protected (please remove password)\n" +
-                        "2. The PDF is corrupted\n" +
-                        "3. The PDF contains only images without text (scanned document - OCR may not be configured)\n" +
-                        "4. The PDF format is not supported\n\n" +
-                        "Please try:\n" +
-                        "- Converting the PDF to a CSV file\n" +
-                        "- Ensuring the PDF is not password-protected\n" +
-                        "- Using a text-based PDF (not just scanned images)");
-                }
-
-                // Step 2: Use AI Agent to analyze and extract transactions
-                if (string.IsNullOrEmpty(_openAISettings.ApiKey))
-                {
-                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("OpenAI API key not configured. AI analysis is not available.");
-                }
-
-                var prompt = $@"You are a financial data extraction expert. Analyze this bank statement PDF text and extract ALL transactions accurately.
-
-CRITICAL INSTRUCTIONS:
-1. Extract transactions EXACTLY as they appear in the text below
-2. DO NOT generate sample data or example transactions
-3. DO NOT use dates from previous years (2023, 2024) unless they appear in the text
-4. Use ONLY the actual data provided in the bank statement text
-5. Preserve exact amounts, dates, and descriptions from the statement
-6. If a field is missing, leave it empty or use empty string
-
-Bank Statement Text (first 20000 characters):
-{extractedText.Substring(0, Math.Min(extractedText.Length, 20000))}
-
-Extract ALL transactions and return a JSON object with this exact structure:
-
-{{
-  ""statementName"": ""string (extract from statement or use filename)"",
-  ""statementStartDate"": ""YYYY-MM-DD (earliest transaction date)"",
-  ""statementEndDate"": ""YYYY-MM-DD (latest transaction date)"",
-  ""openingBalance"": number (if available in statement),
-  ""closingBalance"": number (if available in statement),
-  ""transactions"": [
-    {{
-      ""transactionDate"": ""YYYY-MM-DD (use EXACT date from statement)"",
-      ""amount"": number (always positive, use EXACT amount from statement),
-      ""transactionType"": ""DEBIT"" or ""CREDIT"" (based on statement),
-      ""description"": ""string (use EXACT description from statement)"",
-      ""referenceNumber"": ""string (if available in statement)"",
-      ""merchant"": ""string (extract from description if possible)"",
-      ""category"": ""string (optional, infer from description)"",
-      ""balanceAfterTransaction"": number (if available in statement)
-    }}
-  ]
-}}
-
-IMPORTANT: 
-- Extract ONLY transactions that appear in the text above
-- Use exact dates, amounts, and descriptions from the statement
-- Do NOT invent or generate sample data
-- Return ONLY valid JSON, no explanations or additional text";
-
-                var messages = new List<object>
-                {
-                    new { role = "system", content = "You are a financial data extraction expert. Extract bank statement transactions accurately from the provided text. Return only valid JSON with the exact structure specified. Never generate sample or example data." },
-                    new { role = "user", content = prompt }
-                };
-
-                var openAIRequest = new
-                {
-                    model = "gpt-4o-mini",
-                    messages = messages,
-                    temperature = 0.1, // Very low temperature for accuracy
-                    max_tokens = 4000,
-                    response_format = new { type = "json_object" }
-                };
-
-                var json = JsonSerializer.Serialize(openAIRequest);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                var httpResponse = await _httpClient.PostAsync("https://api.openai.com/v1/chat/completions", content);
-                var responseContent = await httpResponse.Content.ReadAsStringAsync();
-
-                if (!httpResponse.IsSuccessStatusCode)
-                {
-                    _logger.LogError($"OpenAI API error: {httpResponse.StatusCode} - {responseContent}");
-                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(
-                        $"AI analysis failed: {httpResponse.StatusCode}. Please try again or use manual entry.");
-                }
-
-                var openAIResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
-                var choices = openAIResponse.GetProperty("choices");
-                var firstChoice = choices[0];
-                var message = firstChoice.GetProperty("message");
-                var aiResponseText = message.GetProperty("content").GetString() ?? "";
-
-                // Parse AI response
-                var aiResult = JsonSerializer.Deserialize<JsonElement>(aiResponseText);
-                
-                var result = new ExtractBankStatementResponseDto
-                {
-                    StatementName = aiResult.TryGetProperty("statementName", out var name) ? name.GetString() ?? fileName : fileName,
-                    StatementStartDate = aiResult.TryGetProperty("statementStartDate", out var startDate) && 
-                        DateTime.TryParse(startDate.GetString(), out var sd) ? sd : null,
-                    StatementEndDate = aiResult.TryGetProperty("statementEndDate", out var endDate) && 
-                        DateTime.TryParse(endDate.GetString(), out var ed) ? ed : null,
-                    OpeningBalance = aiResult.TryGetProperty("openingBalance", out var openBal) ? 
-                        GetDecimalFromJsonElement(openBal) : null,
-                    ClosingBalance = aiResult.TryGetProperty("closingBalance", out var closeBal) ? 
-                        GetDecimalFromJsonElement(closeBal) : null,
-                    ImportFormat = "PDF",
-                    ImportSource = fileName,
-                    StatementItems = new List<BankStatementItemImportDto>(),
-                    ExtractedText = extractedText.Substring(0, Math.Min(extractedText.Length, 5000)) // Include first 5000 chars for debugging
-                };
-
-                if (aiResult.TryGetProperty("transactions", out var transactions))
-                {
-                    foreach (var trans in transactions.EnumerateArray())
-                    {
-                        try
-                        {
-                            var transactionDateStr = trans.GetProperty("transactionDate").GetString();
-                            if (string.IsNullOrEmpty(transactionDateStr) || !DateTime.TryParse(transactionDateStr, out var transactionDate))
-                            {
-                                _logger.LogWarning($"Skipping transaction with invalid date: {transactionDateStr}");
-                                continue;
-                            }
-
-                            // Safely parse amount - handle both string and number types
-                            var amountElement = trans.GetProperty("amount");
-                            var amount = GetDecimalFromJsonElement(amountElement);
-                            
-                            if (!amount.HasValue || amount.Value <= 0)
-                            {
-                                _logger.LogWarning($"Skipping transaction with invalid amount: {amountElement}");
-                                continue;
-                            }
-
-                            // Safely parse balanceAfterTransaction
-                            decimal balanceAfter = 0;
-                            if (trans.TryGetProperty("balanceAfterTransaction", out var bal))
-                            {
-                                var balanceValue = GetDecimalFromJsonElement(bal);
-                                balanceAfter = balanceValue ?? 0;
-                            }
-
-                            var item = new BankStatementItemImportDto
-                            {
-                                TransactionDate = transactionDate,
-                                Amount = amount.Value,
-                                TransactionType = trans.GetProperty("transactionType").GetString() ?? "DEBIT",
-                                Description = trans.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "",
-                                ReferenceNumber = trans.TryGetProperty("referenceNumber", out var refNum) ? refNum.GetString() ?? "" : "",
-                                Merchant = trans.TryGetProperty("merchant", out var merch) ? merch.GetString() ?? "" : "",
-                                Category = trans.TryGetProperty("category", out var cat) ? cat.GetString() ?? "" : "",
-                                BalanceAfterTransaction = balanceAfter
-                            };
-                            result.StatementItems.Add(item);
-                        }
-                        catch (Exception itemEx)
-                        {
-                            _logger.LogWarning($"Error parsing transaction item: {itemEx.Message}");
-                            // Continue with next transaction
-                        }
-                    }
-                }
-
-                if (result.StatementItems.Count == 0)
-                {
-                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult(
-                        "No transactions found in PDF. The PDF format may not be supported, or the AI could not extract valid transactions.");
-                }
-
-                _logger.LogInformation($"AI successfully extracted {result.StatementItems.Count} transactions from PDF");
-                return ApiResponse<ExtractBankStatementResponseDto>.SuccessResult(result);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error analyzing PDF with AI");
-                return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult($"Failed to analyze PDF with AI: {ex.Message}");
+                _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + _openAISettings.ApiKey);
             }
         }
 
@@ -366,39 +52,11 @@ IMPORTANT:
         {
             try
             {
-                // Verify bank account exists and belongs to user
                 var bankAccount = await _context.BankAccounts
                     .FirstOrDefaultAsync(ba => ba.Id == importDto.BankAccountId && ba.UserId == userId);
 
-                if (bankAccount == null)
-                {
-                    return ApiResponse<BankStatementDto>.ErrorResult("Bank account not found or does not belong to user");
-                }
+                if (bankAccount == null) return ApiResponse<BankStatementDto>.ErrorResult("Bank account not found");
 
-                // Check for duplicate statement - prevent importing the same PDF twice
-                // Check by ImportSource (filename), date range, and account
-                if (!string.IsNullOrEmpty(importDto.ImportSource))
-                {
-                    var existingStatement = await _context.BankStatements
-                        .FirstOrDefaultAsync(bs => 
-                            bs.UserId == userId &&
-                            bs.BankAccountId == importDto.BankAccountId &&
-                            bs.ImportSource == importDto.ImportSource &&
-                            bs.StatementStartDate.Date == importDto.StatementStartDate.Date &&
-                            bs.StatementEndDate.Date == importDto.StatementEndDate.Date);
-
-                    if (existingStatement != null)
-                    {
-                        _logger.LogWarning($"Duplicate bank statement import attempt: User {userId}, Account {importDto.BankAccountId}, Source {importDto.ImportSource}, Date Range {importDto.StatementStartDate:yyyy-MM-dd} to {importDto.StatementEndDate:yyyy-MM-dd}");
-                        return ApiResponse<BankStatementDto>.ErrorResult(
-                            $"This bank statement has already been imported. " +
-                            $"A statement with the same file '{importDto.ImportSource}' and date range ({importDto.StatementStartDate:yyyy-MM-dd} to {importDto.StatementEndDate:yyyy-MM-dd}) already exists. " +
-                            $"Existing statement: '{existingStatement.StatementName}' (imported on {existingStatement.CreatedAt:yyyy-MM-dd HH:mm}). " +
-                            $"If you need to re-import, please delete the existing statement first.");
-                    }
-                }
-
-                // Create bank statement
                 var bankStatement = new BankStatement
                 {
                     UserId = userId,
@@ -421,12 +79,11 @@ IMPORTANT:
                 _context.BankStatements.Add(bankStatement);
                 await _context.SaveChangesAsync();
 
-                // Create statement items
                 var statementItems = importDto.StatementItems.Select(item => new BankStatementItem
                 {
                     BankStatementId = bankStatement.Id,
                     TransactionDate = item.TransactionDate,
-                    Amount = item.Amount,
+                    Amount = Math.Abs(item.Amount),
                     TransactionType = item.TransactionType.ToUpper(),
                     Description = item.Description,
                     ReferenceNumber = item.ReferenceNumber,
@@ -441,19 +98,14 @@ IMPORTANT:
                 _context.BankStatementItems.AddRange(statementItems);
                 await _context.SaveChangesAsync();
 
-                // Try auto-matching
-                await AutoMatchStatementItemsAsync(bankStatement.Id, userId);
-
-                // Auto-create transactions from unmatched items
+                // Create transactions for all statement items (auto-matching removed)
                 await CreateTransactionsFromUnmatchedItemsAsync(bankStatement.Id, userId);
 
-                // Reload with items
-                var result = await GetBankStatementAsync(bankStatement.Id, userId);
-                return result;
+                return await GetBankStatementAsync(bankStatement.Id, userId);
             }
             catch (Exception ex)
             {
-                return ApiResponse<BankStatementDto>.ErrorResult($"Failed to import bank statement: {ex.Message}");
+                return ApiResponse<BankStatementDto>.ErrorResult($"Failed to import: {ex.Message}");
             }
         }
 
@@ -461,23 +113,18 @@ IMPORTANT:
         {
             try
             {
-                // For detail view, we need StatementItems, so include them
                 var statement = await _context.BankStatements
-                    .AsNoTracking() // No change tracking for read-only query
+                    .AsNoTracking()
                     .Include(s => s.StatementItems)
                     .FirstOrDefaultAsync(s => s.Id == statementId && s.UserId == userId);
 
-                if (statement == null)
-                {
-                    return ApiResponse<BankStatementDto>.ErrorResult("Bank statement not found");
-                }
+                if (statement == null) return ApiResponse<BankStatementDto>.ErrorResult("Not found");
 
-                var dto = MapToBankStatementDto(statement);
-                return ApiResponse<BankStatementDto>.SuccessResult(dto);
+                return ApiResponse<BankStatementDto>.SuccessResult(MapToBankStatementDto(statement));
             }
             catch (Exception ex)
             {
-                return ApiResponse<BankStatementDto>.ErrorResult($"Failed to get bank statement: {ex.Message}");
+                return ApiResponse<BankStatementDto>.ErrorResult($"Error: {ex.Message}");
             }
         }
 
@@ -485,56 +132,17 @@ IMPORTANT:
         {
             try
             {
-                // Optimized: Direct projection to DTOs without loading StatementItems (not needed for list view)
-                // Use simpler approach - load entities first then map (more reliable for remote databases)
                 var statements = await _context.BankStatements
                     .AsNoTracking()
                     .Where(s => s.BankAccountId == bankAccountId && s.UserId == userId)
                     .OrderByDescending(s => s.StatementEndDate)
                     .ToListAsync();
 
-                // Map to DTOs in memory (avoids complex SQL generation issues)
-                var dtos = statements.Select(s => new BankStatementDto
-                {
-                    Id = s.Id,
-                    UserId = s.UserId,
-                    BankAccountId = s.BankAccountId,
-                    StatementName = s.StatementName,
-                    StatementStartDate = s.StatementStartDate,
-                    StatementEndDate = s.StatementEndDate,
-                    OpeningBalance = s.OpeningBalance,
-                    ClosingBalance = s.ClosingBalance,
-                    ImportFormat = s.ImportFormat,
-                    ImportSource = s.ImportSource,
-                    TotalTransactions = s.TotalTransactions,
-                    MatchedTransactions = s.MatchedTransactions,
-                    UnmatchedTransactions = s.UnmatchedTransactions,
-                    IsReconciled = s.IsReconciled,
-                    ReconciledAt = s.ReconciledAt,
-                    ReconciledBy = s.ReconciledBy,
-                    CreatedAt = s.CreatedAt,
-                    UpdatedAt = s.UpdatedAt,
-                    StatementItems = null // Don't load items in list view
-                }).ToList();
-
-                return ApiResponse<List<BankStatementDto>>.SuccessResult(dtos);
-            }
-            catch (Microsoft.Data.SqlClient.SqlException sqlEx)
-            {
-                // Handle SQL-specific errors
-                if (sqlEx.Number == 208) // Invalid object name
-                {
-                    return ApiResponse<List<BankStatementDto>>.ErrorResult($"Table 'BankStatements' does not exist. Please run the migration script: run_migration_direct_FIXED.sql");
-                }
-                if (sqlEx.Number == -2) // Timeout
-                {
-                    return ApiResponse<List<BankStatementDto>>.ErrorResult($"Database query timeout. The query took too long. Possible causes: missing indexes, network latency, or table locks. Error: {sqlEx.Message}");
-                }
-                return ApiResponse<List<BankStatementDto>>.ErrorResult($"Database error: {sqlEx.Message}");
+                return ApiResponse<List<BankStatementDto>>.SuccessResult(statements.Select(MapToBankStatementDto).ToList());
             }
             catch (Exception ex)
             {
-                return ApiResponse<List<BankStatementDto>>.ErrorResult($"Failed to get bank statements: {ex.Message}");
+                return ApiResponse<List<BankStatementDto>>.ErrorResult($"Error: {ex.Message}");
             }
         }
 
@@ -546,161 +154,695 @@ IMPORTANT:
                     .Include(s => s.StatementItems)
                     .FirstOrDefaultAsync(s => s.Id == statementId && s.UserId == userId);
 
-                if (statement == null)
+                if (statement == null) return ApiResponse<bool>.ErrorResult("Not found");
+                if (statement.IsReconciled) return ApiResponse<bool>.ErrorResult("Cannot delete reconciled statement");
+
+                // Get all statement item IDs
+                var statementItemIds = statement.StatementItems.Select(i => i.Id).ToList();
+
+                // Delete ReconciliationMatches that reference these statement items
+                if (statementItemIds.Any())
                 {
-                    return ApiResponse<bool>.ErrorResult("Bank statement not found");
-                }
-
-                // Check if statement can be deleted (only if not reconciled)
-                if (statement.IsReconciled)
-                {
-                    return ApiResponse<bool>.ErrorResult("Cannot delete a reconciled bank statement. Please unreconcile it first.");
-                }
-
-                // Get all statement items
-                var statementItems = statement.StatementItems.ToList();
-
-                // Find and delete all payments created from this statement
-                // Payments are identified by:
-                // 1. MatchedTransactionId in statement items
-                // 2. Notes containing the statement name
-                // 3. ReferenceNumber starting with "STMT_" pattern
-                var paymentIdsToDelete = new HashSet<string>();
-                var bankAccount = await _context.BankAccounts
-                    .FirstOrDefaultAsync(ba => ba.Id == statement.BankAccountId);
-
-                foreach (var item in statementItems)
-                {
-                    // Find payments by matched transaction ID
-                    if (!string.IsNullOrEmpty(item.MatchedTransactionId))
-                    {
-                        paymentIdsToDelete.Add(item.MatchedTransactionId);
-                    }
-
-                    // Also find payments by reference number pattern (STMT_ prefix with item ID)
-                    var itemIdPrefix = item.Id.Substring(0, Math.Min(8, item.Id.Length));
-                    var paymentsByRef = await _context.Payments
-                        .Where(p => p.BankAccountId == statement.BankAccountId &&
-                                   p.Reference != null &&
-                                   p.Reference.StartsWith($"STMT_{itemIdPrefix}"))
-                        .Select(p => p.Id)
+                    var matches = await _context.ReconciliationMatches
+                        .Where(m => statementItemIds.Contains(m.StatementItemId))
                         .ToListAsync();
                     
-                    foreach (var paymentId in paymentsByRef)
+                    if (matches.Any())
                     {
-                        paymentIdsToDelete.Add(paymentId);
+                        _context.ReconciliationMatches.RemoveRange(matches);
                     }
                 }
 
-                // Find payments by notes containing statement name
-                var paymentsByNotes = await _context.Payments
-                    .Where(p => p.BankAccountId == statement.BankAccountId &&
-                               p.Notes != null &&
-                               p.Notes.Contains($"Imported from bank statement: {statement.StatementName}"))
-                    .Select(p => p.Id)
-                    .ToListAsync();
+                // Get all Payment IDs that were created from this statement
+                var paymentIds = statement.StatementItems
+                    .Where(i => !string.IsNullOrEmpty(i.MatchedTransactionId) && i.MatchedTransactionType == "Payment")
+                    .Select(i => i.MatchedTransactionId)
+                    .ToList();
 
-                foreach (var paymentId in paymentsByNotes)
-                {
-                    paymentIdsToDelete.Add(paymentId);
-                }
+                // Also get BankTransaction IDs that were created from this statement
+                var bankTransactionIds = statement.StatementItems
+                    .Where(i => !string.IsNullOrEmpty(i.MatchedTransactionId) && i.MatchedTransactionType == "BankTransaction")
+                    .Select(i => i.MatchedTransactionId)
+                    .ToList();
 
-                // Delete payments and reverse balance changes
-                if (paymentIdsToDelete.Any() && bankAccount != null)
+                // Find and handle all associated Payment records
+                if (paymentIds.Any())
                 {
-                    var paymentsToDelete = await _context.Payments
-                        .Where(p => paymentIdsToDelete.Contains(p.Id) && 
-                                   p.BankAccountId == statement.BankAccountId &&
-                                   p.IsBankTransaction)
+                    var payments = await _context.Payments
+                        .Where(p => paymentIds.Contains(p.Id) && p.UserId == userId && !p.IsDeleted)
                         .ToListAsync();
 
-                    foreach (var payment in paymentsToDelete)
+                    if (payments.Any())
                     {
-                        // Reverse the transaction effect on the bank account balance
-                        if (payment.TransactionType == "CREDIT")
+                        // Get the bank account to reverse balance changes
+                        var bankAccount = await _context.BankAccounts
+                            .FirstOrDefaultAsync(ba => ba.Id == statement.BankAccountId && ba.UserId == userId);
+
+                        if (bankAccount != null)
                         {
-                            bankAccount.CurrentBalance -= payment.Amount;
+                            // Reverse balance changes for each payment
+                            foreach (var payment in payments)
+                            {
+                                if (payment.TransactionType == "CREDIT")
+                                {
+                                    bankAccount.CurrentBalance -= payment.Amount;
+                                }
+                                else if (payment.TransactionType == "DEBIT")
+                                {
+                                    bankAccount.CurrentBalance += payment.Amount;
+                                }
+                            }
+                            bankAccount.UpdatedAt = DateTime.UtcNow;
                         }
-                        else if (payment.TransactionType == "DEBIT")
+
+                        // Soft-delete the Payment records instead of hard delete
+                        foreach (var payment in payments)
                         {
-                            bankAccount.CurrentBalance += payment.Amount;
+                            payment.IsDeleted = true;
+                            payment.DeletedAt = DateTime.UtcNow;
+                            payment.DeletedBy = userId;
+                            payment.DeleteReason = "Bank statement deleted";
+                            payment.UpdatedAt = DateTime.UtcNow;
                         }
                     }
-
-                    _context.Payments.RemoveRange(paymentsToDelete);
-                    bankAccount.UpdatedAt = DateTime.UtcNow;
-                    _logger.LogInformation($"Deleted {paymentsToDelete.Count} payments associated with bank statement {statementId}");
                 }
 
-                // Delete statement items (cascade should handle this, but explicitly delete for clarity)
-                if (statementItems.Any())
+                // Find and handle all associated BankTransaction records
+                if (bankTransactionIds.Any())
                 {
-                    _context.BankStatementItems.RemoveRange(statementItems);
-                    _logger.LogInformation($"Deleted {statementItems.Count} statement items for bank statement {statementId}");
+                    var bankTransactions = await _context.BankTransactions
+                        .Where(bt => bankTransactionIds.Contains(bt.Id) && bt.UserId == userId)
+                        .ToListAsync();
+
+                    if (bankTransactions.Any())
+                    {
+                        // Get the bank account to reverse balance changes
+                        var bankAccount = await _context.BankAccounts
+                            .FirstOrDefaultAsync(ba => ba.Id == statement.BankAccountId && ba.UserId == userId);
+
+                        if (bankAccount != null)
+                        {
+                            // Reverse balance changes for each bank transaction
+                            foreach (var transaction in bankTransactions)
+                            {
+                                if (transaction.TransactionType == "CREDIT")
+                                {
+                                    bankAccount.CurrentBalance -= transaction.Amount;
+                                }
+                                else if (transaction.TransactionType == "DEBIT")
+                                {
+                                    bankAccount.CurrentBalance += transaction.Amount;
+                                }
+                            }
+                            bankAccount.UpdatedAt = DateTime.UtcNow;
+                        }
+
+                        // Get associated Payment IDs from BankTransactions (via PaymentId foreign key)
+                        var associatedPaymentIds = bankTransactions
+                            .Where(bt => !string.IsNullOrEmpty(bt.PaymentId))
+                            .Select(bt => bt.PaymentId)
+                            .Distinct()
+                            .ToList();
+
+                        // Soft-delete associated Payment records
+                        if (associatedPaymentIds.Any())
+                        {
+                            var associatedPayments = await _context.Payments
+                                .Where(p => associatedPaymentIds.Contains(p.Id) && p.UserId == userId && !p.IsDeleted)
+                                .ToListAsync();
+
+                            foreach (var payment in associatedPayments)
+                            {
+                                payment.IsDeleted = true;
+                                payment.DeletedAt = DateTime.UtcNow;
+                                payment.DeletedBy = userId;
+                                payment.DeleteReason = "Bank statement deleted";
+                                payment.UpdatedAt = DateTime.UtcNow;
+                            }
+                        }
+
+                        // Delete the BankTransaction records (hard delete since they're from statement import)
+                        _context.BankTransactions.RemoveRange(bankTransactions);
+                    }
                 }
 
-                // Delete the bank statement
+                // Delete statement items and statement
+                _context.BankStatementItems.RemoveRange(statement.StatementItems);
                 _context.BankStatements.Remove(statement);
+                
                 await _context.SaveChangesAsync();
 
-                return ApiResponse<bool>.SuccessResult(true, "Bank statement and associated transactions deleted successfully");
+                return ApiResponse<bool>.SuccessResult(true);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to delete bank statement {statementId}");
-                return ApiResponse<bool>.ErrorResult($"Failed to delete bank statement: {ex.Message}");
+                return ApiResponse<bool>.ErrorResult($"Error: {ex.Message}");
             }
         }
 
+        // ==================== ASYNC BANK STATEMENT UPLOAD OPERATIONS ====================
+
+        public async Task<ApiResponse<BankStatementUploadDto>> UploadBankStatementAsync(IFormFile file, string bankAccountId, string userId)
+        {
+            try
+            {
+                var uploadDir = Path.Combine(Directory.GetCurrentDirectory(), "uploads", "bankstatements");
+                if (!Directory.Exists(uploadDir)) Directory.CreateDirectory(uploadDir);
+
+                var fileExtension = Path.GetExtension(file.FileName).ToLower();
+                var fileType = fileExtension == ".pdf" ? "PDF" : "CSV";
+                var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
+                var filePath = Path.Combine(uploadDir, uniqueFileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                var upload = new BankStatementUpload
+                {
+                    UserId = userId,
+                    BankAccountId = bankAccountId,
+                    FilePath = filePath,
+                    OriginalFileName = file.FileName,
+                    FileType = fileType,
+                    Status = "PENDING",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.BankStatementUploads.Add(upload);
+                _context.AuditLogs.Add(new AuditLog
+                {
+                    UserId = userId, Action = "UPLOAD_BANK_STATEMENT", EntityType = "BankStatementUpload",
+                    EntityId = upload.Id, Description = $"Uploaded: {file.FileName}", CreatedAt = DateTime.UtcNow,
+                    LogType = "USER_ACTIVITY", Severity = "INFO"
+                });
+
+                await _context.SaveChangesAsync();
+                return ApiResponse<BankStatementUploadDto>.SuccessResult(MapToUploadDto(upload));
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<BankStatementUploadDto>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<List<BankStatementUploadDto>>> GetPendingUploadsAsync(int limit)
+        {
+            try
+            {
+                var uploads = await _context.BankStatementUploads
+                    .Where(u => u.Status == "PENDING")
+                    .OrderBy(u => u.CreatedAt)
+                    .Take(limit)
+                    .ToListAsync();
+
+                foreach (var upload in uploads)
+                {
+                    upload.Status = "PROCESSING";
+                    upload.UpdatedAt = DateTime.UtcNow;
+                }
+                await _context.SaveChangesAsync();
+
+                return ApiResponse<List<BankStatementUploadDto>>.SuccessResult(uploads.Select(MapToUploadDto).ToList());
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<List<BankStatementUploadDto>>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<List<BankStatementUploadDto>>> GetUserUploadsAsync(string bankAccountId, string userId)
+        {
+            try
+            {
+                var uploads = await _context.BankStatementUploads
+                    .Where(u => u.BankAccountId == bankAccountId && u.UserId == userId)
+                    .OrderByDescending(u => u.CreatedAt)
+                    .ToListAsync();
+
+                return ApiResponse<List<BankStatementUploadDto>>.SuccessResult(uploads.Select(MapToUploadDto).ToList());
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<List<BankStatementUploadDto>>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<(Stream fileStream, string fileName, string contentType)>> GetUploadFileAsync(string uploadId)
+        {
+            try
+            {
+                var upload = await _context.BankStatementUploads.FindAsync(uploadId);
+                if (upload == null) return ApiResponse<(Stream, string, string)>.ErrorResult("Not found");
+
+                if (!File.Exists(upload.FilePath)) return ApiResponse<(Stream, string, string)>.ErrorResult("File missing");
+
+                var stream = new FileStream(upload.FilePath, FileMode.Open, FileAccess.Read);
+                var contentType = upload.FileType == "PDF" ? "application/pdf" : "text/csv";
+                
+                return ApiResponse<(Stream, string, string)>.SuccessResult((stream, upload.OriginalFileName, contentType));
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<(Stream, string, string)>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<bool>> ProcessExtractedTextAsync(ProcessExtractedTextDto processDto)
+        {
+            try
+            {
+                var upload = await _context.BankStatementUploads.FindAsync(processDto.UploadId);
+                if (upload == null) return ApiResponse<bool>.ErrorResult("Not found");
+
+                var aiResult = await ParseExtractedTextWithAIAsync(processDto.ExtractedText, upload.OriginalFileName);
+
+                if (!aiResult.Success)
+                {
+                    upload.Status = "FAILED";
+                    upload.ErrorMessage = aiResult.Message;
+                    await _context.SaveChangesAsync();
+                    return ApiResponse<bool>.ErrorResult(aiResult.Message);
+                }
+
+                var stagingTransactions = aiResult.Data.StatementItems.Select(item => new StagingTransaction
+                {
+                    Id = Guid.NewGuid().ToString(), // Explicitly set ID
+                    UploadId = upload.Id,
+                    TransactionDate = item.TransactionDate,
+                    Amount = Math.Abs(item.Amount),
+                    // Normalize and truncate TransactionType to max 10 characters
+                    TransactionType = NormalizeTransactionType(item.TransactionType ?? "DEBIT"),
+                    Description = item.Description != null && item.Description.Length > 500 ? item.Description.Substring(0, 500) : item.Description, // Truncate if too long
+                    ReferenceNumber = item.ReferenceNumber != null && item.ReferenceNumber.Length > 255 ? item.ReferenceNumber.Substring(0, 255) : item.ReferenceNumber, // Truncate if too long
+                    Merchant = item.Merchant != null && item.Merchant.Length > 255 ? item.Merchant.Substring(0, 255) : item.Merchant, // Truncate if too long
+                    Category = item.Category != null && item.Category.Length > 255 ? item.Category.Substring(0, 255) : item.Category, // Truncate if too long
+                    BalanceAfterTransaction = item.BalanceAfterTransaction,
+                    CreatedAt = DateTime.UtcNow
+                }).ToList();
+
+                if (stagingTransactions.Count > 0)
+                {
+                    _context.StagingTransactions.AddRange(stagingTransactions);
+                }
+                upload.Status = "DONE";
+                upload.UpdatedAt = DateTime.UtcNow;
+                
+                try
+                {
+                    await _context.SaveChangesAsync();
+                }
+                catch (Exception dbEx)
+                {
+                    // Log the inner exception for debugging
+                    var innerException = dbEx.InnerException?.Message ?? dbEx.Message;
+                    var fullError = dbEx.ToString();
+                    
+                    // Log to console for debugging
+                    Console.WriteLine($"Database Save Error: {fullError}");
+                    
+                    // Check if it's a table missing error
+                    if (innerException.Contains("Invalid object name") || innerException.Contains("StagingTransactions"))
+                    {
+                        return ApiResponse<bool>.ErrorResult("Database table 'StagingTransactions' is missing. Please run the migration script: Documentation/Database/Scripts/create_bank_statement_upload_tables.sql");
+                    }
+                    
+                    // Check if it's a foreign key constraint error
+                    if (innerException.Contains("FOREIGN KEY") || innerException.Contains("constraint"))
+                    {
+                        return ApiResponse<bool>.ErrorResult($"Foreign key constraint error: {innerException}. The BankStatementUpload record may not exist.");
+                    }
+                    
+                    // Check if it's a string length error
+                    if (innerException.Contains("String or binary data would be truncated") || innerException.Contains("StringLength"))
+                    {
+                        return ApiResponse<bool>.ErrorResult($"Data validation error: One or more fields exceed maximum length. Details: {innerException}");
+                    }
+                    
+                    return ApiResponse<bool>.ErrorResult($"Database error: {innerException}. Full error logged to console.");
+                }
+                return ApiResponse<bool>.SuccessResult(true);
+            }
+            catch (Exception ex)
+            {
+                // Log detailed error information
+                var errorMessage = ex.Message;
+                if (ex.InnerException != null)
+                {
+                    errorMessage += $" Inner: {ex.InnerException.Message}";
+                }
+                
+                return ApiResponse<bool>.ErrorResult($"Error: {errorMessage}");
+            }
+        }
+
+        public async Task<ApiResponse<List<StagingTransactionDto>>> GetStagingTransactionsAsync(string uploadId, string userId)
+        {
+            try
+            {
+                var upload = await _context.BankStatementUploads
+                    .FirstOrDefaultAsync(u => u.Id == uploadId && u.UserId == userId);
+                
+                if (upload == null) return ApiResponse<List<StagingTransactionDto>>.ErrorResult("Not found");
+
+                var transactions = await _context.StagingTransactions
+                    .Where(t => t.UploadId == uploadId)
+                    .OrderBy(t => t.TransactionDate)
+                    .ToListAsync();
+
+                return ApiResponse<List<StagingTransactionDto>>.SuccessResult(transactions.Select(MapToStagingDto).ToList());
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<List<StagingTransactionDto>>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<bool>> SaveStagingTransactionsAsync(string uploadId, ConfirmBankStatementUploadDto saveDto, string userId)
+        {
+            try
+            {
+                var upload = await _context.BankStatementUploads
+                    .FirstOrDefaultAsync(u => u.Id == uploadId && u.UserId == userId);
+                
+                if (upload == null) return ApiResponse<bool>.ErrorResult("Not found");
+
+                // Allow saving staging transactions regardless of upload status
+                // This enables users to update staging data even after confirmation if needed
+
+                // Delete existing staging transactions for this upload
+                var existingTransactions = await _context.StagingTransactions
+                    .Where(t => t.UploadId == uploadId)
+                    .ToListAsync();
+                
+                if (existingTransactions.Any())
+                {
+                    _context.StagingTransactions.RemoveRange(existingTransactions);
+                }
+
+                // Create new staging transactions from the DTO
+                if (saveDto.Transactions != null && saveDto.Transactions.Any())
+                {
+                    var newStagingTransactions = saveDto.Transactions.Select(t => 
+                    {
+                        // If ID is a temp ID or doesn't look like a GUID, generate a new one
+                        // Otherwise preserve the ID to maintain references
+                        string transactionId = t.Id;
+                        if (t.Id.StartsWith("temp-") || t.Id.StartsWith("imported-") || !Guid.TryParse(t.Id, out _))
+                        {
+                            transactionId = Guid.NewGuid().ToString();
+                        }
+
+                        return new StagingTransaction
+                        {
+                            Id = transactionId,
+                            UploadId = uploadId,
+                            TransactionDate = t.TransactionDate,
+                            Amount = Math.Abs(t.Amount),
+                            TransactionType = t.TransactionType,
+                            Description = t.Description,
+                            ReferenceNumber = t.ReferenceNumber,
+                            Merchant = t.Merchant,
+                            Category = t.Category,
+                            BalanceAfterTransaction = t.BalanceAfterTransaction,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                    }).ToList();
+
+                    _context.StagingTransactions.AddRange(newStagingTransactions);
+                }
+
+                upload.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+                return ApiResponse<bool>.SuccessResult(true, "Staging transactions saved successfully");
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<BankStatementDto>> ConfirmUploadAsync(string uploadId, ConfirmBankStatementUploadDto confirmDto, string userId)
+        {
+            try
+            {
+                var upload = await _context.BankStatementUploads
+                    .FirstOrDefaultAsync(u => u.Id == uploadId && u.UserId == userId);
+                
+                if (upload == null) return ApiResponse<BankStatementDto>.ErrorResult("Not found");
+
+                var statement = new BankStatement
+                {
+                    UserId = userId,
+                    BankAccountId = upload.BankAccountId,
+                    StatementName = confirmDto.StatementName,
+                    StatementStartDate = confirmDto.StatementStartDate,
+                    StatementEndDate = confirmDto.StatementEndDate,
+                    OpeningBalance = confirmDto.OpeningBalance,
+                    ClosingBalance = confirmDto.ClosingBalance,
+                    ImportFormat = upload.FileType,
+                    ImportSource = upload.OriginalFileName,
+                    TotalTransactions = confirmDto.Transactions?.Count ?? 0,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.BankStatements.Add(statement);
+                await _context.SaveChangesAsync();
+
+                if (confirmDto.Transactions != null)
+                {
+                    var items = new List<BankStatementItem>();
+                    var splitPayments = new List<Entities.Payment>();
+                    var parentTransactionId = Guid.NewGuid().ToString();
+
+                    foreach (var t in confirmDto.Transactions)
+                    {
+                        // Create BankStatementItem for the original transaction
+                        var item = new BankStatementItem
+                        {
+                            BankStatementId = statement.Id,
+                            TransactionDate = t.TransactionDate,
+                            Amount = Math.Abs(t.Amount),
+                            TransactionType = t.TransactionType,
+                            Description = t.Description,
+                            ReferenceNumber = t.ReferenceNumber,
+                            Merchant = t.Merchant,
+                            Category = t.Category,
+                            BalanceAfterTransaction = t.BalanceAfterTransaction,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                        items.Add(item);
+
+                        // If transaction has splits, create multiple Payment records
+                        if (t.IsSplit && t.Splits != null && t.Splits.Count > 0)
+                        {
+                            var parentRef = t.ReferenceNumber ?? $"SPLIT_{parentTransactionId}_{DateTime.UtcNow:yyyyMMddHHmmss}";
+                            
+                            foreach (var split in t.Splits)
+                            {
+                                var splitPayment = new Entities.Payment
+                                {
+                                    Id = Guid.NewGuid().ToString(),
+                                    BankAccountId = statement.BankAccountId,
+                                    BillId = !string.IsNullOrEmpty(split.BillId) ? split.BillId : null,
+                                    UserId = userId,
+                                    Amount = Math.Abs(split.Amount),
+                                    Method = "BANK_TRANSFER",
+                                    Reference = $"{parentRef}_SPLIT_{split.Id}",
+                                    Status = "COMPLETED",
+                                    IsBankTransaction = true,
+                                    TransactionType = t.TransactionType,
+                                    Description = split.Description ?? t.Description ?? $"Split payment - {Math.Abs(split.Amount)}",
+                                    Category = split.Category ?? t.Category,
+                                    ExternalTransactionId = parentRef, // Link all splits to parent transaction
+                                    Notes = $"Split from transaction {t.Id}. Original amount: {Math.Abs(t.Amount)}",
+                                    Merchant = t.Merchant,
+                                    Currency = "USD",
+                                    ProcessedAt = t.TransactionDate,
+                                    TransactionDate = t.TransactionDate,
+                                    CreatedAt = DateTime.UtcNow,
+                                    UpdatedAt = DateTime.UtcNow
+                                };
+
+                                splitPayments.Add(splitPayment);
+                            }
+
+                            // Mark the BankStatementItem as matched since we're creating split payments
+                            item.IsMatched = true;
+                            item.MatchedTransactionId = splitPayments.First().Id;
+                            item.MatchedTransactionType = "Payment";
+                            item.MatchedAt = DateTime.UtcNow;
+                            item.MatchedBy = userId;
+                        }
+                    }
+
+                    _context.BankStatementItems.AddRange(items);
+                    
+                    // Add split payments if any
+                    if (splitPayments.Any())
+                    {
+                        _context.Payments.AddRange(splitPayments);
+                        
+                        // Update bank account balance for split transactions
+                        var bankAccount = await _context.BankAccounts
+                            .FirstOrDefaultAsync(ba => ba.Id == statement.BankAccountId);
+                        
+                        if (bankAccount != null)
+                        {
+                            foreach (var splitPayment in splitPayments)
+                            {
+                                if (splitPayment.TransactionType == "DEBIT")
+                                {
+                                    bankAccount.CurrentBalance -= splitPayment.Amount;
+                                }
+                                else if (splitPayment.TransactionType == "CREDIT")
+                                {
+                                    bankAccount.CurrentBalance += splitPayment.Amount;
+                                }
+                            }
+                        }
+
+                        // Update bill status for splits linked to bills
+                        foreach (var splitPayment in splitPayments.Where(sp => !string.IsNullOrEmpty(sp.BillId)))
+                        {
+                            var bill = await _context.Bills
+                                .FirstOrDefaultAsync(b => b.Id == splitPayment.BillId && b.UserId == userId);
+                            
+                            if (bill != null && bill.Status == "PENDING" && splitPayment.TransactionType == "DEBIT")
+                            {
+                                bill.Status = "PAID";
+                                bill.PaidAt = DateTime.UtcNow;
+                                bill.UpdatedAt = DateTime.UtcNow;
+                                
+                                // Explicitly mark the bill as modified to ensure EF tracks the changes
+                                _context.Entry(bill).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+                            }
+                        }
+                    }
+                }
+
+                var staging = await _context.StagingTransactions.Where(t => t.UploadId == uploadId).ToListAsync();
+                _context.StagingTransactions.RemoveRange(staging);
+
+                upload.Status = "COMPLETED";
+                upload.ProcessedBankStatementId = statement.Id;
+                upload.ProcessedAt = DateTime.UtcNow;
+                upload.UpdatedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                // Create transactions for all statement items (auto-matching removed)
+                await CreateTransactionsFromUnmatchedItemsAsync(statement.Id, userId);
+
+                return await GetBankStatementAsync(statement.Id, userId);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<BankStatementDto>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<BankStatementUploadDto>> GetUploadStatusAsync(string uploadId, string userId)
+        {
+            try
+            {
+                var upload = await _context.BankStatementUploads
+                    .FirstOrDefaultAsync(u => u.Id == uploadId && u.UserId == userId);
+                
+                if (upload == null) return ApiResponse<BankStatementUploadDto>.ErrorResult("Not found");
+
+                return ApiResponse<BankStatementUploadDto>.SuccessResult(MapToUploadDto(upload));
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<BankStatementUploadDto>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<bool>> CancelUploadAsync(string uploadId, string userId)
+        {
+            try
+            {
+                var upload = await _context.BankStatementUploads
+                    .FirstOrDefaultAsync(u => u.Id == uploadId && u.UserId == userId);
+                
+                if (upload == null) return ApiResponse<bool>.ErrorResult("Not found");
+
+                if (upload.Status == "COMPLETED" || upload.Status == "DONE")
+                {
+                    return ApiResponse<bool>.ErrorResult("Already processed");
+                }
+
+                upload.Status = "CANCELLED";
+                upload.UpdatedAt = DateTime.UtcNow;
+
+                _context.AuditLogs.Add(new AuditLog
+                {
+                    UserId = userId, Action = "CANCEL_BANK_STATEMENT_UPLOAD", EntityType = "BankStatementUpload",
+                    EntityId = upload.Id, Description = $"Cancelled: {upload.OriginalFileName}", CreatedAt = DateTime.UtcNow,
+                    LogType = "USER_ACTIVITY", Severity = "INFO"
+                });
+
+                await _context.SaveChangesAsync();
+                return ApiResponse<bool>.SuccessResult(true);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<bool>> UpdateUploadErrorAsync(string uploadId, string errorMessage)
+        {
+            try
+            {
+                var upload = await _context.BankStatementUploads.FindAsync(uploadId);
+                if (upload == null) return ApiResponse<bool>.ErrorResult("Not found");
+
+                upload.Status = "FAILED";
+                upload.ErrorMessage = errorMessage?.Length > 1000 ? errorMessage.Substring(0, 1000) : errorMessage;
+                upload.UpdatedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+                return ApiResponse<bool>.SuccessResult(true);
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<bool>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+     
         // ==================== RECONCILIATION OPERATIONS ====================
 
         public async Task<ApiResponse<ReconciliationDto>> CreateReconciliationAsync(CreateReconciliationDto createDto, string userId)
         {
             try
             {
-                // Verify bank account exists and belongs to user
                 var bankAccount = await _context.BankAccounts
                     .FirstOrDefaultAsync(ba => ba.Id == createDto.BankAccountId && ba.UserId == userId);
 
-                if (bankAccount == null)
-                {
-                    return ApiResponse<ReconciliationDto>.ErrorResult("Bank account not found or does not belong to user");
-                }
+                if (bankAccount == null) return ApiResponse<ReconciliationDto>.ErrorResult("Bank account not found");
 
-                // Verify bank statement if provided
+                // Get bookBalance from the bank statement
+                decimal bookBalance = 0m;
                 if (!string.IsNullOrEmpty(createDto.BankStatementId))
                 {
-                    var statement = await _context.BankStatements
-                        .FirstOrDefaultAsync(s => s.Id == createDto.BankStatementId && s.UserId == userId);
+                    // Use stored procedure SP_GetBookBalance to get TotalBalance
+                    var bankStatementIdParam = new SqlParameter("@BankStatementId", createDto.BankStatementId);
+                    var userIdParam = new SqlParameter("@UserId", userId);
+                    var result = await _context.Database
+                        .SqlQueryRaw<decimal>(
+                            "EXEC SP_GetBookBalance  @BankStatementId, @UserId",
+                            bankStatementIdParam, userIdParam)
+                        .ToListAsync();
 
-                    if (statement == null)
-                    {
-                        return ApiResponse<ReconciliationDto>.ErrorResult("Bank statement not found");
-                    }
+                    bookBalance = result.FirstOrDefault();
                 }
-
-                // Get book balance (system balance) for the reconciliation date
-                var bookBalance = bankAccount.CurrentBalance;
-
-                // Get statement balance (from statement if provided, otherwise use book balance)
-                decimal statementBalance = bookBalance;
-                if (!string.IsNullOrEmpty(createDto.BankStatementId))
-                {
-                    var statement = await _context.BankStatements
-                        .FirstOrDefaultAsync(s => s.Id == createDto.BankStatementId);
-                    statementBalance = statement?.ClosingBalance ?? bookBalance;
-                }
-
-                // Get transactions for the period
-                var startDate = createDto.ReconciliationDate.Date;
-                var endDate = startDate.AddDays(1).AddTicks(-1);
-
-                var transactions = await _context.Payments
-                    .Where(p => p.BankAccountId == createDto.BankAccountId &&
-                               p.TransactionDate >= startDate &&
-                               p.TransactionDate <= endDate &&
-                               p.IsBankTransaction)
-                    .ToListAsync();
 
                 var reconciliation = new Reconciliation
                 {
@@ -710,12 +852,7 @@ IMPORTANT:
                     ReconciliationName = createDto.ReconciliationName,
                     ReconciliationDate = createDto.ReconciliationDate,
                     BookBalance = bookBalance,
-                    StatementBalance = statementBalance,
-                    Difference = statementBalance - bookBalance,
-                    TotalTransactions = transactions.Count,
-                    MatchedTransactions = 0,
-                    UnmatchedTransactions = transactions.Count,
-                    PendingTransactions = 0,
+                    StatementBalance = bookBalance,
                     Status = "PENDING",
                     Notes = createDto.Notes,
                     CreatedAt = DateTime.UtcNow,
@@ -725,15 +862,12 @@ IMPORTANT:
                 _context.Reconciliations.Add(reconciliation);
                 await _context.SaveChangesAsync();
 
-                // Try auto-matching
                 await AutoMatchTransactionsAsync(reconciliation.Id, userId);
-
-                var result = await GetReconciliationAsync(reconciliation.Id, userId);
-                return result;
+                return await GetReconciliationAsync(reconciliation.Id, userId);
             }
             catch (Exception ex)
             {
-                return ApiResponse<ReconciliationDto>.ErrorResult($"Failed to create reconciliation: {ex.Message}");
+                return ApiResponse<ReconciliationDto>.ErrorResult($"Error: {ex.Message}");
             }
         }
 
@@ -746,17 +880,13 @@ IMPORTANT:
                     .ThenInclude(m => m.StatementItem)
                     .FirstOrDefaultAsync(r => r.Id == reconciliationId && r.UserId == userId);
 
-                if (reconciliation == null)
-                {
-                    return ApiResponse<ReconciliationDto>.ErrorResult("Reconciliation not found");
-                }
+                if (reconciliation == null) return ApiResponse<ReconciliationDto>.ErrorResult("Not found");
 
-                var dto = MapToReconciliationDto(reconciliation);
-                return ApiResponse<ReconciliationDto>.SuccessResult(dto);
+                return ApiResponse<ReconciliationDto>.SuccessResult(MapToReconciliationDto(reconciliation));
             }
             catch (Exception ex)
             {
-                return ApiResponse<ReconciliationDto>.ErrorResult($"Failed to get reconciliation: {ex.Message}");
+                return ApiResponse<ReconciliationDto>.ErrorResult($"Error: {ex.Message}");
             }
         }
 
@@ -769,12 +899,11 @@ IMPORTANT:
                     .OrderByDescending(r => r.ReconciliationDate)
                     .ToListAsync();
 
-                var dtos = reconciliations.Select(MapToReconciliationDto).ToList();
-                return ApiResponse<List<ReconciliationDto>>.SuccessResult(dtos);
+                return ApiResponse<List<ReconciliationDto>>.SuccessResult(reconciliations.Select(MapToReconciliationDto).ToList());
             }
             catch (Exception ex)
             {
-                return ApiResponse<List<ReconciliationDto>>.ErrorResult($"Failed to get reconciliations: {ex.Message}");
+                return ApiResponse<List<ReconciliationDto>>.ErrorResult($"Error: {ex.Message}");
             }
         }
 
@@ -787,12 +916,8 @@ IMPORTANT:
                     .ThenInclude(s => s!.StatementItems)
                     .FirstOrDefaultAsync(r => r.Id == reconciliationId && r.UserId == userId);
 
-                if (reconciliation == null)
-                {
-                    return ApiResponse<ReconciliationDto>.ErrorResult("Reconciliation not found");
-                }
+                if (reconciliation == null) return ApiResponse<ReconciliationDto>.ErrorResult("Not found");
 
-                // Get system transactions for the period
                 var startDate = reconciliation.ReconciliationDate.Date;
                 var endDate = startDate.AddDays(1).AddTicks(-1);
 
@@ -803,7 +928,6 @@ IMPORTANT:
                                p.IsBankTransaction)
                     .ToListAsync();
 
-                // Get statement items if statement exists
                 List<BankStatementItem>? statementItems = null;
                 if (reconciliation.BankStatementId != null)
                 {
@@ -812,19 +936,13 @@ IMPORTANT:
                         .ToListAsync();
                 }
 
-                int matchedCount = 0;
-
                 foreach (var transaction in systemTransactions)
                 {
-                    // Check if already matched
                     var existingMatch = await _context.ReconciliationMatches
-                        .FirstOrDefaultAsync(m => m.ReconciliationId == reconciliationId &&
-                                                 m.SystemTransactionId == transaction.Id);
+                        .FirstOrDefaultAsync(m => m.ReconciliationId == reconciliationId && m.SystemTransactionId == transaction.Id);
 
-                    if (existingMatch != null)
-                        continue;
+                    if (existingMatch != null) continue;
 
-                    // Try to find matching statement item
                     BankStatementItem? matchedItem = null;
                     if (statementItems != null)
                     {
@@ -832,13 +950,9 @@ IMPORTANT:
                             !item.IsMatched &&
                             Math.Abs((decimal)(item.Amount - transaction.Amount)) < 0.01m &&
                             transaction.TransactionDate.HasValue &&
-                            Math.Abs((item.TransactionDate.Date - transaction.TransactionDate.Value.Date).TotalDays) <= 2 &&
-                            (string.IsNullOrEmpty(item.ReferenceNumber) ||
-                             string.IsNullOrEmpty(transaction.Reference) ||
-                             item.ReferenceNumber == transaction.Reference));
+                            Math.Abs((item.TransactionDate.Date - transaction.TransactionDate.Value.Date).TotalDays) <= 2);
                     }
 
-                    // Create match
                     var match = new ReconciliationMatch
                     {
                         ReconciliationId = reconciliationId,
@@ -866,39 +980,14 @@ IMPORTANT:
                     }
 
                     _context.ReconciliationMatches.Add(match);
-                    matchedCount++;
                 }
-
-                // Update reconciliation stats
-                reconciliation.MatchedTransactions = await _context.ReconciliationMatches
-                    .CountAsync(m => m.ReconciliationId == reconciliationId && m.MatchStatus == "MATCHED");
-                reconciliation.UnmatchedTransactions = await _context.ReconciliationMatches
-                    .CountAsync(m => m.ReconciliationId == reconciliationId && m.MatchStatus == "UNMATCHED");
-                reconciliation.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();
-
-                // Update statement if exists
-                if (reconciliation.BankStatementId != null)
-                {
-                    var statement = await _context.BankStatements
-                        .FirstOrDefaultAsync(s => s.Id == reconciliation.BankStatementId);
-                    if (statement != null)
-                    {
-                        statement.MatchedTransactions = await _context.BankStatementItems
-                            .CountAsync(i => i.BankStatementId == statement.Id && i.IsMatched);
-                        statement.UnmatchedTransactions = statement.TotalTransactions - statement.MatchedTransactions;
-                        statement.UpdatedAt = DateTime.UtcNow;
-                        await _context.SaveChangesAsync();
-                    }
-                }
-
-                var result = await GetReconciliationAsync(reconciliationId, userId);
-                return result;
+                return await GetReconciliationAsync(reconciliationId, userId);
             }
             catch (Exception ex)
             {
-                return ApiResponse<ReconciliationDto>.ErrorResult($"Failed to auto-match transactions: {ex.Message}");
+                return ApiResponse<ReconciliationDto>.ErrorResult($"Error: {ex.Message}");
             }
         }
 
@@ -909,115 +998,53 @@ IMPORTANT:
                 var reconciliation = await _context.Reconciliations
                     .FirstOrDefaultAsync(r => r.Id == matchDto.ReconciliationId && r.UserId == userId);
 
-                if (reconciliation == null)
-                {
-                    return ApiResponse<ReconciliationMatchDto>.ErrorResult("Reconciliation not found");
-                }
+                if (reconciliation == null) return ApiResponse<ReconciliationMatchDto>.ErrorResult("Not found");
 
-                // Get system transaction
-                Payment? systemTransaction = null;
-                if (matchDto.SystemTransactionType == "Payment")
-                {
-                    systemTransaction = await _context.Payments
-                        .FirstOrDefaultAsync(p => p.Id == matchDto.SystemTransactionId);
-                }
+                var systemTransaction = await _context.Payments.FindAsync(matchDto.SystemTransactionId);
+                if (systemTransaction == null) return ApiResponse<ReconciliationMatchDto>.ErrorResult("Not found");
 
-                if (systemTransaction == null)
-                {
-                    return ApiResponse<ReconciliationMatchDto>.ErrorResult("System transaction not found");
-                }
-
-                // Get statement item if provided
                 BankStatementItem? statementItem = null;
                 if (!string.IsNullOrEmpty(matchDto.StatementItemId))
                 {
-                    statementItem = await _context.BankStatementItems
-                        .FirstOrDefaultAsync(i => i.Id == matchDto.StatementItemId);
+                    statementItem = await _context.BankStatementItems.FindAsync(matchDto.StatementItemId);
                 }
 
-                // Check if match already exists
-                var existingMatch = await _context.ReconciliationMatches
-                    .FirstOrDefaultAsync(m => m.ReconciliationId == matchDto.ReconciliationId &&
-                                             m.SystemTransactionId == matchDto.SystemTransactionId);
-
-                if (existingMatch != null)
+                var match = new ReconciliationMatch
                 {
-                    // Update existing match
-                    existingMatch.StatementItemId = matchDto.StatementItemId;
-                    existingMatch.MatchType = matchDto.MatchType;
-                    existingMatch.MatchStatus = "MATCHED";
-                    existingMatch.MatchNotes = matchDto.MatchNotes;
-                    existingMatch.UpdatedAt = DateTime.UtcNow;
-                    existingMatch.MatchedBy = userId;
+                    ReconciliationId = matchDto.ReconciliationId,
+                    SystemTransactionId = matchDto.SystemTransactionId,
+                    SystemTransactionType = matchDto.SystemTransactionType,
+                    StatementItemId = matchDto.StatementItemId,
+                    MatchType = matchDto.MatchType,
+                    Amount = systemTransaction.Amount,
+                    TransactionDate = systemTransaction.TransactionDate ?? systemTransaction.ProcessedAt,
+                    Description = systemTransaction.Description,
+                    MatchStatus = "MATCHED",
+                    MatchNotes = matchDto.MatchNotes,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    MatchedBy = userId
+                };
 
-                    if (statementItem != null)
-                    {
-                        statementItem.IsMatched = true;
-                        statementItem.MatchedTransactionId = systemTransaction.Id;
-                        statementItem.MatchedTransactionType = "Payment";
-                        statementItem.MatchedAt = DateTime.UtcNow;
-                        statementItem.MatchedBy = userId;
-                        statementItem.UpdatedAt = DateTime.UtcNow;
-                    }
-                }
-                else
+                if (statementItem != null)
                 {
-                    // Create new match
-                    var match = new ReconciliationMatch
-                    {
-                        ReconciliationId = matchDto.ReconciliationId,
-                        SystemTransactionId = matchDto.SystemTransactionId,
-                        SystemTransactionType = matchDto.SystemTransactionType,
-                        StatementItemId = matchDto.StatementItemId,
-                        MatchType = matchDto.MatchType,
-                        Amount = systemTransaction.Amount,
-                        TransactionDate = systemTransaction.TransactionDate ?? systemTransaction.ProcessedAt,
-                        Description = systemTransaction.Description,
-                        MatchStatus = "MATCHED",
-                        MatchNotes = matchDto.MatchNotes,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow,
-                        MatchedBy = userId
-                    };
-
-                    if (statementItem != null)
-                    {
-                        match.AmountDifference = Math.Abs(statementItem.Amount - systemTransaction.Amount);
-                        statementItem.IsMatched = true;
-                        statementItem.MatchedTransactionId = systemTransaction.Id;
-                        statementItem.MatchedTransactionType = "Payment";
-                        statementItem.MatchedAt = DateTime.UtcNow;
-                        statementItem.MatchedBy = userId;
-                        statementItem.UpdatedAt = DateTime.UtcNow;
-                    }
-
-                    _context.ReconciliationMatches.Add(match);
+                    match.AmountDifference = Math.Abs(statementItem.Amount - systemTransaction.Amount);
+                    statementItem.IsMatched = true;
+                    statementItem.MatchedTransactionId = systemTransaction.Id;
+                    statementItem.MatchedTransactionType = "Payment";
+                    statementItem.MatchedAt = DateTime.UtcNow;
+                    statementItem.MatchedBy = userId;
+                    statementItem.UpdatedAt = DateTime.UtcNow;
                 }
 
-                // Update reconciliation stats
-                reconciliation.MatchedTransactions = await _context.ReconciliationMatches
-                    .CountAsync(m => m.ReconciliationId == matchDto.ReconciliationId && m.MatchStatus == "MATCHED");
-                reconciliation.UnmatchedTransactions = await _context.ReconciliationMatches
-                    .CountAsync(m => m.ReconciliationId == matchDto.ReconciliationId && m.MatchStatus == "UNMATCHED");
-                reconciliation.UpdatedAt = DateTime.UtcNow;
-
+                _context.ReconciliationMatches.Add(match);
                 await _context.SaveChangesAsync();
 
-                var matchResult = existingMatch ?? await _context.ReconciliationMatches
-                    .FirstOrDefaultAsync(m => m.ReconciliationId == matchDto.ReconciliationId &&
-                                             m.SystemTransactionId == matchDto.SystemTransactionId);
-
-                if (matchResult == null)
-                {
-                    return ApiResponse<ReconciliationMatchDto>.ErrorResult("Failed to create match");
-                }
-
-                var dto = MapToReconciliationMatchDto(matchResult);
-                return ApiResponse<ReconciliationMatchDto>.SuccessResult(dto);
+                return ApiResponse<ReconciliationMatchDto>.SuccessResult(MapToReconciliationMatchDto(match));
             }
             catch (Exception ex)
             {
-                return ApiResponse<ReconciliationMatchDto>.ErrorResult($"Failed to match transaction: {ex.Message}");
+                return ApiResponse<ReconciliationMatchDto>.ErrorResult($"Error: {ex.Message}");
             }
         }
 
@@ -1029,16 +1056,11 @@ IMPORTANT:
                     .Include(m => m.Reconciliation)
                     .FirstOrDefaultAsync(m => m.Id == unmatchDto.MatchId);
 
-                if (match == null || match.Reconciliation.UserId != userId)
-                {
-                    return ApiResponse<bool>.ErrorResult("Match not found or access denied");
-                }
+                if (match == null || match.Reconciliation.UserId != userId) return ApiResponse<bool>.ErrorResult("Not found");
 
-                // Unmatch statement item if exists
                 if (!string.IsNullOrEmpty(match.StatementItemId))
                 {
-                    var statementItem = await _context.BankStatementItems
-                        .FirstOrDefaultAsync(i => i.Id == match.StatementItemId);
+                    var statementItem = await _context.BankStatementItems.FindAsync(match.StatementItemId);
                     if (statementItem != null)
                     {
                         statementItem.IsMatched = false;
@@ -1050,24 +1072,15 @@ IMPORTANT:
                     }
                 }
 
-                // Update match status
                 match.MatchStatus = "UNMATCHED";
                 match.UpdatedAt = DateTime.UtcNow;
 
-                // Update reconciliation stats
-                match.Reconciliation.MatchedTransactions = await _context.ReconciliationMatches
-                    .CountAsync(m => m.ReconciliationId == match.ReconciliationId && m.MatchStatus == "MATCHED");
-                match.Reconciliation.UnmatchedTransactions = await _context.ReconciliationMatches
-                    .CountAsync(m => m.ReconciliationId == match.ReconciliationId && m.MatchStatus == "UNMATCHED");
-                match.Reconciliation.UpdatedAt = DateTime.UtcNow;
-
                 await _context.SaveChangesAsync();
-
                 return ApiResponse<bool>.SuccessResult(true);
             }
             catch (Exception ex)
             {
-                return ApiResponse<bool>.ErrorResult($"Failed to unmatch transaction: {ex.Message}");
+                return ApiResponse<bool>.ErrorResult($"Error: {ex.Message}");
             }
         }
 
@@ -1075,42 +1088,20 @@ IMPORTANT:
         {
             try
             {
-                var reconciliation = await _context.Reconciliations
-                    .FirstOrDefaultAsync(r => r.Id == completeDto.ReconciliationId && r.UserId == userId);
-
-                if (reconciliation == null)
-                {
-                    return ApiResponse<ReconciliationDto>.ErrorResult("Reconciliation not found");
-                }
+                var reconciliation = await _context.Reconciliations.FirstOrDefaultAsync(r => r.Id == completeDto.ReconciliationId && r.UserId == userId);
+                if (reconciliation == null) return ApiResponse<ReconciliationDto>.ErrorResult("Not found");
 
                 reconciliation.Status = "COMPLETED";
                 reconciliation.CompletedAt = DateTime.UtcNow;
                 reconciliation.CompletedBy = userId;
-                reconciliation.Notes = completeDto.Notes ?? reconciliation.Notes;
                 reconciliation.UpdatedAt = DateTime.UtcNow;
 
-                // Mark statement as reconciled if exists
-                if (reconciliation.BankStatementId != null)
-                {
-                    var statement = await _context.BankStatements
-                        .FirstOrDefaultAsync(s => s.Id == reconciliation.BankStatementId);
-                    if (statement != null)
-                    {
-                        statement.IsReconciled = true;
-                        statement.ReconciledAt = DateTime.UtcNow;
-                        statement.ReconciledBy = userId;
-                        statement.UpdatedAt = DateTime.UtcNow;
-                    }
-                }
-
                 await _context.SaveChangesAsync();
-
-                var result = await GetReconciliationAsync(completeDto.ReconciliationId, userId);
-                return result;
+                return await GetReconciliationAsync(completeDto.ReconciliationId, userId);
             }
             catch (Exception ex)
             {
-                return ApiResponse<ReconciliationDto>.ErrorResult($"Failed to complete reconciliation: {ex.Message}");
+                return ApiResponse<ReconciliationDto>.ErrorResult($"Error: {ex.Message}");
             }
         }
 
@@ -1123,76 +1114,14 @@ IMPORTANT:
                     .ThenInclude(s => s!.StatementItems)
                     .FirstOrDefaultAsync(r => r.Id == reconciliationId && r.UserId == userId);
 
-                if (reconciliation == null)
-                {
-                    return ApiResponse<List<TransactionMatchSuggestionDto>>.ErrorResult("Reconciliation not found");
-                }
+                if (reconciliation == null) return ApiResponse<List<TransactionMatchSuggestionDto>>.ErrorResult("Not found");
 
                 var suggestions = new List<TransactionMatchSuggestionDto>();
-
-                if (reconciliation.BankStatementId == null)
-                {
-                    return ApiResponse<List<TransactionMatchSuggestionDto>>.SuccessResult(suggestions);
-                }
-
-                // Get unmatched system transactions
-                var startDate = reconciliation.ReconciliationDate.Date;
-                var endDate = startDate.AddDays(1).AddTicks(-1);
-
-                var systemTransactions = await _context.Payments
-                    .Where(p => p.BankAccountId == reconciliation.BankAccountId &&
-                               p.TransactionDate >= startDate &&
-                               p.TransactionDate <= endDate &&
-                               p.IsBankTransaction)
-                    .ToListAsync();
-
-                var matchedTransactionIds = await _context.ReconciliationMatches
-                    .Where(m => m.ReconciliationId == reconciliationId && m.MatchStatus == "MATCHED")
-                    .Select(m => m.SystemTransactionId)
-                    .ToListAsync();
-
-                var unmatchedSystemTransactions = systemTransactions
-                    .Where(t => !matchedTransactionIds.Contains(t.Id))
-                    .ToList();
-
-                var unmatchedStatementItems = reconciliation.BankStatement!.StatementItems
-                    .Where(i => !i.IsMatched)
-                    .ToList();
-
-                // Generate suggestions
-                foreach (var transaction in unmatchedSystemTransactions)
-                {
-                    var bestMatch = unmatchedStatementItems
-                        .Select(item =>
-                        {
-                            var score = CalculateMatchScore(transaction, item);
-                            return new { Item = item, Score = score };
-                        })
-                        .Where(x => x.Score > 50) // Only suggest if score > 50%
-                        .OrderByDescending(x => x.Score)
-                        .FirstOrDefault();
-
-                    if (bestMatch != null)
-                    {
-                        suggestions.Add(new TransactionMatchSuggestionDto
-                        {
-                            SystemTransactionId = transaction.Id,
-                            SystemTransactionType = "Payment",
-                            StatementItemId = bestMatch.Item.Id,
-                            Amount = transaction.Amount,
-                            TransactionDate = transaction.TransactionDate ?? transaction.ProcessedAt,
-                            Description = transaction.Description,
-                            MatchScore = bestMatch.Score,
-                            MatchReason = GetMatchReason(transaction, bestMatch.Item, bestMatch.Score)
-                        });
-                    }
-                }
-
                 return ApiResponse<List<TransactionMatchSuggestionDto>>.SuccessResult(suggestions);
             }
             catch (Exception ex)
             {
-                return ApiResponse<List<TransactionMatchSuggestionDto>>.ErrorResult($"Failed to get match suggestions: {ex.Message}");
+                return ApiResponse<List<TransactionMatchSuggestionDto>>.ErrorResult($"Error: {ex.Message}");
             }
         }
 
@@ -1200,482 +1129,319 @@ IMPORTANT:
         {
             try
             {
-                var bankAccount = await _context.BankAccounts
-                    .FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
+                var bankAccount = await _context.BankAccounts.FirstOrDefaultAsync(ba => ba.Id == bankAccountId && ba.UserId == userId);
+                if (bankAccount == null) return ApiResponse<ReconciliationSummaryDto>.ErrorResult("Not found");
 
-                if (bankAccount == null)
-                {
-                    return ApiResponse<ReconciliationSummaryDto>.ErrorResult("Bank account not found");
-                }
+             
 
-                var date = reconciliationDate ?? DateTime.UtcNow.Date;
-                var startDate = date.Date;
-                var endDate = startDate.AddDays(1).AddTicks(-1);
-
-                var reconciliation = await _context.Reconciliations
-                    .Where(r => r.BankAccountId == bankAccountId &&
-                               r.ReconciliationDate.Date == date.Date &&
-                               r.UserId == userId)
-                    .OrderByDescending(r => r.CreatedAt)
+                // Get most recent closing balance as bookBalance for the bank account
+                decimal bookBalance = await _context.BankStatements
+                    .Where(bs => bs.BankAccountId == bankAccount.Id)
+                    .OrderByDescending(bs => bs.UpdatedAt)
+                    .Select(bs => bs.ClosingBalance)
                     .FirstOrDefaultAsync();
 
-                if (reconciliation == null)
+                return ApiResponse<ReconciliationSummaryDto>.SuccessResult(new ReconciliationSummaryDto
                 {
-                    // Return summary without reconciliation
-                    var transactions = await _context.Payments
-                        .Where(p => p.BankAccountId == bankAccountId &&
-                                   p.TransactionDate >= startDate &&
-                                   p.TransactionDate <= endDate &&
-                                   p.IsBankTransaction)
-                        .CountAsync();
-
-                    return ApiResponse<ReconciliationSummaryDto>.SuccessResult(new ReconciliationSummaryDto
-                    {
-                        BankAccountId = bankAccountId,
-                        BankAccountName = bankAccount.AccountName,
-                        ReconciliationDate = date,
-                        BookBalance = bankAccount.CurrentBalance,
-                        StatementBalance = bankAccount.CurrentBalance,
-                        Difference = 0,
-                        TotalTransactions = transactions,
-                        MatchedTransactions = 0,
-                        UnmatchedTransactions = transactions,
-                        PendingTransactions = 0,
-                        Status = "PENDING",
-                        IsBalanced = true
-                    });
-                }
-
-                var summary = new ReconciliationSummaryDto
-                {
-                    ReconciliationId = reconciliation.Id,
                     BankAccountId = bankAccountId,
                     BankAccountName = bankAccount.AccountName,
-                    ReconciliationDate = reconciliation.ReconciliationDate,
-                    BookBalance = reconciliation.BookBalance,
-                    StatementBalance = reconciliation.StatementBalance,
-                    Difference = reconciliation.Difference,
-                    TotalTransactions = reconciliation.TotalTransactions,
-                    MatchedTransactions = reconciliation.MatchedTransactions,
-                    UnmatchedTransactions = reconciliation.UnmatchedTransactions,
-                    PendingTransactions = reconciliation.PendingTransactions,
-                    Status = reconciliation.Status,
-                    IsBalanced = Math.Abs(reconciliation.Difference) < 0.01m
-                };
-
-                return ApiResponse<ReconciliationSummaryDto>.SuccessResult(summary);
+                    ReconciliationDate = reconciliationDate ?? DateTime.UtcNow,
+                    BookBalance = bookBalance,
+                    StatementBalance = bookBalance,
+                    Status = "PENDING"
+                });
             }
             catch (Exception ex)
             {
-                return ApiResponse<ReconciliationSummaryDto>.ErrorResult($"Failed to get reconciliation summary: {ex.Message}");
+                return ApiResponse<ReconciliationSummaryDto>.ErrorResult($"Error: {ex.Message}");
+            }
+        }
+
+        // ==================== BANK STATEMENT EXTRACTION METHODS ====================
+
+        public async Task<ApiResponse<ExtractBankStatementResponseDto>> ExtractBankStatementFromFileAsync(Stream fileStream, string fileName, string bankAccountId, string userId)
+        {
+            try
+            {
+                var fileExtension = Path.GetExtension(fileName).ToLower();
+                string extractedText = string.Empty;
+
+                if (fileExtension == ".csv")
+                {
+                    // Read CSV file
+                    using var reader = new StreamReader(fileStream);
+                    extractedText = await reader.ReadToEndAsync();
+                }
+                else if (fileExtension == ".pdf")
+                {
+                    // Extract text from PDF using OCR service
+                    var ocrResult = await _ocrService.ProcessPdfAsync(fileStream);
+                    if (string.IsNullOrWhiteSpace(ocrResult.FullText))
+                    {
+                        return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("Failed to extract text from PDF");
+                    }
+                    extractedText = ocrResult.FullText;
+                }
+                else
+                {
+                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("Unsupported file format. Only CSV and PDF are supported.");
+                }
+
+                // Parse extracted text with AI
+                var result = await ParseExtractedTextWithAIAsync(extractedText, fileName);
+                if (result.Success)
+                {
+                    result.Data.ExtractedText = extractedText; // Include extracted text for debugging
+                    result.Data.ImportFormat = fileExtension == ".csv" ? "CSV" : "PDF";
+                    result.Data.ImportSource = fileName;
+                }
+                return result;
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult($"Error extracting bank statement: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResponse<ExtractBankStatementResponseDto>> AnalyzePDFWithAIAsync(Stream fileStream, string fileName, string bankAccountId, string userId)
+        {
+            try
+            {
+                // Extract text from PDF using OCR service
+                var ocrResult = await _ocrService.ProcessPdfAsync(fileStream);
+                if (string.IsNullOrWhiteSpace(ocrResult.FullText))
+                {
+                    return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("Failed to extract text from PDF");
+                }
+
+                // Parse extracted text with AI
+                var result = await ParseExtractedTextWithAIAsync(ocrResult.FullText, fileName);
+                if (result.Success)
+                {
+                    result.Data.ExtractedText = ocrResult.FullText; // Include extracted text for debugging
+                    result.Data.ImportFormat = "PDF";
+                    result.Data.ImportSource = fileName;
+                }
+                return result;
+            }
+            catch (Exception ex)
+            {
+                return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult($"Error analyzing PDF with AI: {ex.Message}");
             }
         }
 
         // ==================== HELPER METHODS ====================
 
+        private async Task<ApiResponse<ExtractBankStatementResponseDto>> ParseExtractedTextWithAIAsync(string extractedText, string fileName)
+        {
+            if (string.IsNullOrEmpty(_openAISettings.ApiKey)) return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("No API key");
+
+            // Increase limit from 10,000 to 100,000 characters to handle longer statements with more transactions
+            // gpt-4o-mini has a 128k token context window, so 100k characters is safe
+            const int maxChars = 100000;
+            var textToProcess = extractedText.Length > maxChars 
+                ? extractedText.Substring(0, maxChars) 
+                : extractedText;
+
+            // Improved prompt with clear instructions to extract ALL transactions
+            var prompt = @"Extract ALL transactions from the following bank statement text and return a JSON object with this exact structure:
+{
+  ""statementName"": ""string"",
+  ""statementStartDate"": ""YYYY-MM-DD"",
+  ""statementEndDate"": ""YYYY-MM-DD"",
+  ""openingBalance"": number,
+  ""closingBalance"": number,
+  ""transactions"": [
+    {
+      ""transactionDate"": ""YYYY-MM-DD"",
+      ""amount"": number,
+      ""transactionType"": ""DEBIT"" or ""CREDIT"",
+      ""description"": ""string"",
+      ""referenceNumber"": ""string"" (optional),
+      ""merchant"": ""string"" (optional),
+      ""category"": ""string"" (optional),
+      ""balanceAfterTransaction"": number (optional)
+    }
+  ]
+}
+
+IMPORTANT: Extract ALL transactions you can find in the text. Do not skip any transactions. Include every transaction line item.
+
+Bank statement text:
+" + textToProcess;
+
+            var messages = new List<object> { new { role = "user", content = prompt } };
+            var openAIRequest = new { model = "gpt-4o-mini", messages = messages, response_format = new { type = "json_object" } };
+            
+            var httpResponse = await _httpClient.PostAsync("https://api.openai.com/v1/chat/completions", new StringContent(JsonSerializer.Serialize(openAIRequest), Encoding.UTF8, "application/json"));
+            if (!httpResponse.IsSuccessStatusCode) return ApiResponse<ExtractBankStatementResponseDto>.ErrorResult("AI failed");
+
+            var responseContent = await httpResponse.Content.ReadAsStringAsync();
+            var aiResult = JsonSerializer.Deserialize<JsonElement>(responseContent).GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+            var parsed = JsonSerializer.Deserialize<JsonElement>(aiResult);
+            
+            var result = new ExtractBankStatementResponseDto
+            {
+                StatementName = parsed.TryGetProperty("statementName", out var name) ? name.GetString() ?? fileName : fileName,
+                StatementStartDate = parsed.TryGetProperty("statementStartDate", out var sd) && DateTime.TryParse(sd.GetString(), out var sdt) ? sdt : null,
+                StatementEndDate = parsed.TryGetProperty("statementEndDate", out var ed) && DateTime.TryParse(ed.GetString(), out var edt) ? edt : null,
+                OpeningBalance = parsed.TryGetProperty("openingBalance", out var ob) ? GetDecimalFromJsonElement(ob) : null,
+                ClosingBalance = parsed.TryGetProperty("closingBalance", out var cb) ? GetDecimalFromJsonElement(cb) : null,
+                StatementItems = new List<BankStatementItemImportDto>()
+            };
+
+            if (parsed.TryGetProperty("transactions", out var transactions))
+            {
+                foreach (var trans in transactions.EnumerateArray())
+                {
+                    result.StatementItems.Add(new BankStatementItemImportDto
+                    {
+                        TransactionDate = trans.TryGetProperty("transactionDate", out var d) && DateTime.TryParse(d.GetString(), out var dt) ? dt : DateTime.UtcNow,
+                        Amount = Math.Abs(trans.TryGetProperty("amount", out var a) ? GetDecimalFromJsonElement(a) ?? 0 : 0),
+                        TransactionType = trans.TryGetProperty("transactionType", out var t) ? t.GetString() ?? "DEBIT" : "DEBIT",
+                        Description = trans.TryGetProperty("description", out var desc) ? desc.GetString() : "",
+                        ReferenceNumber = trans.TryGetProperty("referenceNumber", out var refNum) ? refNum.GetString() : null,
+                        Merchant = trans.TryGetProperty("merchant", out var merch) ? merch.GetString() : null,
+                        Category = trans.TryGetProperty("category", out var cat) ? cat.GetString() : null,
+                        BalanceAfterTransaction = trans.TryGetProperty("balanceAfterTransaction", out var bal) ? GetDecimalFromJsonElement(bal) ?? 0 : 0
+                    });
+                }
+            }
+            return ApiResponse<ExtractBankStatementResponseDto>.SuccessResult(result);
+        }
+
         private decimal? GetDecimalFromJsonElement(JsonElement element)
         {
-            try
-            {
-                if (element.ValueKind == JsonValueKind.Number)
-                {
-                    return element.GetDecimal();
-                }
-                else if (element.ValueKind == JsonValueKind.String)
-                {
-                    var str = element.GetString();
-                    if (string.IsNullOrWhiteSpace(str))
-                        return null;
-                    
-                    // Remove currency symbols and commas
-                    str = str.Replace("$", "").Replace(",", "").Trim();
-                    if (decimal.TryParse(str, out var result))
-                    {
-                        return result;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning($"Error parsing decimal from JSON element: {ex.Message}");
-            }
+            if (element.ValueKind == JsonValueKind.Number) return element.GetDecimal();
+            if (element.ValueKind == JsonValueKind.String && decimal.TryParse(element.GetString(), out var val)) return val;
             return null;
         }
 
-        private async Task AutoMatchStatementItemsAsync(string statementId, string userId)
+        private string NormalizeTransactionType(string transactionType)
         {
-            var statement = await _context.BankStatements
-                .Include(s => s.StatementItems)
-                .FirstOrDefaultAsync(s => s.Id == statementId);
+            if (string.IsNullOrWhiteSpace(transactionType))
+                return "DEBIT";
+            
+            // Normalize to uppercase and truncate to 10 characters
+            var normalized = transactionType.Trim().ToUpper();
+            
+            // Map common variations to DEBIT/CREDIT
+            if (normalized.StartsWith("DEBIT") || normalized.StartsWith("WITHDRAW") || normalized.StartsWith("PAYMENT") || normalized.StartsWith("OUT"))
+                return "DEBIT";
+            
+            if (normalized.StartsWith("CREDIT") || normalized.StartsWith("DEPOSIT") || normalized.StartsWith("INCOME") || normalized.StartsWith("IN"))
+                return "CREDIT";
+            
+            // Truncate to max 10 characters if it doesn't match known patterns
+            return normalized.Length > 10 ? normalized.Substring(0, 10) : normalized;
+        }
 
+        private async Task AutoMatchStatementItemsAsync(string statementId, string userId) {
+            var statement = await _context.BankStatements.Include(s => s.StatementItems).FirstOrDefaultAsync(s => s.Id == statementId);
             if (statement == null) return;
-
-            var startDate = statement.StatementStartDate.Date;
-            var endDate = statement.StatementEndDate.Date.AddDays(1).AddTicks(-1);
-
-            var systemTransactions = await _context.Payments
-                .Where(p => p.BankAccountId == statement.BankAccountId &&
-                           p.TransactionDate >= startDate &&
-                           p.TransactionDate <= endDate &&
-                           p.IsBankTransaction)
-                .ToListAsync();
-
-            foreach (var item in statement.StatementItems.Where(i => !i.IsMatched))
-            {
-                var match = systemTransactions.FirstOrDefault(t =>
-                    Math.Abs((decimal)(t.Amount - item.Amount)) < 0.01m &&
-                    t.TransactionDate.HasValue &&
-                    Math.Abs((t.TransactionDate.Value.Date - item.TransactionDate.Date).TotalDays) <= 2 &&
-                    (string.IsNullOrEmpty(item.ReferenceNumber) ||
-                     string.IsNullOrEmpty(t.Reference) ||
-                     item.ReferenceNumber == t.Reference));
-
-                if (match != null)
-                {
-                    item.IsMatched = true;
-                    item.MatchedTransactionId = match.Id;
-                    item.MatchedTransactionType = "Payment";
-                    item.MatchedAt = DateTime.UtcNow;
-                    item.MatchedBy = userId;
-                    item.UpdatedAt = DateTime.UtcNow;
+            foreach (var item in statement.StatementItems.Where(i => !i.IsMatched)) {
+                // Match by amount AND transaction type to prevent incorrect matches between CREDIT and DEBIT
+                var match = await _context.Payments.FirstOrDefaultAsync(p => 
+                    p.BankAccountId == statement.BankAccountId && 
+                    Math.Abs((decimal)(p.Amount - item.Amount)) < 0.01m &&
+                    p.TransactionType == item.TransactionType);
+                if (match != null) {
+                    item.IsMatched = true; item.MatchedTransactionId = match.Id; item.MatchedTransactionType = "Payment";
+                    item.MatchedAt = DateTime.UtcNow; item.MatchedBy = userId; item.UpdatedAt = DateTime.UtcNow;
                 }
             }
-
-            statement.MatchedTransactions = statement.StatementItems.Count(i => i.IsMatched);
-            statement.UnmatchedTransactions = statement.TotalTransactions - statement.MatchedTransactions;
-            statement.UpdatedAt = DateTime.UtcNow;
-
             await _context.SaveChangesAsync();
         }
 
-        private async Task CreateTransactionsFromUnmatchedItemsAsync(string statementId, string userId)
-        {
-            try
-            {
-                var statement = await _context.BankStatements
-                    .Include(s => s.StatementItems)
-                    .FirstOrDefaultAsync(s => s.Id == statementId);
-
-                if (statement == null)
-                {
-                    _logger.LogWarning($"Bank statement {statementId} not found for creating transactions");
-                    return;
-                }
-
-                // Get all unmatched items
-                var unmatchedItems = statement.StatementItems
-                    .Where(i => !i.IsMatched)
-                    .ToList();
-
-                if (!unmatchedItems.Any())
-                {
-                    _logger.LogInformation($"No unmatched items to create transactions from for statement {statementId}");
-                    return;
-                }
-
-                _logger.LogInformation($"Creating {unmatchedItems.Count} transactions from unmatched statement items");
-
-                int createdCount = 0;
-                int failedCount = 0;
-
-                foreach (var item in unmatchedItems)
-                {
-                    try
-                    {
-                        // Get bank account currency
-                        var bankAccount = await _context.BankAccounts
-                            .FirstOrDefaultAsync(ba => ba.Id == statement.BankAccountId);
-                        
-                        if (bankAccount == null)
-                        {
-                            _logger.LogWarning($"Bank account {statement.BankAccountId} not found for statement item {item.Id}");
-                            failedCount++;
-                            continue;
-                        }
-
-                        // Auto-create category if it doesn't exist (for reconciliation imports)
-                        if (!string.IsNullOrWhiteSpace(item.Category) && 
-                            item.TransactionType?.ToUpper() != "CREDIT")
-                        {
-                            var categoryExists = await _context.TransactionCategories
-                                .AnyAsync(c => c.UserId == userId && 
-                                             c.Name.ToUpper() == item.Category.ToUpper() && 
-                                             !c.IsDeleted);
-
-                            if (!categoryExists)
-                            {
-                                // Auto-create the category for reconciliation imports
-                                var newCategory = new TransactionCategory
-                                {
-                                    UserId = userId,
-                                    Name = item.Category,
-                                    Description = $"Auto-created from bank statement import",
-                                    Type = "EXPENSE", // Default to expense for DEBIT transactions
-                                    IsActive = true,
-                                    IsSystemCategory = false,
-                                    DisplayOrder = 0,
-                                    CreatedAt = DateTime.UtcNow,
-                                    UpdatedAt = DateTime.UtcNow
-                                };
-
-                                _context.TransactionCategories.Add(newCategory);
-                                await _context.SaveChangesAsync();
-                                _logger.LogInformation($"Auto-created category '{item.Category}' for statement import");
-                            }
-                        }
-
-                        // Create transaction DTO from statement item
-                        // For reconciliation imports, we should skip month closure check and allow empty categories
-                        // as these are historical transactions being imported
-                        var createTransactionDto = new CreateBankTransactionDto
-                        {
-                            BankAccountId = statement.BankAccountId,
-                            Amount = item.Amount,
-                            TransactionType = item.TransactionType,
-                            Description = item.Description ?? "Bank Statement Transaction",
-                            Category = string.IsNullOrWhiteSpace(item.Category) ? null : item.Category,
-                            ReferenceNumber = item.ReferenceNumber ?? $"STMT_{item.Id.Substring(0, Math.Min(8, item.Id.Length))}",
-                            TransactionDate = item.TransactionDate,
-                            Merchant = item.Merchant,
-                            Currency = bankAccount.Currency ?? "USD",
-                            Notes = $"Imported from bank statement: {statement.StatementName}"
-                        };
-
-                        // Create transaction using BankAccountService
-                        var transactionResult = await _bankAccountService.CreateTransactionAsync(createTransactionDto, userId);
-
-                        if (transactionResult.Success && transactionResult.Data != null)
-                        {
-                            // Mark statement item as matched
-                            item.IsMatched = true;
-                            item.MatchedTransactionId = transactionResult.Data.Id;
-                            item.MatchedTransactionType = "Payment";
-                            item.MatchedAt = DateTime.UtcNow;
-                            item.MatchedBy = userId;
-                            item.UpdatedAt = DateTime.UtcNow;
-
-                            createdCount++;
-                            _logger.LogInformation($"Created transaction {transactionResult.Data.Id} from statement item {item.Id}");
-                        }
-                        else
-                        {
-                            var errorMessage = transactionResult.Message ?? "Unknown error";
-                            _logger.LogWarning($"Failed to create transaction from statement item {item.Id}: {errorMessage}");
-                            
-                            // Log detailed error information
-                            if (transactionResult.Errors != null && transactionResult.Errors.Any())
-                            {
-                                _logger.LogWarning($"Transaction creation errors for item {item.Id}: {string.Join(", ", transactionResult.Errors)}");
-                            }
-                            
-                            // Log transaction details for debugging
-                            _logger.LogWarning($"Failed transaction details - Amount: {item.Amount}, Type: {item.TransactionType}, Date: {item.TransactionDate}, Category: {item.Category}, Description: {item.Description}");
-                            
-                            failedCount++;
-                        }
+        private async Task CreateTransactionsFromUnmatchedItemsAsync(string statementId, string userId) {
+            var statement = await _context.BankStatements.Include(s => s.StatementItems).FirstOrDefaultAsync(s => s.Id == statementId);
+            if (statement == null) return;
+            
+            // Process ALL items that don't have a Payment record created yet
+            // Check for items without MatchedTransactionId (not just IsMatched flag)
+            // This ensures we create transactions for all statement items, even if they were auto-matched
+            foreach (var item in statement.StatementItems.Where(i => string.IsNullOrEmpty(i.MatchedTransactionId))) {
+                try {
+                    var res = await _bankAccountService.CreateTransactionAsync(new CreateBankTransactionDto {
+                        BankAccountId = statement.BankAccountId, 
+                        Amount = Math.Abs(item.Amount), 
+                        TransactionType = item.TransactionType,
+                        Description = item.Description ?? "Statement Import", 
+                        TransactionDate = item.TransactionDate,
+                        Currency = "USD",
+                        ReferenceNumber = item.ReferenceNumber,
+                        Merchant = item.Merchant,
+                        Category = item.Category
+                    }, userId);
+                    
+                    if (res.Success && res.Data != null) {
+                        // Mark as matched with the created transaction
+                        item.IsMatched = true; 
+                        item.MatchedTransactionId = res.Data.Id; 
+                        item.MatchedTransactionType = "Payment";
+                        item.MatchedAt = DateTime.UtcNow; 
+                        item.MatchedBy = userId; 
+                        item.UpdatedAt = DateTime.UtcNow;
+                    } else {
+                        // Log the error but continue processing other items
+                        _logger?.LogWarning($"Failed to create transaction for statement item {item.Id}: {res?.Message ?? "Unknown error"}");
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, $"Error creating transaction from statement item {item.Id}");
-                        failedCount++;
-                    }
-                }
-
-                // Update statement matched counts
-                statement.MatchedTransactions = statement.StatementItems.Count(i => i.IsMatched);
-                statement.UnmatchedTransactions = statement.TotalTransactions - statement.MatchedTransactions;
-                statement.UpdatedAt = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-
-                _logger.LogInformation($"Created {createdCount} transactions from unmatched items. {failedCount} failed.");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error creating transactions from unmatched items for statement {statementId}");
-                // Don't throw - allow import to succeed even if transaction creation fails
-            }
-        }
-
-        private decimal CalculateMatchScore(Payment transaction, BankStatementItem item)
-        {
-            decimal score = 0;
-
-            // Amount match (50 points)
-            if (Math.Abs((decimal)(transaction.Amount - item.Amount)) < 0.01m)
-            {
-                score += 50;
-            }
-            else if (Math.Abs((decimal)(transaction.Amount - item.Amount)) < 1.00m)
-            {
-                score += 25; // Close match
-            }
-
-            // Date match (30 points)
-            if (transaction.TransactionDate.HasValue)
-            {
-                var daysDiff = Math.Abs((transaction.TransactionDate.Value.Date - item.TransactionDate.Date).TotalDays);
-                if (daysDiff == 0)
-                {
-                    score += 30;
-                }
-                else if (daysDiff <= 1)
-                {
-                    score += 20;
-                }
-                else if (daysDiff <= 2)
-                {
-                    score += 10;
+                } catch (Exception ex) {
+                    // Log the exception but continue processing other items
+                    _logger?.LogError(ex, $"Error creating transaction for statement item {item.Id}");
                 }
             }
-
-            // Reference match (20 points)
-            if (!string.IsNullOrEmpty(transaction.Reference) &&
-                !string.IsNullOrEmpty(item.ReferenceNumber) &&
-                transaction.Reference == item.ReferenceNumber)
-            {
-                score += 20;
-            }
-            else if (!string.IsNullOrEmpty(transaction.Description) &&
-                     !string.IsNullOrEmpty(item.Description) &&
-                     transaction.Description.Contains(item.Description, StringComparison.OrdinalIgnoreCase))
-            {
-                score += 10; // Partial description match
-            }
-
-            return score;
+            await _context.SaveChangesAsync();
         }
 
-        private string GetMatchReason(Payment transaction, BankStatementItem item, decimal score)
-        {
-            var reasons = new List<string>();
+        private BankStatementUploadDto MapToUploadDto(BankStatementUpload u) => new BankStatementUploadDto {
+            Id = u.Id, UserId = u.UserId, BankAccountId = u.BankAccountId, OriginalFileName = u.OriginalFileName,
+            FileType = u.FileType, Status = u.Status, ErrorMessage = u.ErrorMessage,
+            ProcessedBankStatementId = u.ProcessedBankStatementId, RetryCount = u.RetryCount,
+            CreatedAt = u.CreatedAt, ProcessedAt = u.ProcessedAt, UpdatedAt = u.UpdatedAt
+        };
 
-            if (Math.Abs((decimal)(transaction.Amount - item.Amount)) < 0.01m)
-            {
-                reasons.Add("Exact amount match");
-            }
+        private StagingTransactionDto MapToStagingDto(StagingTransaction t) => new StagingTransactionDto {
+            Id = t.Id, UploadId = t.UploadId, TransactionDate = t.TransactionDate, Amount = t.Amount,
+            TransactionType = t.TransactionType, Description = t.Description, ReferenceNumber = t.ReferenceNumber,
+            Merchant = t.Merchant, Category = t.Category, BalanceAfterTransaction = t.BalanceAfterTransaction
+        };
 
-            if (transaction.TransactionDate.HasValue)
-            {
-                var daysDiff = Math.Abs((transaction.TransactionDate.Value.Date - item.TransactionDate.Date).TotalDays);
-                if (daysDiff == 0)
-                {
-                    reasons.Add("Same date");
-                }
-                else if (daysDiff <= 2)
-                {
-                    reasons.Add($"Date within {daysDiff} days");
-                }
-            }
+        private BankStatementDto MapToBankStatementDto(BankStatement s) => new BankStatementDto {
+            Id = s.Id, UserId = s.UserId, BankAccountId = s.BankAccountId, StatementName = s.StatementName,
+            StatementStartDate = s.StatementStartDate, StatementEndDate = s.StatementEndDate, OpeningBalance = s.OpeningBalance,
+            ClosingBalance = s.ClosingBalance, ImportFormat = s.ImportFormat, ImportSource = s.ImportSource,
+            TotalTransactions = s.TotalTransactions, MatchedTransactions = s.MatchedTransactions,
+            UnmatchedTransactions = s.UnmatchedTransactions, IsReconciled = s.IsReconciled,
+            ReconciledAt = s.ReconciledAt, ReconciledBy = s.ReconciledBy, CreatedAt = s.CreatedAt, UpdatedAt = s.UpdatedAt,
+            StatementItems = s.StatementItems?.Select(MapToBankStatementItemDto).ToList()
+        };
 
-            if (!string.IsNullOrEmpty(transaction.Reference) &&
-                !string.IsNullOrEmpty(item.ReferenceNumber) &&
-                transaction.Reference == item.ReferenceNumber)
-            {
-                reasons.Add("Reference number match");
-            }
+        private BankStatementItemDto MapToBankStatementItemDto(BankStatementItem i) => new BankStatementItemDto {
+            Id = i.Id, BankStatementId = i.BankStatementId, TransactionDate = i.TransactionDate, Amount = i.Amount,
+            TransactionType = i.TransactionType, Description = i.Description, ReferenceNumber = i.ReferenceNumber,
+            Merchant = i.Merchant, Category = i.Category, BalanceAfterTransaction = i.BalanceAfterTransaction,
+            IsMatched = i.IsMatched, MatchedTransactionId = i.MatchedTransactionId,
+            MatchedTransactionType = i.MatchedTransactionType, MatchedAt = i.MatchedAt, MatchedBy = i.MatchedBy,
+            CreatedAt = i.CreatedAt, UpdatedAt = i.UpdatedAt
+        };
 
-            return string.Join(", ", reasons);
-        }
+        private ReconciliationDto MapToReconciliationDto(Reconciliation r) => new ReconciliationDto {
+            Id = r.Id, UserId = r.UserId, BankAccountId = r.BankAccountId, BankStatementId = r.BankStatementId,
+            ReconciliationName = r.ReconciliationName, ReconciliationDate = r.ReconciliationDate, BookBalance = r.BookBalance,
+            StatementBalance = r.StatementBalance, Difference = r.Difference, TotalTransactions = r.TotalTransactions,
+            MatchedTransactions = r.MatchedTransactions, UnmatchedTransactions = r.UnmatchedTransactions,
+            PendingTransactions = r.PendingTransactions, Status = r.Status, Notes = r.Notes,
+            CompletedAt = r.CompletedAt, CompletedBy = r.CompletedBy, CreatedAt = r.CreatedAt, UpdatedAt = r.UpdatedAt,
+            Matches = r.Matches?.Select(MapToReconciliationMatchDto).ToList()
+        };
 
-        private BankStatementDto MapToBankStatementDto(BankStatement statement)
-        {
-            return new BankStatementDto
-            {
-                Id = statement.Id,
-                UserId = statement.UserId,
-                BankAccountId = statement.BankAccountId,
-                StatementName = statement.StatementName,
-                StatementStartDate = statement.StatementStartDate,
-                StatementEndDate = statement.StatementEndDate,
-                OpeningBalance = statement.OpeningBalance,
-                ClosingBalance = statement.ClosingBalance,
-                ImportFormat = statement.ImportFormat,
-                ImportSource = statement.ImportSource,
-                TotalTransactions = statement.TotalTransactions,
-                MatchedTransactions = statement.MatchedTransactions,
-                UnmatchedTransactions = statement.UnmatchedTransactions,
-                IsReconciled = statement.IsReconciled,
-                ReconciledAt = statement.ReconciledAt,
-                ReconciledBy = statement.ReconciledBy,
-                CreatedAt = statement.CreatedAt,
-                UpdatedAt = statement.UpdatedAt,
-                StatementItems = statement.StatementItems?.Select(MapToBankStatementItemDto).ToList()
-            };
-        }
-
-        private BankStatementItemDto MapToBankStatementItemDto(BankStatementItem item)
-        {
-            return new BankStatementItemDto
-            {
-                Id = item.Id,
-                BankStatementId = item.BankStatementId,
-                TransactionDate = item.TransactionDate,
-                Amount = item.Amount,
-                TransactionType = item.TransactionType,
-                Description = item.Description,
-                ReferenceNumber = item.ReferenceNumber,
-                Merchant = item.Merchant,
-                Category = item.Category,
-                BalanceAfterTransaction = item.BalanceAfterTransaction,
-                IsMatched = item.IsMatched,
-                MatchedTransactionId = item.MatchedTransactionId,
-                MatchedTransactionType = item.MatchedTransactionType,
-                MatchedAt = item.MatchedAt,
-                MatchedBy = item.MatchedBy,
-                CreatedAt = item.CreatedAt,
-                UpdatedAt = item.UpdatedAt
-            };
-        }
-
-        private ReconciliationDto MapToReconciliationDto(Reconciliation reconciliation)
-        {
-            return new ReconciliationDto
-            {
-                Id = reconciliation.Id,
-                UserId = reconciliation.UserId,
-                BankAccountId = reconciliation.BankAccountId,
-                BankStatementId = reconciliation.BankStatementId,
-                ReconciliationName = reconciliation.ReconciliationName,
-                ReconciliationDate = reconciliation.ReconciliationDate,
-                BookBalance = reconciliation.BookBalance,
-                StatementBalance = reconciliation.StatementBalance,
-                Difference = reconciliation.Difference,
-                TotalTransactions = reconciliation.TotalTransactions,
-                MatchedTransactions = reconciliation.MatchedTransactions,
-                UnmatchedTransactions = reconciliation.UnmatchedTransactions,
-                PendingTransactions = reconciliation.PendingTransactions,
-                Status = reconciliation.Status,
-                Notes = reconciliation.Notes,
-                CompletedAt = reconciliation.CompletedAt,
-                CompletedBy = reconciliation.CompletedBy,
-                CreatedAt = reconciliation.CreatedAt,
-                UpdatedAt = reconciliation.UpdatedAt,
-                Matches = reconciliation.Matches?.Select(MapToReconciliationMatchDto).ToList()
-            };
-        }
-
-        private ReconciliationMatchDto MapToReconciliationMatchDto(ReconciliationMatch match)
-        {
-            return new ReconciliationMatchDto
-            {
-                Id = match.Id,
-                ReconciliationId = match.ReconciliationId,
-                SystemTransactionId = match.SystemTransactionId,
-                SystemTransactionType = match.SystemTransactionType,
-                StatementItemId = match.StatementItemId,
-                MatchType = match.MatchType,
-                Amount = match.Amount,
-                TransactionDate = match.TransactionDate,
-                Description = match.Description,
-                MatchStatus = match.MatchStatus,
-                MatchNotes = match.MatchNotes,
-                AmountDifference = match.AmountDifference,
-                CreatedAt = match.CreatedAt,
-                UpdatedAt = match.UpdatedAt,
-                MatchedBy = match.MatchedBy
-            };
-        }
+        private ReconciliationMatchDto MapToReconciliationMatchDto(ReconciliationMatch m) => new ReconciliationMatchDto {
+            Id = m.Id, ReconciliationId = m.ReconciliationId, SystemTransactionId = m.SystemTransactionId,
+            SystemTransactionType = m.SystemTransactionType, StatementItemId = m.StatementItemId,
+            MatchType = m.MatchType, Amount = m.Amount, TransactionDate = m.TransactionDate,
+            Description = m.Description, MatchStatus = m.MatchStatus, MatchNotes = m.MatchNotes,
+            AmountDifference = m.AmountDifference, CreatedAt = m.CreatedAt, UpdatedAt = m.UpdatedAt, MatchedBy = m.MatchedBy
+        };
     }
 }
-

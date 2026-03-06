@@ -21,21 +21,7 @@ namespace UtilityHub360.Services
         {
             try
             {
-                // ============================================
-                // VALIDATION: Only allow bills for current year
-                // ============================================
-                var currentYear = DateTime.UtcNow.Year;
-                var billYear = createBillDto.DueDate.Year;
-
-                if (billYear != currentYear)
-                {
-                    return ApiResponse<BillDto>.ErrorResult(
-                        $"Bills can only be created for the current year ({currentYear}). " +
-                        $"You tried to create a bill for {createBillDto.DueDate:MMMM yyyy}. " +
-                        $"Please select a date within {currentYear}.");
-                }
-
-                Console.WriteLine($"DEBUG CREATE BILL: Validation passed - Bill year {billYear} matches current year {currentYear}");
+                Console.WriteLine($"DEBUG CREATE BILL: Creating bill for {createBillDto.DueDate:MMMM yyyy}");
 
                 var billId = Guid.NewGuid().ToString();
                 
@@ -47,6 +33,7 @@ namespace UtilityHub360.Services
                     BillType = createBillDto.BillType.ToLower(),
                     Amount = createBillDto.Amount,
                     DueDate = createBillDto.DueDate,
+                    StatementDate = createBillDto.StatementDate,
                     Frequency = createBillDto.Frequency.ToLower(),
                     Status = "PENDING",
                     CreatedAt = DateTime.UtcNow,
@@ -82,12 +69,13 @@ namespace UtilityHub360.Services
                 if (createBillDto.AutoGenerateNext && createBillDto.Frequency.ToLower() == "monthly")
                 {
                     var now = DateTime.UtcNow;
-                    // Use the currentYear variable already declared above
+                    var currentYear = DateTime.UtcNow.Year;
                     var baseDueDay = createBillDto.DueDate.Day;
                     var billDueDate = createBillDto.DueDate.Date;
                     var billMonth = billDueDate.Month;
+                    var billYear = billDueDate.Year;
 
-                    Console.WriteLine($"DEBUG AUTO-GEN: Starting auto-generation. Current year: {currentYear}, Bill month: {billMonth}");
+                    Console.WriteLine($"DEBUG AUTO-GEN: Starting auto-generation. Current year: {currentYear}, Bill year: {billYear}, Bill month: {billMonth}");
 
                     int generatedCount = 0;
                     int skippedCount = 0;
@@ -96,9 +84,9 @@ namespace UtilityHub360.Services
                     for (int month = billMonth + 1; month <= 12; month++)
                     {
                         // Calculate due date for this month, handling months with fewer days
-                        var daysInMonth = DateTime.DaysInMonth(currentYear, month);
+                        var daysInMonth = DateTime.DaysInMonth(billYear, month);
                         var dueDay = Math.Min(baseDueDay, daysInMonth);
-                        var monthlyDueDate = new DateTime(currentYear, month, dueDay);
+                        var monthlyDueDate = new DateTime(billYear, month, dueDay);
 
                         // Skip if this date has already passed and is more than 30 days old
                         if (monthlyDueDate < now.Date.AddDays(-30))
@@ -153,7 +141,7 @@ namespace UtilityHub360.Services
 
                 var billDto = MapToBillDto(bill);
                 var message = createBillDto.AutoGenerateNext && createBillDto.Frequency.ToLower() == "monthly" 
-                    ? $"Bill created successfully with auto-generation for remaining months of {DateTime.UtcNow.Year}" 
+                    ? $"Bill created successfully with auto-generation for remaining months of {createBillDto.DueDate.Year}" 
                     : "Bill created successfully";
                 
                 return ApiResponse<BillDto>.SuccessResult(billDto, message);
@@ -209,21 +197,12 @@ namespace UtilityHub360.Services
 
                 if (updateBillDto.DueDate.HasValue)
                 {
-                    // ============================================
-                    // VALIDATION: Only allow due dates for current year
-                    // ============================================
-                    var currentYear = DateTime.UtcNow.Year;
-                    var newDueDateYear = updateBillDto.DueDate.Value.Year;
-
-                    if (newDueDateYear != currentYear)
-                    {
-                        return ApiResponse<BillDto>.ErrorResult(
-                            $"Bill due dates can only be set for the current year ({currentYear}). " +
-                            $"You tried to set a due date for {updateBillDto.DueDate.Value:MMMM yyyy}. " +
-                            $"Please select a date within {currentYear}.");
-                    }
-
                     bill.DueDate = updateBillDto.DueDate.Value;
+                }
+
+                if (updateBillDto.StatementDate.HasValue)
+                {
+                    bill.StatementDate = updateBillDto.StatementDate.Value;
                 }
 
                 if (!string.IsNullOrEmpty(updateBillDto.Frequency))
@@ -403,15 +382,27 @@ namespace UtilityHub360.Services
                 }
 
                 var query = _context.Bills.Where(b => b.UserId == userId);
-
-                if (!string.IsNullOrEmpty(status))
-                {
-                    query = query.Where(b => b.Status == status.ToUpper());
-                }
+                var normalizedStatus = string.IsNullOrEmpty(status) ? null : status.ToUpper();
 
                 if (!string.IsNullOrEmpty(billType))
                 {
                     query = query.Where(b => b.BillType == billType.ToLower());
+                }
+
+                if (!string.IsNullOrEmpty(normalizedStatus))
+                {
+                    if (normalizedStatus == "PAID")
+                    {
+                        query = query.Where(b => _context.Payments.Any(p => p.BillId == b.Id));
+                    }
+                    else if (normalizedStatus == "PENDING")
+                    {
+                        query = query.Where(b => !_context.Payments.Any(p => p.BillId == b.Id));
+                    }
+                    else
+                    {
+                        query = query.Where(b => b.Status == normalizedStatus);
+                    }
                 }
 
                 var totalCount = await query.CountAsync();
@@ -424,12 +415,22 @@ namespace UtilityHub360.Services
                 }
 
                 var bills = await query
-                    .OrderByDescending(b => b.CreatedAt)
+                    .Select(b => new
+                    {
+                        Bill = b,
+                        HasPayment = _context.Payments.Any(p => p.BillId == b.Id && !p.IsDeleted)
+                    })
+                    .OrderBy(x => x.Bill.DueDate) // Order by DueDate ascending
                     .Skip(skip)
                     .Take(limit)
                     .ToListAsync();
 
-                var billDtos = bills.Select(MapToBillDto).ToList();
+                var billDtos = bills.Select(x =>
+                {
+                    var dto = MapToBillDto(x.Bill);
+                    dto.Status = x.HasPayment ? "PAID" : "PENDING";
+                    return dto;
+                }).ToList();
 
                 var paginatedResponse = new PaginatedResponse<BillDto>
                 {
@@ -884,25 +885,47 @@ namespace UtilityHub360.Services
             try
             {
                 var query = _context.Bills.AsQueryable();
-
-                if (!string.IsNullOrEmpty(status))
-                {
-                    query = query.Where(b => b.Status == status.ToUpper());
-                }
+                var normalizedStatus = string.IsNullOrEmpty(status) ? null : status.ToUpper();
 
                 if (!string.IsNullOrEmpty(billType))
                 {
                     query = query.Where(b => b.BillType == billType.ToLower());
                 }
 
+                if (!string.IsNullOrEmpty(normalizedStatus))
+                {
+                    if (normalizedStatus == "PAID")
+                    {
+                        query = query.Where(b => _context.Payments.Any(p => p.BillId == b.Id));
+                    }
+                    else if (normalizedStatus == "PENDING")
+                    {
+                        query = query.Where(b => !_context.Payments.Any(p => p.BillId == b.Id));
+                    }
+                    else
+                    {
+                        query = query.Where(b => b.Status == normalizedStatus);
+                    }
+                }
+
                 var totalCount = await query.CountAsync();
                 var bills = await query
-                    .OrderByDescending(b => b.CreatedAt)
+                    .Select(b => new
+                    {
+                        Bill = b,
+                        HasPayment = _context.Payments.Any(p => p.BillId == b.Id)
+                    })
+                    .OrderByDescending(x => x.Bill.CreatedAt)
                     .Skip((page - 1) * limit)
                     .Take(limit)
                     .ToListAsync();
 
-                var billDtos = bills.Select(MapToBillDto).ToList();
+                var billDtos = bills.Select(x =>
+                {
+                    var dto = MapToBillDto(x.Bill);
+                    dto.Status = x.HasPayment ? "PAID" : "PENDING";
+                    return dto;
+                }).ToList();
 
                 var paginatedResponse = new PaginatedResponse<BillDto>
                 {
@@ -1194,6 +1217,7 @@ namespace UtilityHub360.Services
                 BillType = bill.BillType,
                 Amount = bill.Amount,
                 DueDate = bill.DueDate,
+                StatementDate = bill.StatementDate,
                 Frequency = bill.Frequency,
                 Status = bill.Status,
                 CreatedAt = bill.CreatedAt,

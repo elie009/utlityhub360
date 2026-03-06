@@ -112,6 +112,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpPut("accounts/{savingsAccountId}")]
+        [HttpPost("accounts/{savingsAccountId}/update")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<SavingsAccountDto>>> UpdateSavingsAccount(string savingsAccountId, [FromBody] CreateSavingsAccountDto updateDto)
         {
             var userId = GetUserId();
@@ -135,6 +136,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpDelete("accounts/{savingsAccountId}")]
+        [HttpPost("accounts/{savingsAccountId}/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeleteSavingsAccount(string savingsAccountId)
         {
             var userId = GetUserId();
@@ -284,6 +286,7 @@ namespace UtilityHub360.Controllers
 
         // Savings Goals and Progress
         [HttpPut("accounts/{savingsAccountId}/goal")]
+        [HttpPost("accounts/{savingsAccountId}/goal")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<SavingsAccountDto>>> UpdateSavingsGoal(
             string savingsAccountId, 
             [FromBody] UpdateSavingsGoalDto goalDto)
@@ -343,6 +346,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpPut("accounts/{savingsAccountId}/mark-paid")]
+        [HttpPost("accounts/{savingsAccountId}/mark-paid")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<SavingsAccountDto>>> MarkSavingsAsPaid(
             string savingsAccountId, 
             [FromBody] MarkSavingsPaidDto? request = null)

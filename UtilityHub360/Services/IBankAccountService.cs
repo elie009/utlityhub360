@@ -33,6 +33,7 @@ namespace UtilityHub360.Services
         Task<ApiResponse<List<BankTransactionDto>>> GetUserTransactionsAsync(string userId, string? bankAccountId = null, string? accountType = null, int page = 1, int limit = 50, DateTime? dateFrom = null, DateTime? dateTo = null);
         Task<ApiResponse<BankTransactionDto>> GetTransactionAsync(string transactionId, string userId);
         Task<ApiResponse<bool>> DeleteTransactionAsync(string transactionId, string userId);
+        Task<ApiResponse<BulkDeleteTransactionsResultDto>> BulkDeleteTransactionsAsync(List<string> transactionIds, string userId);
         Task<ApiResponse<bool>> SoftDeleteTransactionAsync(string transactionId, string userId, string? reason = null);
         Task<ApiResponse<BankTransactionDto>> RestoreTransactionAsync(string transactionId, string userId);
 
@@ -43,6 +44,7 @@ namespace UtilityHub360.Services
 
         // Account Management
         Task<ApiResponse<bool>> UpdateAccountBalanceAsync(string bankAccountId, decimal newBalance, string userId);
+        Task<ApiResponse<decimal>> RecalculateBalanceFromTransactionsAsync(string bankAccountId, string userId);
         Task<ApiResponse<BankAccountDto>> ArchiveBankAccountAsync(string bankAccountId, string userId);
         Task<ApiResponse<BankAccountDto>> ActivateBankAccountAsync(string bankAccountId, string userId);
 

@@ -2,31 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace UtilityHub360.DTOs
 {
-    /// <summary>
-    /// Custom validation attribute to ensure dates are within the current year only
-    /// </summary>
-    public class CurrentYearOnlyAttribute : ValidationAttribute
-    {
-        public override bool IsValid(object? value)
-        {
-            if (value is DateTime date)
-            {
-                var currentYear = DateTime.UtcNow.Year;
-                return date.Year == currentYear;
-            }
-            return true; // Allow null values to be handled by Required attribute
-        }
-
-        public override string FormatErrorMessage(string name)
-        {
-            var currentYear = DateTime.UtcNow.Year;
-            return $"The {name} must be within the current year ({currentYear}). Please select a date in {currentYear}.";
-        }
-    }
-}
-
-namespace UtilityHub360.DTOs
-{
     public class BillDto
     {
         public string Id { get; set; } = string.Empty;
@@ -35,6 +10,7 @@ namespace UtilityHub360.DTOs
         public string BillType { get; set; } = string.Empty;
         public decimal Amount { get; set; }
         public DateTime DueDate { get; set; }
+        public DateTime? StatementDate { get; set; }
         public string Frequency { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
@@ -77,8 +53,9 @@ namespace UtilityHub360.DTOs
         public decimal Amount { get; set; }
 
         [Required]
-        [CurrentYearOnly]
         public DateTime DueDate { get; set; }
+
+        public DateTime? StatementDate { get; set; }
 
         [Required]
         [StringLength(20)]
@@ -122,8 +99,9 @@ namespace UtilityHub360.DTOs
         [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than 0")]
         public decimal? Amount { get; set; }
 
-        [CurrentYearOnly]
         public DateTime? DueDate { get; set; }
+
+        public DateTime? StatementDate { get; set; }
 
         [StringLength(20)]
         public string? Frequency { get; set; }

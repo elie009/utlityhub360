@@ -49,6 +49,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpPut("{categoryId}")]
+        [HttpPost("{categoryId}/update")]  // POST alternative for environments where PUT is blocked
         public async Task<ActionResult<ApiResponse<TransactionCategoryDto>>> UpdateCategory(string categoryId, [FromBody] UpdateTransactionCategoryDto updateDto)
         {
             try
@@ -76,6 +77,7 @@ namespace UtilityHub360.Controllers
         }
 
         [HttpDelete("{categoryId}")]
+        [HttpPost("{categoryId}/delete")]  // POST alternative for environments where DELETE is blocked
         public async Task<ActionResult<ApiResponse<bool>>> DeleteCategory(string categoryId)
         {
             try
@@ -197,6 +199,33 @@ namespace UtilityHub360.Controllers
             catch (Exception ex)
             {
                 return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to seed system categories: {ex.Message}"));
+            }
+        }
+
+        [HttpPost("create-default")]
+        public async Task<ActionResult<ApiResponse<bool>>> CreateDefaultCategories()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(ApiResponse<bool>.ErrorResult("User not authenticated"));
+                }
+
+                var result = await _categoryService.CreateDefaultCategoriesAsync(userId);
+                
+                if (result.Success)
+                {
+                    return Ok(result);
+                }
+                
+                return BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResult($"Failed to create default categories: {ex.Message}"));
             }
         }
     }
