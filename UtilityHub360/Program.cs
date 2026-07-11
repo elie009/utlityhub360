@@ -82,7 +82,8 @@ builder.Services.AddCors(options =>
                 "http://localhost:5000",
                 "https://localhost:5000",
                 "http://localhost:49200",
-                "https://localhost:49200"
+                "https://localhost:49200",
+                "http://fin.e-yana.com"
               )
               .AllowAnyHeader()
               .AllowAnyMethod()
